@@ -4,6 +4,8 @@ import {
 	Building2,
 	CheckCircle2,
 	Cpu,
+	Eye,
+	EyeOff,
 	GitBranch,
 	KeyRound,
 	Loader2,
@@ -87,6 +89,7 @@ export function SettingsView({
 		currentProvider.modelAliases ?? {},
 	)
 	const [apiKey, setApiKey] = useState("")
+	const [showApiKey, setShowApiKey] = useState(false)
 	const [discoveredModels, setDiscoveredModels] = useState<string[]>(
 		currentProvider.discoveredModels ?? [],
 	)
@@ -491,13 +494,24 @@ export function SettingsView({
 										API Key {selectedProvider === "ollama" ? "(not required for local Ollama)" : "(auto-discovers models)"}
 									</label>
 									<div className="flex gap-2">
-										<input
-											type="password"
-											value={apiKey}
-											onChange={(e) => setApiKey(e.target.value)}
-											placeholder="Paste API key — click Discover Models to fetch live model list"
-											className="h-9 flex-1 rounded-lg border border-[#32454d] bg-[#080d12] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
-										/>
+										<div className="relative flex-1">
+											<input
+												type={showApiKey ? "text" : "password"}
+												value={apiKey}
+												onChange={(e) => setApiKey(e.target.value)}
+												placeholder="Paste API key — click Discover Models to fetch live model list"
+												className="h-9 w-full rounded-lg border border-[#32454d] bg-[#080d12] pr-9 pl-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
+											/>
+											<button
+												type="button"
+												onClick={() => setShowApiKey((v) => !v)}
+												aria-label={showApiKey ? "Hide API key" : "Show API key"}
+												title={showApiKey ? "Hide API key" : "Show API key"}
+												className="absolute top-1.5 right-1.5 rounded-lg p-1 text-[#81949a] hover:bg-[#101820] hover:text-[#e3edef]"
+											>
+												{showApiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+											</button>
+										</div>
 										<Button
 											variant="outline"
 											disabled={discovering}

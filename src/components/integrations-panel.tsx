@@ -1,6 +1,6 @@
 "use client"
 
-import { Check, Copy, Link2, Mail, RefreshCw, Unlink, X } from "lucide-react"
+import { Check, Copy, Eye, EyeOff, Link2, Mail, RefreshCw, Unlink, X } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -63,6 +63,7 @@ export function IntegrationsPanel({ onCasesQueued }: { onCasesQueued: () => void
 	const [filter, setFilter] = useState<"all" | "b2c" | "b2b" | "accounting" | "banking">("all")
 	const [activeProvider, setActiveProvider] = useState<IntegrationItem | null>(null)
 	const [formValues, setFormValues] = useState<Record<string, string>>({})
+	const [revealedFields, setRevealedFields] = useState<Record<string, boolean>>({})
 	const [busyProvider, setBusyProvider] = useState<string | null>(null)
 	const [copied, setCopied] = useState<string | null>(null)
 	const [banner, setBanner] = useState<{ ok: boolean; text: string } | null>(null)
@@ -443,20 +444,41 @@ export function IntegrationsPanel({ onCasesQueued }: { onCasesQueued: () => void
 							</Button>
 						</div>
 						<div className="mt-4 space-y-3">
-							{activeProvider.fields.map((field) => (
-								<div key={field.key}>
-									<label className="mb-1 block text-xs font-semibold text-[#c7d3d6]">
-										{field.label} {field.required && <span className="text-red-400">*</span>}
-									</label>
-									<input
-										type={field.type}
-										value={formValues[field.key] ?? ""}
-										onChange={(e) => setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
-										placeholder={field.placeholder}
-										className="h-9 w-full rounded-md border border-[#32454d] bg-[#080d12] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
-									/>
-								</div>
-							))}
+							{activeProvider.fields.map((field) => {
+								const isSecret = field.type === "password"
+								const isShown = Boolean(revealedFields[field.key])
+								return (
+									<div key={field.key}>
+										<label className="mb-1 block text-xs font-semibold text-[#c7d3d6]">
+											{field.label} {field.required && <span className="text-red-400">*</span>}
+										</label>
+										<div className="relative">
+											<input
+												type={isSecret && isShown ? "text" : field.type}
+												value={formValues[field.key] ?? ""}
+												onChange={(e) => setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+												placeholder={field.placeholder}
+												className={cn(
+													"h-9 w-full rounded-lg border border-[#32454d] bg-[#080d12] pl-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none",
+													isSecret ? "pr-9" : "pr-3",
+												)}
+											/>
+											{isSecret && (
+												<button
+													type="button"
+													onClick={() =>
+														setRevealedFields((prev) => ({ ...prev, [field.key]: !prev[field.key] }))
+													}
+													aria-label={isShown ? `Hide ${field.label}` : `Show ${field.label}`}
+													className="absolute top-1.5 right-1.5 rounded-lg p-1 text-[#81949a] hover:bg-[#101820] hover:text-[#e3edef]"
+												>
+													{isShown ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+												</button>
+											)}
+										</div>
+									</div>
+								)
+							})}
 						</div>
 						<div className="mt-5 flex justify-end gap-2">
 							<Button variant="outline" onClick={() => setActiveProvider(null)}>
