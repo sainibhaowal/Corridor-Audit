@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CorridorAudit — Concurrent Mozaik Settlement Forensics</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="4" y="4" width="56" height="56" rx="14" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="2"/>
+        <path d="M14 23 H39 C44 23, 47 26, 47 30 H39 C39 28, 38 27, 36 27 H14 Z" fill="#111827"/>
+        <path d="M50 41 H25 C20 41, 17 38, 17 34 H25 C25 36, 26 37, 28 37 H50 Z" fill="#059669"/>
+        <rect x="25" y="25" width="14" height="14" rx="4" fill="#FFFFFF" stroke="#111827" stroke-width="2"/>
+        <path d="M29 32 L31.2 34.2 L35.5 29.8" fill="none" stroke="#059669" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Corridor<span class="brand-accent">Audit</span></span>
+    </div>
+
+    <div class="topbar-mid">
+      <span class="notice-pill">Synthetic &amp; Public ECB Data Only · Not Financial Advice</span>
+      <span class="queue-pill mono" id="queuePill">
+        <span class="dot"></span>
+        <span id="queueText">Batch: 0 wait · 0 active · 0 done</span>
+      </span>
+    </div>
+
+    <div class="topbar-right">
+      <select id="gateModeSelect" class="gate-select" title="Mozaik Interruptible Harness Breakpoint Mode">
+        <option value="risk_only">Gate: Auto-Risk</option>
+        <option value="step_tool">Gate: Step Every Tool</option>
+      </select>
+      <button id="providerChipBtn" class="provider-chip mono" type="button">
+        <span class="dot" id="providerDot"></span>
+        <span id="providerChipText">Loading...</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <!-- LEFT SIDEBAR -->
+    <aside class="sidebar">
+      <div class="nav-label">Workspace</div>
+      <button class="nav-btn active" data-view="stream" type="button">Live Agent Stream</button>
+      <button class="nav-btn" data-view="inbound" type="button">Inbound Sources</button>
+      <button class="nav-btn" data-view="summary" type="button">Corridor Summary</button>
+
+      <div class="divider"></div>
+      <div class="nav-label">Autonomous Triggers</div>
+      <button id="streamBatchBtn" class="btn btn-primary btn-block" type="button">▶ Stream 6-Case Batch</button>
+      <button id="jumpUploadBtn" class="btn btn-block" type="button">+ Drop MT103 / CSV / PDF</button>
+      <button id="fireWebhookBtn" class="btn btn-block" type="button">⚡ Send Webhook Event</button>
+
+      <div class="sidebar-footer">
+        <div class="nav-label" style="margin-left:4px;">System Status</div>
+        <div class="status-line"><span class="dot"></span> Mozaik @mozaik-ai/core 6.0</div>
+        <div class="status-line"><span class="dot"></span> ECB Frankfurter API + Cache</div>
+        <div class="status-line"><span class="dot" id="sseDot"></span> <span id="sseLabel">SSE Stream Active</span></div>
+        <button id="openProviderModalBtn" class="btn btn-block" style="margin-top:10px;background:var(--bg-canvas);" type="button">⚙ AI Model / API Key</button>
+      </div>
+    </aside>
+
+    <!-- MIDDLE PANEL -->
+    <main class="main-panel">
+      <!-- VIEW 1: LIVE CODING-AGENT STREAM -->
+      <section id="viewStream">
+        <div class="case-header">
+          <div class="case-title">
+            <span id="activeCaseTitle">Ready — Click "Stream 6-Case Batch" or Send Inbound Data</span>
+            <span id="activeCorridorPill" class="pill mono hidden"></span>
+            <span id="activeStatusPill" class="pill hidden"></span>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button id="expandAllBtn" class="btn btn-sm" type="button">Expand All Tools</button>
+            <button id="collapseAllBtn" class="btn btn-sm" type="button">Collapse All</button>
+          </div>
+        </div>
+
+        <div id="caseTabs" class="case-tabs"></div>
+        <div id="fleetGrid" class="fleet-grid"></div>
+        <div id="overlapBar" class="overlap-bar hidden"></div>
+
+        <div class="trail-card">
+          <div id="trailEmpty" style="color:var(--text-muted);padding:18px 4px;">
+            Agents are standing by on shared <code class="mono">CorridorState</code>. Click <strong>Stream 6-Case Batch</strong> in the left sidebar (or trigger any upload/webhook in <strong>Inbound Sources</strong>) to watch all 4–5 Mozaik agents execute in parallel, stream live reasoning &amp; tool calls, cross-check cents, and pause at human approval gates.
+          </div>
+          <div id="trailList" class="trail-list hidden"></div>
+        </div>
+
+        <div id="approvalMount"></div>
+      </section>
+
+      <!-- VIEW 2: INBOUND SOURCES -->
+      <section id="viewInbound" class="hidden">
+        <h2 style="margin:0 0 4px;font-size:19px;">Autonomous Inbound Channels &amp; Multi-Format Ingestion</h2>
+        <p style="margin:0 0 14px;color:var(--text-muted);">Every incoming file, webhook payload, or pasted wire triggers the concurrent Mozaik runtime automatically.</p>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="dropzone" id="dropzone">
+              <div style="font-weight:700;font-size:15px;margin-bottom:6px;">Drop Files Here or Choose File</div>
+              <div style="color:var(--text-muted);font-size:12px;margin-bottom:12px;">
+                Supports <span class="mono">.csv</span> (Upwork/Stripe/Wise/Bank), <span class="mono">.txt</span> (SWIFT MT103), <span class="mono">.xml</span> (camt.053), <span class="mono">.pdf</span>, <span class="mono">.json</span>
+              </div>
+              <input id="fileInput" type="file" accept=".csv,.txt,.xml,.json,.pdf" class="hidden" />
+              <button id="browseFileBtn" class="btn btn-primary" type="button">Select File &amp; Run Autonomous Audit</button>
+              <div style="margin-top:10px;font-size:11.5px;color:var(--text-muted);">Hot Folder active: <span class="mono">./data/inbox/</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div style="font-weight:700;margin-bottom:8px;">Quick Raw Paste (MT103 / Email Advice / CSV)</div>
+            <textarea id="rawPasteInput" rows="8" class="input" placeholder="Paste SWIFT MT103 tags (:20:, :32A:, :33B:, :70:, :71A:, :71G:) or email/invoice text..."></textarea>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <button id="runPasteBtn" class="btn btn-emerald" type="button">▶ Parse &amp; Queue Case</button>
+              <button id="loadSampleMt103Btn" class="btn" type="button">Load Sample MT103</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:700;">Live Inbound Webhook Endpoint</div>
+              <div class="mono" style="font-size:12px;color:var(--text-muted);margin-top:3px;">POST /api/webhooks/inbound</div>
+            </div>
+            <button id="fireSampleWebhookBtn" class="btn btn-primary" type="button">⚡ Fire Realistic Test Webhook</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 3: CORRIDOR SUMMARY -->
+      <section id="viewSummary" class="hidden">
+        <h2 style="margin:0 0 4px;font-size:19px;">Cross-Border Corridor Leak Summary</h2>
+        <p style="margin:0 0 14px;color:var(--text-muted);">Aggregated cents-verified totals across all completed audits and corridor channels.</p>
+        <div id="summaryKpis" class="kpi-grid"></div>
+        <div class="card table-wrap">
+          <table class="ledger" id="summaryTable">
+            <thead>
+              <tr>
+                <th>Case</th>
+                <th>Channel</th>
+                <th class="num">FX Spread Leak</th>
+                <th class="num">Fees / Recoverable</th>
+                <th class="num">Variance</th>
+                <th>Verdict</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <!-- RIGHT PANEL: 3-TAB ARTIFACTS, CASES & LEDGER -->
+    <aside class="right-panel">
+      <div class="right-tabs">
+        <button class="right-tab active" data-rtab="cases" type="button">Cases (<span id="casesCount">0</span>)</button>
+        <button class="right-tab" data-rtab="artifacts" type="button">Artifacts</button>
+        <button class="right-tab" data-rtab="ledger" type="button">Ledger</button>
+      </div>
+      <div id="rightScroll" class="right-scroll">
+        <div style="color:var(--text-muted);font-size:12.5px;padding:12px 4px;">No completed cases yet.</div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- 3-TAB FULL TECHNICAL INSPECTOR MODAL -->
+  <div id="caseModal" class="modal-backdrop hidden">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <strong id="modalTitle" style="font-size:17px;">CASE-002</strong>
+          <span id="modalVarianceBadge" class="pill ok mono"></span>
+        </div>
+        <button id="closeCaseModalBtn" class="btn btn-sm" type="button">✕ Esc</button>
+      </div>
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-mtab="ledger" type="button">Summary &amp; Cent Ledger</button>
+        <button class="modal-tab" data-mtab="technical" type="button">All Technical Fields (JSON)</button>
+        <button class="modal-tab" data-mtab="letter" type="button">Dispute Letter (.txt)</button>
+      </div>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- AI PROVIDER & HARNESS SETTINGS MODAL -->
+  <div id="providerModal" class="modal-backdrop hidden">
+    <div class="modal sm" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <strong style="font-size:16.5px;">AI Model, API Key &amp; Mozaik Harness Settings</strong>
+        <button id="closeProviderModalBtn" class="btn btn-sm" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="summary-callout" style="margin-bottom:12px;">
+          <strong>Security:</strong> Keys entered here stay strictly in memory for this session — never written to disk or git.
+        </div>
+        <div style="font-size:11.5px;font-weight:700;color:var(--text-muted);">SELECT LLM PROVIDER (ZERO LOCK-IN)</div>
+        <div id="providerPicker" class="provider-grid">
+          <button class="provider-btn" data-prov="nvidia" type="button">NVIDIA NIM ($0)</button>
+          <button class="provider-btn" data-prov="gemini" type="button">Google Gemini</button>
+          <button class="provider-btn" data-prov="groq" type="button">Groq</button>
+          <button class="provider-btn" data-prov="openrouter" type="button">OpenRouter</button>
+          <button class="provider-btn" data-prov="openai" type="button">OpenAI</button>
+          <button class="provider-btn" data-prov="anthropic" type="button">Anthropic</button>
+          <button class="provider-btn" data-prov="ollama" type="button">Ollama (Local)</button>
+          <button class="provider-btn" data-prov="demo" type="button">Demo Mock</button>
+        </div>
+
+        <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;">Model ID</label>
+        <input id="modalModelInput" class="input mono" style="margin-bottom:10px;" type="text" />
+
+        <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;">API Key (optional if already in .env)</label>
+        <input id="modalKeyInput" class="input mono" style="margin-bottom:12px;" type="password" placeholder="Leave blank to keep existing .env / RAM key" />
+
+        <div id="testConnStatus" style="font-size:12px;min-height:20px;margin-bottom:10px;color:var(--text-secondary);"></div>
+
+        <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+          <button id="testConnBtn" class="btn" type="button">Test Connection</button>
+          <button id="saveProviderBtn" class="btn btn-primary" type="button">Save &amp; Apply Instantly</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
