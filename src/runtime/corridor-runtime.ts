@@ -1,0 +1,170 @@
+import { defineRuntime, RuntimeState, SemanticEvent } from "@mozaik-ai/core"
+import type {
+	AnomalyAssessment,
+	AuditVerdict,
+	FxAssessment,
+	FxRateRecord,
+	InvoiceInput,
+	PendingBreakpointDecision,
+	SettlementCase,
+	TermsAssessment,
+	TrajectoryEvent,
+	WireAssessment,
+	WireOrBankInput,
+} from "../core/types"
+
+export interface BreakpointDecision {
+	decision: "approve" | "reject" | "stop"
+	reason?: string
+}
+
+export class CorridorState extends RuntimeState {
+	public batchId = "BF-2026-CORRIDOR-DEMO"
+	public rawInvoices: InvoiceInput[] = []
+	public rawWires: WireOrBankInput[] = []
+	public fxCache = new Map<string, FxRateRecord>()
+	public casesById = new Map<string, SettlementCase>()
+
+	// Parallel specialist synchronization (plugs seamlessly into AuditorAgent reactive barrier)
+	public expectedRolesByCaseId = new Map<string, Set<string>>()
+	public findingsByRole = new Map<string, Set<string>>()
+
+	// Isolated per-role slots preventing race conditions across concurrent agents
+	public termsByCaseId = new Map<string, TermsAssessment>()
+	public fxByCaseId = new Map<string, FxAssessment>()
+	public wireByCaseId = new Map<string, WireAssessment>()
+	public anomalyByCaseId = new Map<string, AnomalyAssessment>()
+	public auditByCaseId = new Map<string, AuditVerdict>()
+
+	// Interruptible harness state
+	public breakpointMode: "risk_only" | "step_tool" = "risk_only"
+	public autoApproveBreakpoints = false
+	public abortedCases = new Set<string>()
+	public pendingApprovals = new Map<
+		string,
+		PendingBreakpointDecision & { resolve: (decision: BreakpointDecision) => void }
+	>()
+
+	// Live SSE stream & chronological case trace + ledger
+	public trajectoryByCaseId = new Map<string, TrajectoryEvent[]>()
+	public ledgerEvents: Array<{ timestamp: string; caseId: string; summary: string; tone: "ok" | "warn" | "bad" }> = []
+	public queueStats = { waiting: 0, active: 0, done: 0, failed: 0 }
+	public subscribers = new Set<(evt: TrajectoryEvent) => void>()
+
+	private caseWaiters = new Map<string, Array<(verdict: AuditVerdict) => void>>()
+
+	emitTrajectory(partial: Omit<TrajectoryEvent, "id" | "timestamp">): TrajectoryEvent {
+		const evt: TrajectoryEvent = {
+			...partial,
+			id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+			timestamp: new Date().toISOString(),
+		}
+		const list = this.trajectoryByCaseId.get(evt.caseId) ?? []
+		list.push(evt)
+		this.trajectoryByCaseId.set(evt.caseId, list)
+
+		if (evt.kind === "ledger.entry" && evt.text) {
+			this.ledgerEvents.unshift({
+				timestamp: evt.timestamp,
+				caseId: evt.caseId,
+				summary: evt.text,
+				tone: evt.status === "bad" ? "bad" : evt.status === "warn" ? "warn" : "ok",
+			})
+			if (this.ledgerEvents.length > 80) this.ledgerEvents.length = 80
+		}
+
+		for (const sub of this.subscribers) {
+			try {
+				sub(evt)
+			} catch {
+				// ignore closed stream listener
+			}
+		}
+		return evt
+	}
+
+	markRoleComplete(caseId: string, role: "terms" | "fx" | "wire" | "anomaly"): boolean {
+		const completed = this.findingsByRole.get(caseId) ?? new Set<string>()
+		completed.add(role)
+		this.findingsByRole.set(caseId, completed)
+
+		const expected = this.expectedRolesByCaseId.get(caseId)
+		if (!expected || expected.size === 0) return false
+		for (const reqRole of expected) {
+			if (!completed.has(reqRole)) return false
+		}
+		return true
+	}
+
+	registerCase(settlementCase: SettlementCase): void {
+		this.casesById.set(settlementCase.caseId, settlementCase)
+		if (settlementCase.invoice && !this.rawInvoices.some((i) => i.invoiceId === settlementCase.invoice!.invoiceId)) {
+			this.rawInvoices.push(settlementCase.invoice)
+		}
+		const wires = [settlementCase.wire, ...(settlementCase.candidateWires ?? [])]
+		for (const w of wires) {
+			if (!this.rawWires.some((existing) => existing.wireId === w.wireId)) {
+				this.rawWires.push(w)
+			}
+		}
+
+		// Reset per-case state cleanly if re-run
+		this.termsByCaseId.delete(settlementCase.caseId)
+		this.fxByCaseId.delete(settlementCase.caseId)
+		this.wireByCaseId.delete(settlementCase.caseId)
+		this.anomalyByCaseId.delete(settlementCase.caseId)
+		this.auditByCaseId.delete(settlementCase.caseId)
+		this.findingsByRole.set(settlementCase.caseId, new Set())
+		this.trajectoryByCaseId.set(settlementCase.caseId, [])
+		this.abortedCases.delete(settlementCase.caseId)
+
+		const hasAnomalyTrigger =
+			(settlementCase.candidateWires?.length ?? 0) > 0 ||
+			Boolean(settlementCase.invoice?.priorAccountRef && settlementCase.wire.beneficiaryAccountRef &&
+				settlementCase.invoice.priorAccountRef !== settlementCase.wire.beneficiaryAccountRef)
+
+		const roles = new Set<string>(["terms", "fx", "wire"])
+		if (hasAnomalyTrigger) roles.add("anomaly")
+		this.expectedRolesByCaseId.set(settlementCase.caseId, roles)
+	}
+
+	resolveCaseWaiters(caseId: string, verdict: AuditVerdict): void {
+		const waiters = this.caseWaiters.get(caseId)
+		if (!waiters) return
+		this.caseWaiters.delete(caseId)
+		for (const w of waiters) w(verdict)
+	}
+
+	waitForCaseVerdict(caseId: string, timeoutMs = 120_000): Promise<AuditVerdict> {
+		const existing = this.auditByCaseId.get(caseId)
+		if (existing) return Promise.resolve(existing)
+
+		return new Promise<AuditVerdict>((resolve, reject) => {
+			const timer = setTimeout(() => {
+				reject(new Error(`Timed out waiting for ${caseId} audit verdict after ${timeoutMs}ms`))
+			}, timeoutMs)
+
+			const list = this.caseWaiters.get(caseId) ?? []
+			list.push((verdict) => {
+				clearTimeout(timer)
+				resolve(verdict)
+			})
+			this.caseWaiters.set(caseId, list)
+		})
+	}
+}
+
+export const {
+	initializeRuntime,
+	resolveRuntime,
+	resolveParticipant,
+	join,
+	leave,
+	sendMessage,
+	sendEvent,
+	runLoop,
+} = defineRuntime<CorridorState>()
+
+export function publishCorridorEvent(type: string, producerId: string, payload: Record<string, unknown>): void {
+	sendEvent(SemanticEvent.create(type, producerId, payload), producerId)
+}
