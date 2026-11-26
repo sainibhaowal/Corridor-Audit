@@ -43,7 +43,7 @@ async function main() {
 			`  Sources (${v.sourceRefs.length}): ${v.sourceRefs.map((r) => `[${r.sourceType}:${r.recordId}:${r.field}]`).join(" ")}`,
 		)
 	}
-	console.log("\nAll 6 cases completed cleanly.")
+	console.log("\nAll 6 case audits finished. Review the verdicts above for findings.")
 }
 
 main().catch((err) => {
