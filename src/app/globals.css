@@ -211,6 +211,64 @@ html.theme-transition::view-transition-new(root) {
 	display: flex;
 }
 
+/* One quiet, consistent tooltip treatment for title/data-tooltip hints. */
+.app-tooltip {
+	position: fixed;
+	z-index: 10000;
+	max-width: min(320px, calc(100vw - 20px));
+	padding: 6px 9px;
+	border: 1px solid #3a4248;
+	border-radius: 5px;
+	background: #202428;
+	color: #f4f6f7;
+	box-shadow: 0 8px 24px rgb(0 0 0 / 28%), 0 2px 5px rgb(0 0 0 / 18%);
+	font-size: 11px;
+	font-weight: 550;
+	line-height: 1.4;
+	letter-spacing: 0.01em;
+	white-space: normal;
+	word-break: normal;
+	overflow-wrap: anywhere;
+	pointer-events: none;
+	visibility: hidden;
+	opacity: 0;
+	transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.app-tooltip[data-visible="true"] {
+	visibility: visible;
+	opacity: 1;
+}
+
+.app-tooltip[data-placement="top"]::after,
+.app-tooltip[data-placement="bottom"]::after {
+	position: absolute;
+	left: 50%;
+	width: 7px;
+	height: 7px;
+	background: #202428;
+	content: "";
+	transform: translateX(-50%) rotate(45deg);
+}
+
+.app-tooltip[data-placement="top"]::after {
+	bottom: -4px;
+	border-right: 1px solid #3a4248;
+	border-bottom: 1px solid #3a4248;
+}
+
+.app-tooltip[data-placement="bottom"]::after {
+	top: -4px;
+	border-top: 1px solid #3a4248;
+	border-left: 1px solid #3a4248;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.app-tooltip {
+		transition: none;
+	}
+}
+
 @media (max-width: 767px) {
 	.workbench-grid {
 		grid-template-columns: minmax(0, 1fr) !important;

@@ -27,6 +27,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { SelectBox } from "@/components/ui/select-box"
 import type { AuditVerdict, PendingBreakpointDecision, TrajectoryEvent } from "@/core/types"
 import { BUILD_PROVENANCE, formatBuildLabel } from "@/core/build-info"
 import { cn } from "@/lib/utils"
@@ -570,23 +571,23 @@ export function CorridorWorkspace() {
 					<span className="text-base font-extrabold tracking-tight text-[#e3edef]">
 						Corridor<span className="text-[#62e1c3]">Audit</span>
 					</span>
-					<span className="hidden rounded bg-[#101820] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[#81949a] xl:inline-block">
+					<span className="hidden rounded-lg bg-[#101820] px-2 py-0.5 font-mono text-[10px] font-semibold text-[#81949a] xl:inline-block">
 						Next.js · Mozaik 6.0
 					</span>
 					<span
-						title={`App v${BUILD_PROVENANCE.appVersion} · Source ${BUILD_PROVENANCE.sourceRevision} · ${BUILD_PROVENANCE.workingTree} tree · Audit rules v${BUILD_PROVENANCE.auditRulesVersion}`}
-						className="hidden rounded bg-[#0d2725] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[#75e4c7] md:inline-block"
+						data-tooltip={`App v${BUILD_PROVENANCE.appVersion} · Source ${BUILD_PROVENANCE.sourceRevision} · ${BUILD_PROVENANCE.workingTree} tree · Audit rules v${BUILD_PROVENANCE.auditRulesVersion}`}
+						className="hidden rounded-lg bg-[#0d2725] px-2 py-0.5 font-mono text-[10px] font-semibold text-[#75e4c7] md:inline-block"
 					>
 						{formatBuildLabel()}
 					</span>
 				</div>
 
 				<div className="flex min-w-0 items-center gap-2">
-					<span className="hidden truncate rounded-md bg-[#101820] px-2.5 py-1 text-[11.5px] font-medium text-[#a4b4b8] xl:inline-block">
+					<span className="hidden truncate rounded-lg bg-[#101820] px-2.5 py-1 text-[11.5px] font-medium text-[#a4b4b8] xl:inline-block">
 						Live ECB Benchmark · Not Financial Advice
 					</span>
-					<span className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#1c2a33] bg-[#0d141b] px-2.5 py-1 font-mono text-[11.5px] text-[#c7d3d6] tabular 2xl:inline-flex">
-						<span className="h-2 w-2 rounded-full bg-emerald-600" />
+					<span className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#1c2a33] bg-[#0d141b] px-2.5 py-1 font-mono text-[11.5px] text-[#c7d3d6] tabular 2xl:inline-flex">
+						<span className="h-2 w-2 rounded-[3px] bg-emerald-600" />
 						Batch: {queueStats.waiting} wait · {queueStats.active} active · {queueStats.done} done
 					</span>
 				</div>
@@ -596,25 +597,25 @@ export function CorridorWorkspace() {
 						ref={themeToggleRef}
 						type="button"
 						aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-						title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+						data-tooltip={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
 						onClick={toggleTheme}
 						className="rounded-md p-1.5 text-[#81949a] transition-colors hover:bg-[#101820] hover:text-[#e3edef]"
 					>
 						{theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
 					</button>
-					<button type="button" aria-label="Toggle navigation panel" title="Toggle navigation (Ctrl+B)" onClick={() => setLeftCollapsed((v) => !v)} className="hidden rounded p-1.5 text-[#81949a] hover:bg-[#101820] hover:text-[#e3edef] md:inline-flex">
+					<button type="button" aria-label="Toggle navigation panel" data-tooltip="Toggle navigation (Ctrl+B)" onClick={() => setLeftCollapsed((v) => !v)} className="hidden rounded p-1.5 text-[#81949a] hover:bg-[#101820] hover:text-[#e3edef] md:inline-flex">
 						{leftCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
 					</button>
-					<button type="button" aria-label="Toggle terminal" title="Toggle integrated terminal (Ctrl+J)" onClick={() => setTerminalOpen((v) => !v)} className={cn("rounded p-1.5 hover:bg-[#101820]", terminalOpen ? "text-[#75e4c7]" : "text-[#81949a] hover:text-[#e3edef]")}>
+					<button type="button" aria-label="Toggle terminal" data-tooltip="Toggle integrated terminal (Ctrl+J)" onClick={() => setTerminalOpen((v) => !v)} className={cn("rounded p-1.5 hover:bg-[#101820]", terminalOpen ? "text-[#75e4c7]" : "text-[#81949a] hover:text-[#e3edef]")}>
 						<TerminalSquare className="h-4 w-4" />
 					</button>
-					<button type="button" aria-label="Toggle inspection panel" title="Toggle inspection panel (Ctrl+Alt+B)" onClick={() => setRightCollapsed((v) => !v)} className="hidden rounded p-1.5 text-[#81949a] hover:bg-[#101820] hover:text-[#e3edef] md:inline-flex">
+					<button type="button" aria-label="Toggle inspection panel" data-tooltip="Toggle inspection panel (Ctrl+Alt+B)" onClick={() => setRightCollapsed((v) => !v)} className="hidden rounded p-1.5 text-[#81949a] hover:bg-[#101820] hover:text-[#e3edef] md:inline-flex">
 						{rightCollapsed ? <PanelRightOpen className="h-4 w-4" /> : <PanelRightClose className="h-4 w-4" />}
 					</button>
-					<select
+					<SelectBox
 						value={breakpointMode}
-						onChange={async (e) => {
-							const mode = e.target.value as "risk_only" | "step_tool"
+						onChange={async (val) => {
+							const mode = val as "risk_only" | "step_tool"
 							setBreakpointMode(mode)
 							await fetch("/api/settings/provider", {
 								method: "POST",
@@ -622,18 +623,19 @@ export function CorridorWorkspace() {
 								body: JSON.stringify({ breakpointMode: mode }),
 							})
 						}}
-						title="Mozaik Interruptible Harness Breakpoint Mode"
-						className="h-8 w-[128px] cursor-pointer rounded-md border border-[#32454d] bg-[#0d141b] px-2 text-[11px] font-semibold text-[#c7d3d6] focus:border-emerald-600 focus:outline-none sm:w-[142px] sm:px-2.5 sm:text-xs"
-					>
-						<option value="risk_only">Gate: Auto-Risk</option>
-						<option value="step_tool">Gate: Step Every Tool</option>
-					</select>
+						data-tooltip="Mozaik Interruptible Harness Breakpoint Mode"
+						className="w-[142px]"
+						buttonClassName="h-8 rounded-lg bg-[#0d141b] text-[11px] sm:text-xs"
+						options={[
+							{ value: "risk_only", label: "Gate: Auto-Risk" },
+							{ value: "step_tool", label: "Gate: Step Every Tool" },
+						]}
+					/>
 
 					{provider.mode === "live" && (provider.discoveredModels?.length ?? 0) > 0 && (
-						<select
+						<SelectBox
 							value={provider.modelName}
-							onChange={async (e) => {
-								const nextModel = e.target.value
+							onChange={async (nextModel) => {
 								const res = await fetch("/api/settings/provider", {
 									method: "POST",
 									headers: { "Content-Type": "application/json" },
@@ -642,23 +644,22 @@ export function CorridorWorkspace() {
 								const data = (await res.json()) as { provider?: ProviderStatus }
 								if (data.provider) setProvider(data.provider)
 							}}
-							title="Switch active connected model"
-							className="hidden h-8 max-w-[210px] cursor-pointer truncate rounded-md border border-[#225b51] bg-[#0d2725] px-2 font-mono text-[11px] font-semibold text-[#75e4c7] focus:border-emerald-500 focus:outline-none md:inline-block"
-						>
-							{(provider.discoveredModels ?? [provider.modelName]).map((m) => (
-								<option key={m} value={m}>
-									{m}
-								</option>
-							))}
-						</select>
+							data-tooltip="Switch active connected model"
+							className="hidden max-w-[210px] md:block"
+							buttonClassName="h-8 rounded-lg border-[#225b51] bg-[#0d2725] font-mono text-[11px] text-[#75e4c7]"
+							options={(provider.discoveredModels ?? [provider.modelName]).map((m) => ({
+								value: m,
+								label: m,
+							}))}
+						/>
 					)}
 
 					<button
 						type="button"
 						onClick={() => setView("settings")}
-						title={`${provider.label} (${provider.modelName})`}
+						data-tooltip={`${provider.label} (${provider.modelName})`}
 						className={cn(
-						"inline-flex h-8 w-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 truncate rounded-md border px-0 text-[11.5px] font-semibold whitespace-nowrap transition-colors sm:w-auto sm:px-2.5 xl:max-w-[230px] xl:justify-start",
+						"inline-flex h-8 w-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 truncate rounded-lg border px-0 text-[11.5px] font-semibold whitespace-nowrap transition-colors sm:w-auto sm:px-2.5 xl:max-w-[230px] xl:justify-start",
 							provider.mode === "unconfigured"
 								? "border-[#674b23] bg-[#2c2111] text-[#f0c77f] hover:bg-[#3a2a14]"
 								: "border-[#225b51] bg-[#0d2725] text-[#75e4c7] hover:bg-[#12342e]",
@@ -666,7 +667,7 @@ export function CorridorWorkspace() {
 					>
 						<span
 							className={cn(
-								"h-2 w-2 shrink-0 rounded-full",
+								"h-2 w-2 shrink-0 rounded-[3px]",
 								provider.mode === "unconfigured" ? "bg-amber-600" : "bg-emerald-600",
 							)}
 						/>
@@ -708,11 +709,11 @@ export function CorridorWorkspace() {
 									type="button"
 									onClick={() => setView(item.id)}
 									className={cn(
-										"flex w-full items-center rounded-md border-l-2 py-2 text-left text-[12px] transition-colors",
-										leftCollapsed ? "justify-center border-l-transparent px-0" : "gap-2.5 px-2.5",
+										"flex w-full items-center rounded-xl border py-2 text-left text-[12px] transition-colors",
+										leftCollapsed ? "justify-center border-transparent px-0" : "gap-2.5 px-2.5",
 										active
-											? "border-l-[#62e1c3] bg-[#101820] font-bold text-[#e3edef]"
-											: "border-l-transparent font-medium text-[#81949a] hover:bg-[#080d12] hover:text-[#e3edef]",
+											? "border-[#225b51] bg-[#0d2725] font-bold text-[#75e4c7]"
+											: "border-transparent font-medium text-[#81949a] hover:bg-[#080d12] hover:text-[#e3edef]",
 									)}
 								>
 									<Icon className="h-4 w-4 shrink-0" />
@@ -731,7 +732,7 @@ export function CorridorWorkspace() {
 						<Button
 							variant="outline"
 							className={cn("w-full", leftCollapsed ? "justify-center px-0" : "justify-start")}
-							title="Upload a source file"
+							data-tooltip="Upload a source file"
 							onClick={() => setView("inbound")}
 						>
 							<FileUp className="h-3.5 w-3.5" />
@@ -772,7 +773,7 @@ export function CorridorWorkspace() {
 							System Settings
 						</Button>
 						</>}
-						{leftCollapsed && <button type="button" onClick={() => setView("settings")} title={`System settings: ${provider.label}`} aria-label="Open system settings" className="rounded-md p-2 text-[#81949a] hover:bg-[#101820] hover:text-[#e3edef]"><Settings className="h-4 w-4" /></button>}
+						{leftCollapsed && <button type="button" onClick={() => setView("settings")} data-tooltip={`System settings: ${provider.label}`} aria-label="Open system settings" className="rounded-md p-2 text-[#81949a] hover:bg-[#101820] hover:text-[#e3edef]"><Settings className="h-4 w-4" /></button>}
 					</div>
 				</aside>
 
@@ -958,7 +959,7 @@ export function CorridorWorkspace() {
 														const left = Math.max(0, Math.min(100, ((segment.startedAt - base) / spanMs) * 100))
 														const finish = segment.endedAt ?? (agent.status === "running" ? timelineNow : segment.startedAt)
 														const width = Math.max(1, Math.min(100 - left, ((finish - segment.startedAt) / spanMs) * 100))
-														return <span key={`${segment.startedAt}-${index}`} aria-label={`${lane.label}, ${((Math.max(0, finish - segment.startedAt)) / 1000).toFixed(1)}s`} title={`${lane.label} · ${((Math.max(0, finish - segment.startedAt)) / 1000).toFixed(1)}s`} style={{ left: `${left}%`, width: `${width}%`, backgroundColor: color }} className={cn("absolute top-2.5 h-4 min-w-[3px] rounded-[2px]", lane.name === "AuditorAgent" ? "border border-dashed border-[#74b9ff] bg-[#74b9ff]/20" : "")} />
+												return <span key={`${segment.startedAt}-${index}`} aria-label={`${lane.label}, ${((Math.max(0, finish - segment.startedAt)) / 1000).toFixed(1)}s`} data-tooltip={`${lane.label} · ${((Math.max(0, finish - segment.startedAt)) / 1000).toFixed(1)}s`} style={{ left: `${left}%`, width: `${width}%`, backgroundColor: color }} className={cn("absolute top-2.5 h-4 min-w-[3px] rounded-[2px]", lane.name === "AuditorAgent" ? "border border-dashed border-[#74b9ff] bg-[#74b9ff]/20" : "")} />
 													})}
 													{triggered && !agent?.segments.length && <span className="absolute left-1 top-2 text-[10px] text-[#71858c]">{lane.name === "AuditorAgent" && activeEntry ? "Starts after specialist evidence" : "Awaiting execution"}</span>}
 													{!triggered && <span className="absolute left-1 top-2 text-[10px] text-[#71858c]">No anomaly trigger detected for this case</span>}
@@ -1226,12 +1227,12 @@ export function CorridorWorkspace() {
 				)}>
 					{rightCollapsed ? (
 						<div className="flex w-full flex-col items-center gap-1 py-2">
-							<button type="button" onClick={() => setRightCollapsed(false)} title="Expand inspection panel (Ctrl+Alt+B)" aria-label="Expand inspection panel" className="mb-2 rounded p-2 text-[#81949a] hover:bg-[#101820]"><PanelRightOpen className="h-4 w-4" /></button>
+							<button type="button" onClick={() => setRightCollapsed(false)} data-tooltip="Expand inspection panel (Ctrl+Alt+B)" aria-label="Expand inspection panel" className="mb-2 rounded p-2 text-[#81949a] hover:bg-[#101820]"><PanelRightOpen className="h-4 w-4" /></button>
 							{[
 								{ id: "cases" as const, label: "Cases", icon: Activity },
 								{ id: "artifacts" as const, label: "Artifacts", icon: Download },
 								{ id: "ledger" as const, label: "Ledger", icon: BarChart3 },
-							].map((tab) => <button key={tab.id} type="button" title={tab.label} aria-label={tab.label} onClick={() => { setRightTab(tab.id); setRightCollapsed(false) }} className={cn("rounded p-2", rightTab === tab.id ? "bg-[#101820] text-[#e3edef]" : "text-[#81949a] hover:bg-[#080d12]")}><tab.icon className="h-4 w-4" /></button>)}
+							].map((tab) => <button key={tab.id} type="button" data-tooltip={tab.label} aria-label={tab.label} onClick={() => { setRightTab(tab.id); setRightCollapsed(false) }} className={cn("rounded p-2", rightTab === tab.id ? "bg-[#101820] text-[#e3edef]" : "text-[#81949a] hover:bg-[#080d12]")}><tab.icon className="h-4 w-4" /></button>)}
 						</div>
 					) : <>
 					<div className="m-2 flex items-center gap-1">
@@ -1256,8 +1257,8 @@ export function CorridorWorkspace() {
 							</button>
 						))}
 					</div>
-						<button type="button" onClick={() => { setRightCollapsed(true); setRightDrawerOpen(false) }} title="Collapse inspection panel (Ctrl+Alt+B)" aria-label="Collapse inspection panel" className="hidden rounded p-1.5 text-[#71858c] hover:bg-[#101820] hover:text-[#c7d3d6] md:inline-flex"><PanelRightClose className="h-4 w-4" /></button>
-						<button type="button" onClick={() => setRightDrawerOpen(false)} title="Close inspector" aria-label="Close inspector" className="rounded p-1.5 text-[#71858c] hover:bg-[#101820] hover:text-[#c7d3d6] md:hidden"><X className="h-4 w-4" /></button>
+						<button type="button" onClick={() => { setRightCollapsed(true); setRightDrawerOpen(false) }} data-tooltip="Collapse inspection panel (Ctrl+Alt+B)" aria-label="Collapse inspection panel" className="hidden rounded p-1.5 text-[#71858c] hover:bg-[#101820] hover:text-[#c7d3d6] md:inline-flex"><PanelRightClose className="h-4 w-4" /></button>
+						<button type="button" onClick={() => setRightDrawerOpen(false)} data-tooltip="Close inspector" aria-label="Close inspector" className="rounded p-1.5 text-[#71858c] hover:bg-[#101820] hover:text-[#c7d3d6] md:hidden"><X className="h-4 w-4" /></button>
 					</div>
 
 					<div className="flex-1 space-y-2 overflow-y-auto px-3 pb-4">

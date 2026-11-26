@@ -3,7 +3,7 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-	"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
+	"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
 	{
 		variants: {
 			variant: {
@@ -15,10 +15,10 @@ const buttonVariants = cva(
 				ghost: "text-[#a4b4b8] hover:bg-[#101820] hover:text-[#e3edef]",
 			},
 			size: {
-				default: "h-9 px-3.5 py-2",
-				sm: "h-7 rounded px-2.5 text-[11.5px]",
-				lg: "h-10 rounded-md px-5 text-sm",
-				icon: "h-8 w-8",
+				default: "h-9 rounded-lg px-3.5 py-2",
+				sm: "h-7 rounded-lg px-2.5 text-[11.5px]",
+				lg: "h-10 rounded-xl px-5 text-sm",
+				icon: "h-8 w-8 rounded-lg",
 			},
 		},
 		defaultVariants: {

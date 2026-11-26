@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { Inter, JetBrains_Mono } from "next/font/google"
 import Script from "next/script"
 import type { ReactNode } from "react"
+import { TooltipLayer } from "@/components/tooltip-layer"
 import "./globals.css"
 
 const inter = Inter({
@@ -31,7 +32,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 			<Script id="corridor-theme-init" strategy="beforeInteractive">
 				{`try { document.documentElement.dataset.theme = localStorage.getItem("corridor-theme") === "light" ? "light" : "dark" } catch { document.documentElement.dataset.theme = "dark" }`}
 			</Script>
-			<body className="font-sans bg-[#080d12] text-[#e3edef]">{children}</body>
+			<body className="font-sans bg-[#080d12] text-[#e3edef]">
+				<TooltipLayer />
+				{children}
+			</body>
 		</html>
 	)
 }

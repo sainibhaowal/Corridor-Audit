@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { SelectBox } from "@/components/ui/select-box"
 import { cn } from "@/lib/utils"
 import {
 	PROVIDER_DEFAULT_MODELS,
@@ -352,7 +353,7 @@ export function SettingsView({
 									setWorkspaceNotice(null)
 								}}
 								className={cn(
-									"flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-left text-xs font-semibold transition-colors",
+									"flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left text-xs font-semibold transition-colors",
 									isSelected
 										? "border-[#225b51] bg-[#0d2725] text-[#e3edef]"
 										: "border-transparent text-[#c7d3d6] hover:bg-[#101820]",
@@ -374,17 +375,15 @@ export function SettingsView({
 									<label className="mb-1 block text-[10.5px] font-bold uppercase tracking-wider text-[#81949a]">
 										Select Provider
 									</label>
-									<select
+									<SelectBox
 										value={selectedProvider}
-										onChange={(e) => selectProvider(e.target.value as ProviderId)}
-										className="h-9 w-full max-w-sm rounded-md border border-[#32454d] bg-[#080d12] px-3 text-xs font-bold text-[#e3edef] focus:border-emerald-600 focus:outline-none"
-									>
-										{PROVIDERS.map((p) => (
-											<option key={p.id} value={p.id}>
-												{p.label} — {p.subtitle}
-											</option>
-										))}
-									</select>
+										onChange={(val) => selectProvider(val as ProviderId)}
+										className="max-w-sm"
+										options={PROVIDERS.map((p) => ({
+											value: p.id,
+											label: `${p.label} — ${p.subtitle}`,
+										}))}
+									/>
 								</div>
 								<Badge
 									variant={
@@ -415,7 +414,7 @@ export function SettingsView({
 										type="url"
 										value={baseURL}
 										onChange={(e) => setBaseURL(e.target.value)}
-										className="h-9 w-full rounded-md border border-[#32454d] bg-[#080d12] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
+										className="h-9 w-full rounded-lg border border-[#32454d] bg-[#080d12] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
 									/>
 								</div>
 
@@ -434,7 +433,7 @@ export function SettingsView({
 												}
 											}}
 											placeholder="Paste API key — click Discover Models to fetch live model list"
-											className="h-9 flex-1 rounded-md border border-[#32454d] bg-[#080d12] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
+											className="h-9 flex-1 rounded-lg border border-[#32454d] bg-[#080d12] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
 										/>
 										<Button
 											variant="outline"
@@ -479,25 +478,22 @@ export function SettingsView({
 													value={modelSearch}
 													onChange={(e) => setModelSearch(e.target.value)}
 													placeholder="Filter discovered models..."
-													className="h-7 w-full rounded border border-[#32454d] bg-[#0d141b] pr-2 pl-8 text-[11px] text-[#e3edef] focus:border-emerald-600 focus:outline-none"
+													className="h-7 w-full rounded-lg border border-[#32454d] bg-[#0d141b] pr-2 pl-8 text-[11px] text-[#e3edef] focus:border-emerald-600 focus:outline-none"
 												/>
 											</div>
 										</div>
 
-										<select
+										<SelectBox
 											value={modelName}
-											onChange={(e) => setModelName(e.target.value)}
-											className="h-9 w-full rounded-md border border-[#32454d] bg-[#0d141b] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
-										>
-											{!filteredModels.includes(modelName) && modelName && (
-												<option value={modelName}>{modelName} (manual)</option>
-											)}
-											{filteredModels.map((m) => (
-												<option key={m} value={m}>
-													{m}
-												</option>
-											))}
-										</select>
+											onChange={(val) => setModelName(val)}
+											buttonClassName="bg-[#0d141b] font-mono"
+											options={[
+												...(!filteredModels.includes(modelName) && modelName
+													? [{ value: modelName, label: `${modelName} (manual)` }]
+													: []),
+												...filteredModels.map((m) => ({ value: m, label: m })),
+											]}
+										/>
 									</>
 								) : (
 									<div className="text-xs text-[#81949a]">
@@ -514,7 +510,7 @@ export function SettingsView({
 										value={modelName}
 										onChange={(e) => setModelName(e.target.value)}
 										placeholder="Enter Model ID or discover from API"
-										className="h-8 w-full rounded-md border border-[#32454d] bg-[#0d141b] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
+										className="h-8 w-full rounded-lg border border-[#32454d] bg-[#0d141b] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
 									/>
 								</div>
 							</div>

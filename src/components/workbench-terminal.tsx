@@ -132,10 +132,10 @@ export function WorkbenchTerminal({ open, height, events, onHeightChange, onClos
 					<span className="hidden text-[#81949a] sm:inline">Mozaik runtime · local app console</span>
 				</div>
 				<div className="flex items-center gap-1">
-					<button type="button" aria-label="Show terminal commands" title="Show command help" onClick={() => void submit("help")} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><CircleHelp className="h-3.5 w-3.5" /></button>
-					<button type="button" aria-label="Clear terminal" title="Clear terminal" onClick={() => { setLines([]); inputRef.current?.focus() }} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><Trash2 className="h-3.5 w-3.5" /></button>
-					<button type="button" aria-label={open ? "Collapse terminal" : "Expand terminal"} title={open ? "Collapse terminal" : "Expand terminal"} onClick={onClose} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white transition-transform duration-300">{open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}</button>
-					{open && <button type="button" aria-label="Hide terminal" title="Hide terminal" onClick={onClose} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><X className="h-3.5 w-3.5" /></button>}
+					<button type="button" aria-label="Show terminal commands" data-tooltip="Show command help" onClick={() => void submit("help")} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><CircleHelp className="h-3.5 w-3.5" /></button>
+					<button type="button" aria-label="Clear terminal" data-tooltip="Clear terminal" onClick={() => { setLines([]); inputRef.current?.focus() }} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><Trash2 className="h-3.5 w-3.5" /></button>
+					<button type="button" aria-label={open ? "Collapse terminal" : "Expand terminal"} data-tooltip={open ? "Collapse terminal" : "Expand terminal"} onClick={onClose} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white transition-transform duration-300">{open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}</button>
+					{open && <button type="button" aria-label="Hide terminal" data-tooltip="Hide terminal" onClick={onClose} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><X className="h-3.5 w-3.5" /></button>}
 				</div>
 			</header>
 			{open && (
