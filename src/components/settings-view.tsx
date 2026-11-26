@@ -625,21 +625,21 @@ export function SettingsView({
 										type="text"
 										value={workspace.name}
 										onChange={(e) => setWorkspace((w) => ({ ...w, name: e.target.value }))}
-										className="h-9 w-full rounded-md border border-[#32454d] bg-[#080d12] px-3 text-xs text-[#e3edef]"
+										className="h-9 w-full rounded-lg border border-[#32454d] bg-[#080d12] px-3 text-xs text-[#e3edef]"
 									/>
 								</div>
 								<div>
 									<label className="mb-1 block text-xs font-semibold text-[#c7d3d6]">Account Profile</label>
-									<select
+									<SelectBox
 										value={workspace.accountMode}
-										onChange={(e) =>
-											setWorkspace((w) => ({ ...w, accountMode: e.target.value as "b2c" | "b2b" }))
+										onChange={(val) =>
+											setWorkspace((w) => ({ ...w, accountMode: val as "b2c" | "b2b" }))
 										}
-										className="h-9 w-full rounded-md border border-[#32454d] bg-[#080d12] px-3 text-xs text-[#e3edef]"
-									>
-										<option value="b2b">B2B Finance / Treasury Team</option>
-										<option value="b2c">B2C Freelancer / Solo Operator</option>
-									</select>
+										options={[
+											{ value: "b2b", label: "B2B Finance / Treasury Team" },
+											{ value: "b2c", label: "B2C Freelancer / Solo Operator" },
+										]}
+									/>
 								</div>
 								<div>
 									<label className="mb-1 block text-xs font-semibold text-[#c7d3d6]">Default Reporting Currency</label>
@@ -735,19 +735,20 @@ export function SettingsView({
 										placeholder="email@company.com"
 										value={memberEmail}
 										onChange={(e) => setMemberEmail(e.target.value)}
-										className="h-8 rounded-md border border-[#32454d] bg-[#080d12] px-2.5 text-xs text-[#e3edef]"
+										className="h-8 rounded-lg border border-[#32454d] bg-[#080d12] px-2.5 text-xs text-[#e3edef]"
 									/>
-									<select
+									<SelectBox
 										value={memberRole}
-										onChange={(e) =>
-											setMemberRole(e.target.value as "controller" | "analyst" | "viewer")
+										onChange={(val) =>
+											setMemberRole(val as "controller" | "analyst" | "viewer")
 										}
-										className="h-8 rounded-md border border-[#32454d] bg-[#080d12] px-2 text-xs text-[#e3edef]"
-									>
-										<option value="controller">Controller</option>
-										<option value="analyst">Analyst</option>
-										<option value="viewer">Viewer</option>
-									</select>
+										buttonClassName="h-8 rounded-lg"
+										options={[
+											{ value: "controller", label: "Controller" },
+											{ value: "analyst", label: "Analyst" },
+											{ value: "viewer", label: "Viewer" },
+										]}
+									/>
 									<Button size="sm" variant="emerald" onClick={() => void handleAddMember()}>
 										Invite Member
 									</Button>
