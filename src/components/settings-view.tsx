@@ -4,6 +4,7 @@ import {
 	Building2,
 	CheckCircle2,
 	Cpu,
+	GitBranch,
 	KeyRound,
 	Loader2,
 	RefreshCw,
@@ -331,7 +332,29 @@ export function SettingsView({
 			{/* STABLE TWO-COLUMN SETTINGS WORKSPACE */}
 			<div className="grid min-h-[480px] gap-4 lg:grid-cols-[230px_1fr]">
 				{/* LEFT SETTINGS SIDEBAR — CLEAN SECTIONS ONLY */}
-				<Card className="flex flex-col gap-1 p-3">
+				<Card className="relative flex flex-col gap-1 p-3">
+					<div className="absolute right-2 bottom-2 flex gap-1">
+						<a
+							href="https://github.com/sainibhaowal/Corridor-Audit"
+							target="_blank"
+							rel="noopener noreferrer"
+							aria-label="View on GitHub"
+							title="View on GitHub"
+							className="rounded-lg p-1 text-[#71858c] hover:bg-[#101820] hover:text-[#62e1c3] transition-colors"
+						>
+							<GitBranch className="h-3 w-3" />
+						</a>
+						<a
+							href="https://github.com/sainibhaowal/Corridor-Audit/issues"
+							target="_blank"
+							rel="noopener noreferrer"
+							aria-label="Open issues"
+							title="Open issues"
+							className="rounded-lg p-1 text-[#71858c] hover:bg-[#101820] hover:text-[#62e1c3] transition-colors"
+						>
+							<GitBranch className="h-3 w-3" />
+						</a>
+					</div>
 					<div className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#71858c]">
 						Settings
 					</div>

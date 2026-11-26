@@ -699,7 +699,6 @@ export function CorridorWorkspace() {
 							{ id: "stream" as const, label: "Live Agent Stream", icon: Activity },
 							{ id: "inbound" as const, label: "Data Sources", icon: FileUp },
 							{ id: "summary" as const, label: "Corridor Summary", icon: BarChart3 },
-							{ id: "settings" as const, label: "System Settings", icon: Settings },
 						].map((item) => {
 							const Icon = item.icon
 							const active = view === item.id
@@ -765,8 +764,8 @@ export function CorridorWorkspace() {
 							</div>
 						</div>
 						<Button
-							variant="outline"
-							className="mt-3 w-full bg-[#080d12]"
+							variant={view === "settings" ? "emerald" : "outline"}
+							className={cn("mt-3 w-full", view !== "settings" && "bg-[#080d12]")}
 							onClick={() => setView("settings")}
 						>
 							<Settings className="h-3.5 w-3.5" />
