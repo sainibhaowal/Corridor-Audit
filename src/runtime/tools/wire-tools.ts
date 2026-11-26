@@ -22,6 +22,30 @@ function tokenSet(text?: string): Set<string> {
 	)
 }
 
+function ensureWireAssessment(caseId: string): WireAssessment | undefined {
+	const state = resolveRuntime().state
+	const existing = state.wireByCaseId.get(caseId)
+	if (existing) return existing
+	const c = state.casesById.get(caseId)
+	if (!c) return undefined
+	const fresh: WireAssessment = {
+		caseId,
+		wireId: c.wire.wireId,
+		matchedInvoiceId: c.invoice?.invoiceId,
+		isOrphan: !c.wire.remittanceInfo || c.wire.remittanceInfo.trim().length === 0,
+		normalizedSenderFeesMinor: 0,
+		normalizedReceiverFeesMinor: 0,
+		normalizedRepairFeeMinor: 0,
+		normalizedPlatformFeeMinor: 0,
+		normalizedTotalDeductedFeesMinor: 0,
+		splitPaymentCount: 1 + (c.candidateWires?.length ?? 0),
+		splitTotalSettledMinor: c.wire.settledAmount.amountMinor,
+		sourceRefs: [...(c.wire.sourceRefs ?? [])],
+	}
+	state.wireByCaseId.set(caseId, fresh)
+	return fresh
+}
+
 export const parseWireRecordTool: Tool = {
 	type: "function",
 	name: "parse_wire_record",
@@ -61,20 +85,7 @@ export const parseWireRecordTool: Tool = {
 			},
 		]
 
-		const existing: WireAssessment = state.wireByCaseId.get(caseId) ?? {
-			caseId,
-			wireId: wire.wireId,
-			matchedInvoiceId: c.invoice?.invoiceId,
-			isOrphan: !wire.remittanceInfo || wire.remittanceInfo.trim().length === 0,
-			normalizedSenderFeesMinor: 0,
-			normalizedReceiverFeesMinor: 0,
-			normalizedRepairFeeMinor: 0,
-			normalizedPlatformFeeMinor: 0,
-			normalizedTotalDeductedFeesMinor: 0,
-			splitPaymentCount: 1 + (c.candidateWires?.length ?? 0),
-			splitTotalSettledMinor: wire.settledAmount.amountMinor,
-			sourceRefs: refs,
-		}
+		const existing = ensureWireAssessment(caseId)!
 		existing.sourceRefs = refs
 		state.wireByCaseId.set(caseId, existing)
 
@@ -133,7 +144,7 @@ export const detectRepairAndLiftingFeesTool: Tool = {
 		const platformFeeMinor = wire.platformFee ? await norm(wire.platformFee.amountMinor, wire.platformFee.currency) : 0
 		const totalDeductedMinor = receiverFeesMinor + repairFeeMinor + platformFeeMinor
 
-		const assessment = state.wireByCaseId.get(c.caseId)
+		const assessment = ensureWireAssessment(c.caseId)
 		if (assessment) {
 			assessment.normalizedSenderFeesMinor = senderFeesMinor
 			assessment.normalizedReceiverFeesMinor = receiverFeesMinor
@@ -202,6 +213,27 @@ export const matchOrphanWireTool: Tool = {
 		if (!c) return { error: "Case/Wire not found" }
 
 		const wire = c.wire
+		if (wire.remittanceInfo && wire.remittanceInfo.trim().length > 0) {
+			const existingInvId = c.invoice?.invoiceId
+			const assessment = ensureWireAssessment(c.caseId)
+			if (assessment && existingInvId && !assessment.matchedInvoiceId) {
+				assessment.matchedInvoiceId = existingInvId
+			}
+			return {
+				caseId: c.caseId,
+				wireId: wire.wireId,
+				matchedCandidate: existingInvId
+					? {
+							invoiceId: existingInvId,
+							vendorOrClient: c.invoice?.vendorOrClient ?? wire.senderName ?? "Unknown",
+							score: 100,
+							reasons: [`Explicit remittance reference :70:="${wire.remittanceInfo}"`],
+						}
+					: null,
+				summary: `Wire ${wire.wireId} carries explicit remittance reference "${wire.remittanceInfo}" — orphan matching not needed.`,
+			}
+		}
+
 		const wireTokens = tokenSet(wire.senderName)
 		let best: OrphanMatchCandidate | undefined
 
@@ -258,7 +290,7 @@ export const matchOrphanWireTool: Tool = {
 			}
 		}
 
-		const assessment = state.wireByCaseId.get(c.caseId)
+		const assessment = ensureWireAssessment(c.caseId)
 		if (assessment && best && best.score >= 50) {
 			assessment.matchedInvoiceId = best.invoiceId
 			assessment.orphanMatch = best
@@ -307,7 +339,7 @@ export const reconcileSplitPaymentsTool: Tool = {
 		const totalSettledMinor = matching.reduce((sum, w) => sum + w.settledAmount.amountMinor, 0)
 		const currency = matching[0]?.settledAmount.currency ?? "USD"
 		if (c) {
-			const assessment = state.wireByCaseId.get(c.caseId)
+			const assessment = ensureWireAssessment(c.caseId)
 			if (assessment) {
 				assessment.splitPaymentCount = matching.length
 				assessment.splitTotalSettledMinor = totalSettledMinor

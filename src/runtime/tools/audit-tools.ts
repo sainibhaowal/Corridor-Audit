@@ -3,10 +3,11 @@ import { z } from "zod"
 import {
 	computeCentProofVarianceMinor,
 	computeRecoverableOurViolationMinor,
+	convertMinorUnits,
 	formatMoney,
 } from "../../core/money"
 import type { AuditStatus, AuditVerdict, SourceRef } from "../../core/types"
-import { resolveRuntime } from "../corridor-runtime"
+import { type CorridorState, resolveRuntime } from "../corridor-runtime"
 
 const CaseIdSchema = z.object({ caseId: z.string() })
 const FinalizeSchema = z.object({
@@ -64,6 +65,61 @@ function buildDisputeLetter(params: {
 	].join("\n")
 }
 
+export function computeCaseAuditNumbers(state: CorridorState, caseId: string) {
+	const c = state.casesById.get(caseId)
+	const terms = state.termsByCaseId.get(caseId)
+	const fx = state.fxByCaseId.get(caseId)
+	const wire = state.wireByCaseId.get(caseId)
+	const anomaly = state.anomalyByCaseId.get(caseId)
+	if (!c || !terms || !fx || !wire) return null
+
+	const targetCcy = c.wire.settledAmount.currency
+	const deductedFeesMinor =
+		wire.normalizedReceiverFeesMinor + wire.normalizedRepairFeeMinor + wire.normalizedPlatformFeeMinor
+	const normalizedWithholdingTaxMinor =
+		terms.withholdingTaxMinor > 0
+			? convertMinorUnits(
+					terms.withholdingTaxMinor,
+					terms.expectedCurrency,
+					targetCcy,
+					terms.expectedCurrency.toUpperCase() === targetCcy.toUpperCase() ? 1 : fx.rateRecord.midMarketRate,
+				)
+			: 0
+	const varianceMinor = computeCentProofVarianceMinor({
+		midMarketExpectedMinor: fx.midMarketExpectedMinor,
+		fxSpreadLossMinor: fx.fxSpreadLossMinor,
+		deductedFeesMinor,
+		withholdingTaxMinor: normalizedWithholdingTaxMinor,
+		netSettledMinor: c.wire.settledAmount.amountMinor,
+	})
+	const recoverableOurViolationMinor = computeRecoverableOurViolationMinor({
+		contractedBearer: terms.contractedChargeBearer,
+		wireBearer: c.wire.chargeBearer,
+		normalizedReceiverChargesMinor: wire.normalizedReceiverFeesMinor,
+		normalizedRepairFeeMinor: wire.normalizedRepairFeeMinor,
+	})
+	const optimalTransparentNetMinor = Math.max(0, fx.midMarketExpectedMinor - normalizedWithholdingTaxMinor)
+	const totalLeakMinor = Math.max(0, optimalTransparentNetMinor - c.wire.settledAmount.amountMinor)
+	const totalLeakBps =
+		optimalTransparentNetMinor > 0 ? Math.round((totalLeakMinor / optimalTransparentNetMinor) * 10000) : 0
+
+	return {
+		c,
+		terms,
+		fx,
+		wire,
+		anomaly,
+		targetCcy,
+		deductedFeesMinor,
+		normalizedWithholdingTaxMinor,
+		varianceMinor,
+		recoverableOurViolationMinor,
+		optimalTransparentNetMinor,
+		totalLeakMinor,
+		totalLeakBps,
+	}
+}
+
 export const verifySettlementBalanceTool: Tool = {
 	type: "function",
 	name: "verify_settlement_balance",
@@ -77,36 +133,27 @@ export const verifySettlementBalanceTool: Tool = {
 	invoke: async (rawArgs: unknown) => {
 		const { caseId } = CaseIdSchema.parse(rawArgs)
 		const state = resolveRuntime().state
-		const c = state.casesById.get(caseId)
-		const terms = state.termsByCaseId.get(caseId)
-		const fx = state.fxByCaseId.get(caseId)
-		const wire = state.wireByCaseId.get(caseId)
-		const anomaly = state.anomalyByCaseId.get(caseId)
+		const calc = computeCaseAuditNumbers(state, caseId)
 
-		if (!c || !terms || !fx || !wire) {
+		if (!calc) {
 			return {
 				caseId,
 				error: "Specialist assessments incomplete before Auditor verification.",
 			}
 		}
 
-		const targetCcy = c.wire.settledAmount.currency
-		const deductedFeesMinor =
-			wire.normalizedReceiverFeesMinor + wire.normalizedRepairFeeMinor + wire.normalizedPlatformFeeMinor
-		const varianceMinor = computeCentProofVarianceMinor({
-			midMarketExpectedMinor: fx.midMarketExpectedMinor,
-			fxSpreadLossMinor: fx.fxSpreadLossMinor,
+		const {
+			c,
+			terms,
+			fx,
+			wire,
+			anomaly,
+			targetCcy,
 			deductedFeesMinor,
-			withholdingTaxMinor: terms.withholdingTaxMinor,
-			netSettledMinor: c.wire.settledAmount.amountMinor,
-		})
-
-		const recoverableOurViolationMinor = computeRecoverableOurViolationMinor({
-			contractedBearer: terms.contractedChargeBearer,
-			wireBearer: c.wire.chargeBearer,
-			normalizedReceiverChargesMinor: wire.normalizedReceiverFeesMinor,
-			normalizedRepairFeeMinor: wire.normalizedRepairFeeMinor,
-		})
+			normalizedWithholdingTaxMinor,
+			varianceMinor,
+			recoverableOurViolationMinor,
+		} = calc
 
 		const duplicateDetected = anomaly?.classification === "TRUE_DUPLICATE"
 		const recommendedAction =
@@ -116,6 +163,9 @@ export const verifySettlementBalanceTool: Tool = {
 					? "ESCALATE_VARIANCE"
 					: "CLOSE_CLEAN"
 
+		const taxSegment =
+			normalizedWithholdingTaxMinor > 0 ? ` - Tax ${formatMoney(normalizedWithholdingTaxMinor, targetCcy)}` : ""
+
 		return {
 			caseId,
 			currency: targetCcy,
@@ -123,7 +173,7 @@ export const verifySettlementBalanceTool: Tool = {
 			fxSpreadLossMinor: fx.fxSpreadLossMinor,
 			fxSpreadBps: fx.fxSpreadBps,
 			deductedFeesMinor,
-			withholdingTaxMinor: terms.withholdingTaxMinor,
+			withholdingTaxMinor: normalizedWithholdingTaxMinor,
 			settledMinor: c.wire.settledAmount.amountMinor,
 			unexplainedVarianceMinor: varianceMinor,
 			recoverableOurViolationMinor,
@@ -131,7 +181,7 @@ export const verifySettlementBalanceTool: Tool = {
 			ibanValid: terms.ibanValid ?? true,
 			isOrphanMatched: wire.isOrphan && Boolean(wire.matchedInvoiceId),
 			recommendedAction,
-			summary: `Cent-proof balance verified in ${targetCcy}: ECB ${formatMoney(fx.midMarketExpectedMinor, targetCcy)} - FX ${formatMoney(fx.fxSpreadLossMinor, targetCcy)} - Fees ${formatMoney(deductedFeesMinor, targetCcy)} - Net ${formatMoney(c.wire.settledAmount.amountMinor, targetCcy)} => Variance ${formatMoney(varianceMinor, targetCcy)}.`,
+			summary: `Cent-proof balance verified in ${targetCcy}: ECB ${formatMoney(fx.midMarketExpectedMinor, targetCcy)} - FX ${formatMoney(fx.fxSpreadLossMinor, targetCcy)} - Fees ${formatMoney(deductedFeesMinor, targetCcy)}${taxSegment} - Net ${formatMoney(c.wire.settledAmount.amountMinor, targetCcy)} => Variance ${formatMoney(varianceMinor, targetCcy)}.`,
 		}
 	},
 }
@@ -191,19 +241,11 @@ export const simulateCorridorReplayTool: Tool = {
 	invoke: async (rawArgs: unknown) => {
 		const { caseId } = CaseIdSchema.parse(rawArgs)
 		const state = resolveRuntime().state
-		const c = state.casesById.get(caseId)
-		const fx = state.fxByCaseId.get(caseId)
-		const wire = state.wireByCaseId.get(caseId)
-		if (!c || !fx || !wire) return { error: `Missing assessments for ${caseId}` }
+		const calc = computeCaseAuditNumbers(state, caseId)
+		if (!calc) return { error: `Missing assessments for ${caseId}` }
 
-		const to = c.wire.settledAmount.currency
+		const { c, targetCcy: to, optimalTransparentNetMinor, totalLeakMinor, totalLeakBps } = calc
 		const actualNetMinor = c.wire.settledAmount.amountMinor
-		const optimalTransparentNetMinor = fx.midMarketExpectedMinor
-		const totalLeakMinor = Math.max(0, optimalTransparentNetMinor - actualNetMinor)
-		const totalLeakBps =
-			optimalTransparentNetMinor > 0
-				? Math.round((totalLeakMinor / optimalTransparentNetMinor) * 10000)
-				: 0
 
 		return {
 			caseId,
@@ -241,47 +283,37 @@ export const finalizeSettlementActionTool: Tool = {
 	invoke: async (rawArgs: unknown) => {
 		const args = FinalizeSchema.parse(rawArgs)
 		const state = resolveRuntime().state
-		const c = state.casesById.get(args.caseId)
-		const terms = state.termsByCaseId.get(args.caseId)
-		const fx = state.fxByCaseId.get(args.caseId)
-		const wire = state.wireByCaseId.get(args.caseId)
-		const anomaly = state.anomalyByCaseId.get(args.caseId)
+		const calc = computeCaseAuditNumbers(state, args.caseId)
 
-		if (!c || !terms || !fx || !wire) {
+		if (!calc) {
 			return { error: `Cannot finalize ${args.caseId}: missing specialist results.` }
 		}
 
-		const to = c.wire.settledAmount.currency
-		const deductedFeesMinor =
-			wire.normalizedReceiverFeesMinor + wire.normalizedRepairFeeMinor + wire.normalizedPlatformFeeMinor
-		const varianceMinor = computeCentProofVarianceMinor({
-			midMarketExpectedMinor: fx.midMarketExpectedMinor,
-			fxSpreadLossMinor: fx.fxSpreadLossMinor,
-			deductedFeesMinor,
-			withholdingTaxMinor: terms.withholdingTaxMinor,
-			netSettledMinor: c.wire.settledAmount.amountMinor,
-		})
+		const {
+			c,
+			terms,
+			fx,
+			wire,
+			anomaly,
+			targetCcy: to,
+			normalizedWithholdingTaxMinor,
+			varianceMinor,
+			recoverableOurViolationMinor,
+			optimalTransparentNetMinor,
+			totalLeakMinor,
+			totalLeakBps,
+		} = calc
 
 		const overriddenClean = args.actionType === "CLOSE_CLEAN" || Boolean(args.humanOverrideNote)
-		const recoverableFeeMinor = overriddenClean
-			? 0
-			: computeRecoverableOurViolationMinor({
-					contractedBearer: terms.contractedChargeBearer,
-					wireBearer: c.wire.chargeBearer,
-					normalizedReceiverChargesMinor: wire.normalizedReceiverFeesMinor,
-					normalizedRepairFeeMinor: wire.normalizedRepairFeeMinor,
-				})
+		const recoverableFeeMinor = overriddenClean ? 0 : recoverableOurViolationMinor
 
 		let status: AuditStatus = "CLEAN"
-		if (anomaly?.classification === "TRUE_DUPLICATE") status = "DUPLICATE_WIRE"
+		if (overriddenClean) status = "CLEAN"
+		else if (anomaly?.classification === "TRUE_DUPLICATE") status = "DUPLICATE_WIRE"
 		else if (recoverableFeeMinor > 0) status = "RECOVERABLE_FEE_VIOLATION"
 		else if (varianceMinor !== 0) status = "VARIANCE_DETECTED"
 		else if (wire.isOrphan && wire.matchedInvoiceId) status = "ORPHAN_MATCHED"
 		else if (fx.fxSpreadBps >= 150) status = "FX_MARKUP_ALERT"
-
-		const totalLeakMinor = Math.max(0, fx.midMarketExpectedMinor - c.wire.settledAmount.amountMinor)
-		const totalLeakBps =
-			fx.midMarketExpectedMinor > 0 ? Math.round((totalLeakMinor / fx.midMarketExpectedMinor) * 10000) : 0
 
 		const allRefs = dedupeSourceRefs([
 			...terms.sourceRefs,
@@ -344,13 +376,13 @@ export const finalizeSettlementActionTool: Tool = {
 				fxSpreadBps: fx.fxSpreadBps,
 				liftingAndRepairFeesMinor: wire.normalizedReceiverFeesMinor + wire.normalizedRepairFeeMinor,
 				platformFeeMinor: wire.normalizedPlatformFeeMinor,
-				withholdingTaxMinor: terms.withholdingTaxMinor,
+				withholdingTaxMinor: normalizedWithholdingTaxMinor,
 				recoverableFeeMinor,
 				unexplainedVarianceMinor: varianceMinor,
 			},
 			replay: {
 				actualNetMinor: c.wire.settledAmount.amountMinor,
-				optimalTransparentNetMinor: fx.midMarketExpectedMinor,
+				optimalTransparentNetMinor,
 				totalLeakMinor,
 				totalLeakBps,
 			},

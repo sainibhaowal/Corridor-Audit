@@ -191,7 +191,7 @@ function runDemoDeterministicTurn(input: InferenceInput): InferenceOutput {
 	const calledNames = new Set<string>()
 	let caseId = "CASE-001"
 	let lastUserOrDev = ""
-	let hasOverrideNote = false
+	let rejectedOverrideNote: string | null = null
 
 	for (const item of items) {
 		if (item instanceof FunctionCallItem) {
@@ -203,8 +203,19 @@ function runDemoDeterministicTurn(input: InferenceInput): InferenceOutput {
 				// ignore
 			}
 		} else if (item instanceof FunctionCallOutputItem) {
-			if (/reject|override|treat as|ignore|accept fee/i.test(item.output.text)) {
-				hasOverrideNote = true
+			try {
+				const outParsed = JSON.parse(item.output.text) as {
+					rejectedByHuman?: boolean
+					humanOverrideNote?: string
+				}
+				if (outParsed.rejectedByHuman) {
+					rejectedOverrideNote =
+						outParsed.humanOverrideNote || "Operator rejected dispute claim — close cleanly as SHA."
+				}
+			} catch {
+				if (/rejectedByHuman|override|treat as|accept fee/i.test(item.output.text)) {
+					rejectedOverrideNote = item.output.text
+				}
 			}
 		} else if (
 			item instanceof UserMessageItem ||
@@ -212,12 +223,42 @@ function runDemoDeterministicTurn(input: InferenceInput): InferenceOutput {
 			item instanceof SystemMessageItem
 		) {
 			lastUserOrDev += `\n${item.content.text}`
-			const m = item.content.text.match(/\bCASE-\d{3,}\b/i)
-			if (m) caseId = m[0].toUpperCase()
+			const m =
+				item.content.text.match(/(?:Audit settlement case|for caseId=")\s*([A-Za-z0-9][A-Za-z0-9._-]+)/) ??
+				item.content.text.match(/\b((?:CASE|WH|MT103|XML|CSV|INVCASE|TEXT)-[A-Za-z0-9._-]+)\b/i)
+			if (m) caseId = m[1]
 		}
 	}
 
 	const availableTools = input.tools ?? []
+
+	// If human rejected finalize_settlement_action with steering instructions, re-invoke it once with CLOSE_CLEAN + note
+	if (rejectedOverrideNote && availableTools.some((t) => t.name === "finalize_settlement_action")) {
+		const alreadyApplied = items.some(
+			(it) =>
+				it instanceof FunctionCallItem &&
+				it.name === "finalize_settlement_action" &&
+				it.args.includes("humanOverrideNote"),
+		)
+		if (!alreadyApplied) {
+			return {
+				items: [
+					FunctionCallItem.rehydrate({
+						callId: `demo-override-${Date.now()}`,
+						name: "finalize_settlement_action",
+						args: JSON.stringify({
+							caseId,
+							actionType: "CLOSE_CLEAN",
+							humanOverrideNote: rejectedOverrideNote,
+						}),
+					}),
+				],
+				tokenUsage: undefined,
+				rowResponse: { demo: true },
+			}
+		}
+	}
+
 	const nextTool = availableTools.find((t) => !calledNames.has(t.name))
 
 	// Check which sequence of tools belongs to this agent turn
@@ -244,7 +285,7 @@ function runDemoDeterministicTurn(input: InferenceInput): InferenceOutput {
 			simulate_corridor_replay: { caseId },
 			finalize_settlement_action: {
 				caseId,
-				actionType: hasOverrideNote ? "CLOSE_CLEAN" : "AUTO_FROM_AUDIT",
+				actionType: rejectedOverrideNote ? "CLOSE_CLEAN" : "AUTO_FROM_AUDIT",
 			},
 		}
 
@@ -319,10 +360,19 @@ export class DynamicEndpointRouter implements InferenceRunner {
 
 	updateConfig(next: { provider: ProviderId; modelName?: string; apiKey?: string; baseURL?: string }): void {
 		const defaults = PROVIDER_DEFAULTS[next.provider]
+		const envKey = defaults.envVar ? process.env[defaults.envVar]?.trim() : undefined
+		const resolvedKey =
+			next.provider === "demo"
+				? undefined
+				: next.apiKey?.trim() ||
+					(next.provider === this.config.provider ? this.config.apiKey : undefined) ||
+					envKey ||
+					(next.provider === "ollama" ? "ollama-local" : undefined)
+
 		this.config = {
 			provider: next.provider,
 			modelName: next.modelName?.trim() || defaults.defaultModel,
-			apiKey: next.apiKey?.trim() || this.config.apiKey,
+			apiKey: resolvedKey,
 			baseURL: next.baseURL?.trim() || defaults.baseURL,
 			autoDetectedFromEnv: false,
 		}

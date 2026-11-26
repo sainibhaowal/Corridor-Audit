@@ -7,9 +7,10 @@ import {
 	ModelMessageItem,
 } from "@mozaik-ai/core"
 import { createInterface } from "node:readline/promises"
-import { computeRecoverableOurViolationMinor, formatMoney } from "../../core/money"
+import { formatMoney } from "../../core/money"
 import type { AuditVerdict, PendingBreakpointDecision } from "../../core/types"
 import { type BreakpointDecision, resolveRuntime } from "../corridor-runtime"
+import { computeCaseAuditNumbers } from "../tools/audit-tools"
 
 function parseArgs(raw: string): Record<string, unknown> {
 	try {
@@ -55,29 +56,10 @@ export class SettlementGateInterceptionHandler implements InterceptionHandler {
 		if (!caseId) return false
 		if (args.humanOverrideNote) return false
 
-		const c = state.casesById.get(caseId)
-		const terms = state.termsByCaseId.get(caseId)
-		const fx = state.fxByCaseId.get(caseId)
-		const wire = state.wireByCaseId.get(caseId)
-		const anomaly = state.anomalyByCaseId.get(caseId)
+		const calc = computeCaseAuditNumbers(state, caseId)
+		if (!calc) return false
 
-		if (!c || !terms || !fx || !wire) return false
-
-		const recoverableMinor = computeRecoverableOurViolationMinor({
-			contractedBearer: terms.contractedChargeBearer,
-			wireBearer: c.wire.chargeBearer,
-			normalizedReceiverChargesMinor: wire.normalizedReceiverFeesMinor,
-			normalizedRepairFeeMinor: wire.normalizedRepairFeeMinor,
-		})
-
-		const expectedTotalFees =
-			wire.normalizedReceiverFeesMinor + wire.normalizedRepairFeeMinor + wire.normalizedPlatformFeeMinor
-		const varianceMinor =
-			fx.midMarketExpectedMinor -
-			fx.fxSpreadLossMinor -
-			expectedTotalFees -
-			terms.withholdingTaxMinor -
-			c.wire.settledAmount.amountMinor
+		const { recoverableOurViolationMinor: recoverableMinor, varianceMinor, anomaly } = calc
 
 		const isRisky =
 			recoverableMinor > 0 ||
@@ -96,34 +78,16 @@ export class SettlementGateInterceptionHandler implements InterceptionHandler {
 		}
 		const args = parseArgs(call.args)
 		const caseId = String(args.caseId || [...state.casesById.keys()].at(-1) || "CASE-001")
-		const c = state.casesById.get(caseId)
-		const terms = state.termsByCaseId.get(caseId)
-		const fx = state.fxByCaseId.get(caseId)
-		const wire = state.wireByCaseId.get(caseId)
-		const anomaly = state.anomalyByCaseId.get(caseId)
-		const currency = c?.wire.settledAmount.currency ?? "USD"
-
-		const recoverableMinor =
-			terms && c && wire
-				? computeRecoverableOurViolationMinor({
-						contractedBearer: terms.contractedChargeBearer,
-						wireBearer: c.wire.chargeBearer,
-						normalizedReceiverChargesMinor: wire.normalizedReceiverFeesMinor,
-						normalizedRepairFeeMinor: wire.normalizedRepairFeeMinor,
-					})
-				: 0
-
-		const expectedTotalFees = wire
-			? wire.normalizedReceiverFeesMinor + wire.normalizedRepairFeeMinor + wire.normalizedPlatformFeeMinor
-			: 0
-		const varianceMinor =
-			fx && wire && terms && c
-				? fx.midMarketExpectedMinor -
-					fx.fxSpreadLossMinor -
-					expectedTotalFees -
-					terms.withholdingTaxMinor -
-					c.wire.settledAmount.amountMinor
-				: 0
+		const calc = computeCaseAuditNumbers(state, caseId)
+		const c = calc?.c ?? state.casesById.get(caseId)
+		const terms = calc?.terms ?? state.termsByCaseId.get(caseId)
+		const fx = calc?.fx ?? state.fxByCaseId.get(caseId)
+		const wire = calc?.wire ?? state.wireByCaseId.get(caseId)
+		const anomaly = calc?.anomaly ?? state.anomalyByCaseId.get(caseId)
+		const currency = calc?.targetCcy ?? c?.wire.settledAmount.currency ?? "USD"
+		const recoverableMinor = calc?.recoverableOurViolationMinor ?? 0
+		const normalizedWithholdingTaxMinor = calc?.normalizedWithholdingTaxMinor ?? 0
+		const varianceMinor = calc?.varianceMinor ?? 0
 
 		let riskLabel = "Step Tool Debugger"
 		let question = `Inspecting tool call ${call.name} before execution. Approve running it?`
@@ -218,7 +182,7 @@ export class SettlementGateInterceptionHandler implements InterceptionHandler {
 						? wire.normalizedReceiverFeesMinor + wire.normalizedRepairFeeMinor
 						: 0,
 					platformFeeMinor: wire?.normalizedPlatformFeeMinor ?? 0,
-					withholdingTaxMinor: terms?.withholdingTaxMinor ?? 0,
+					withholdingTaxMinor: normalizedWithholdingTaxMinor,
 					recoverableFeeMinor: 0,
 					unexplainedVarianceMinor: varianceMinor,
 				},

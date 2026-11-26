@@ -143,11 +143,13 @@ export function computeFxSpread(params: {
 	normalizedReceiverChargesMinor: number
 	normalizedRepairFeeMinor: number
 	normalizedPlatformFeeMinor: number
+	normalizedWithholdingTaxMinor?: number
 	midMarketRate: number
 	bankAppliedRate?: number
 }): FxSpreadResult {
 	const fromUpper = params.instructedCurrency.trim().toUpperCase()
 	const toUpper = params.settledCurrency.trim().toUpperCase()
+	const taxMinor = params.normalizedWithholdingTaxMinor ?? 0
 
 	if (fromUpper === toUpper) {
 		return {
@@ -156,7 +158,8 @@ export function computeFxSpread(params: {
 				params.settledMinor +
 				params.normalizedReceiverChargesMinor +
 				params.normalizedRepairFeeMinor +
-				params.normalizedPlatformFeeMinor,
+				params.normalizedPlatformFeeMinor +
+				taxMinor,
 			fxSpreadLossMinor: 0,
 			fxSpreadBps: 0,
 		}
@@ -181,7 +184,8 @@ export function computeFxSpread(params: {
 		params.settledMinor +
 			params.normalizedReceiverChargesMinor +
 			params.normalizedRepairFeeMinor +
-			params.normalizedPlatformFeeMinor
+			params.normalizedPlatformFeeMinor +
+			taxMinor
 
 	const fxSpreadLossMinor = midMarketExpectedMinor - impliedGrossBeforeReceiverFeesMinor
 	const fxSpreadBps =
