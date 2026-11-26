@@ -282,10 +282,28 @@ function uniqueSorted(values: string[]): string[] {
 	return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b))
 }
 
+export function formatModelDisplayName(modelId: string): string {
+	const raw = modelId.trim()
+	if (!raw) return ""
+	const withoutOrg = raw.includes("/") ? raw.split("/").slice(1).join("/") : raw
+	const [core, tag] = withoutOrg.split(":")
+	const tokens = core.split(/[-_]+/).filter(Boolean)
+	const formatted = tokens
+		.map((tok) => {
+			if (/^(gpt|vl|xl|lpu|oss|ai)$/i.test(tok)) return tok.toUpperCase()
+			if (/^\d+(\.\d+)?[bmkt]?$/i.test(tok) || /^a\d+[bm]$/i.test(tok)) return tok.toUpperCase()
+			if (/^v\d+/i.test(tok)) return tok.toLowerCase()
+			return tok.charAt(0).toUpperCase() + tok.slice(1)
+		})
+		.join(" ")
+	return tag ? `${formatted} (${tag.charAt(0).toUpperCase() + tag.slice(1)})` : formatted
+}
+
 export class DynamicEndpointRouter implements InferenceRunner {
 	private config: ActiveProviderConfig
 	private readonly semaphore: AsyncSemaphore
 	private discoveredModels: string[] = []
+	private modelAliases: Record<string, string> = {}
 
 	constructor(initialConfig: ActiveProviderConfig, maxConcurrent = 3) {
 		this.config = initialConfig
@@ -306,16 +324,22 @@ export class DynamicEndpointRouter implements InferenceRunner {
 		provider: ProviderId
 		label: string
 		modelName: string
+		modelDisplayName: string
+		modelAliases: Record<string, string>
 		baseURL?: string
 		hasKey: boolean
 		mode: "live" | "unconfigured"
 		discoveredModels: string[]
 	} {
 		const hasKey = Boolean(this.config.apiKey || this.config.provider === "ollama")
+		const modelDisplayName =
+			this.modelAliases[this.config.modelName] || formatModelDisplayName(this.config.modelName)
 		return {
 			provider: this.config.provider,
 			label: PROVIDER_DEFAULTS[this.config.provider].label,
 			modelName: this.config.modelName,
+			modelDisplayName,
+			modelAliases: { ...this.modelAliases },
 			baseURL: this.config.baseURL || PROVIDER_DEFAULTS[this.config.provider].baseURL,
 			hasKey,
 			mode: hasKey ? "live" : "unconfigured",
@@ -323,7 +347,13 @@ export class DynamicEndpointRouter implements InferenceRunner {
 		}
 	}
 
-	updateConfig(next: { provider: ProviderId; modelName?: string; apiKey?: string; baseURL?: string }): void {
+	updateConfig(next: {
+		provider: ProviderId
+		modelName?: string
+		modelDisplayName?: string
+		apiKey?: string
+		baseURL?: string
+	}): void {
 		const defaults = PROVIDER_DEFAULTS[next.provider]
 		const envKey = defaults.envVar ? process.env[defaults.envVar]?.trim() : undefined
 		const resolvedKey =
@@ -332,9 +362,14 @@ export class DynamicEndpointRouter implements InferenceRunner {
 			envKey ||
 			(next.provider === "ollama" ? "ollama-local" : undefined)
 
+		const nextModelName = next.modelName?.trim() || defaults.defaultModel
+		if (next.modelDisplayName?.trim()) {
+			this.modelAliases[nextModelName] = next.modelDisplayName.trim()
+		}
+
 		this.config = {
 			provider: next.provider,
-			modelName: next.modelName?.trim() || defaults.defaultModel,
+			modelName: nextModelName,
 			apiKey: resolvedKey,
 			baseURL: next.baseURL?.trim() || defaults.baseURL,
 			autoDetectedFromEnv: false,

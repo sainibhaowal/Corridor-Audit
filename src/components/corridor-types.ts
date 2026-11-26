@@ -13,10 +13,29 @@ export interface ProviderStatus {
 	provider: ProviderId
 	label: string
 	modelName: string
+	modelDisplayName?: string
+	modelAliases?: Record<string, string>
 	baseURL?: string
 	hasKey: boolean
 	mode: "live" | "unconfigured"
 	discoveredModels?: string[]
+}
+
+export function formatModelDisplayName(modelId: string): string {
+	const raw = modelId.trim()
+	if (!raw) return ""
+	const withoutOrg = raw.includes("/") ? raw.split("/").slice(1).join("/") : raw
+	const [core, tag] = withoutOrg.split(":")
+	const tokens = core.split(/[-_]+/).filter(Boolean)
+	const formatted = tokens
+		.map((tok) => {
+			if (/^(gpt|vl|xl|lpu|oss|ai)$/i.test(tok)) return tok.toUpperCase()
+			if (/^\d+(\.\d+)?[bmkt]?$/i.test(tok) || /^a\d+[bm]$/i.test(tok)) return tok.toUpperCase()
+			if (/^v\d+/i.test(tok)) return tok.toLowerCase()
+			return tok.charAt(0).toUpperCase() + tok.slice(1)
+		})
+		.join(" ")
+	return tag ? `${formatted} (${tag.charAt(0).toUpperCase() + tag.slice(1)})` : formatted
 }
 
 export interface QueueStats {

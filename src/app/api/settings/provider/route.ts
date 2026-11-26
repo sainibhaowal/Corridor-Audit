@@ -10,6 +10,7 @@ export async function POST(request: Request) {
 		const body = (await request.json()) as {
 			provider?: ProviderId
 			modelName?: string
+			modelDisplayName?: string
 			apiKey?: string
 			baseURL?: string
 			breakpointMode?: "risk_only" | "step_tool"
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
 			orchestrator.router.updateConfig({
 				provider: body.provider,
 				modelName: body.modelName,
+				modelDisplayName: body.modelDisplayName,
 				apiKey: body.apiKey,
 				baseURL: body.baseURL,
 			})

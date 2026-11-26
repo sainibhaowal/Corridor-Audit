@@ -39,6 +39,7 @@ import {
 	type AgentRunState,
 	type CaseStreamEntry,
 	fmtClientMoney,
+	formatModelDisplayName,
 	type LedgerLogItem,
 	ORDERED_AGENTS,
 	type OverlapSignal,
@@ -647,11 +648,12 @@ export function CorridorWorkspace() {
 								if (data.provider) setProvider(data.provider)
 							}}
 							title={`${provider.label} (${provider.modelName})`}
-							className="max-w-[230px]"
-							buttonClassName="h-8 rounded-lg border-[#225b51] bg-[#0d2725] font-mono text-[11px] text-[#75e4c7]"
+							className="max-w-[260px]"
+							buttonClassName="h-8 rounded-lg border-[#225b51] bg-[#0d2725] text-[11.5px] text-[#75e4c7]"
 							options={(provider.discoveredModels ?? [provider.modelName]).map((m) => ({
 								value: m,
-								label: m,
+								label: provider.modelAliases?.[m] || formatModelDisplayName(m),
+								description: m,
 							}))}
 						/>
 					) : (

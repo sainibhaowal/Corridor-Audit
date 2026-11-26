@@ -22,6 +22,7 @@ import { Card } from "@/components/ui/card"
 import { SelectBox } from "@/components/ui/select-box"
 import { cn } from "@/lib/utils"
 import {
+	formatModelDisplayName,
 	PROVIDER_DEFAULT_MODELS,
 	PROVIDER_DEFAULT_URLS,
 	type ProviderId,
@@ -79,6 +80,12 @@ export function SettingsView({
 		currentProvider.baseURL || PROVIDER_DEFAULT_URLS[currentProvider.provider],
 	)
 	const [modelName, setModelName] = useState(currentProvider.modelName)
+	const [modelDisplayName, setModelDisplayName] = useState(
+		currentProvider.modelDisplayName || formatModelDisplayName(currentProvider.modelName),
+	)
+	const [modelAliases, setModelAliases] = useState<Record<string, string>>(
+		currentProvider.modelAliases ?? {},
+	)
 	const [apiKey, setApiKey] = useState("")
 	const [discoveredModels, setDiscoveredModels] = useState<string[]>(
 		currentProvider.discoveredModels ?? [],
@@ -137,11 +144,12 @@ export function SettingsView({
 				? currentProvider.baseURL
 				: PROVIDER_DEFAULT_URLS[providerId],
 		)
-		setModelName(
+		const nextModel =
 			providerId === currentProvider.provider
 				? currentProvider.modelName
-				: PROVIDER_DEFAULT_MODELS[providerId],
-		)
+				: PROVIDER_DEFAULT_MODELS[providerId]
+		setModelName(nextModel)
+		setModelDisplayName(modelAliases[nextModel] || formatModelDisplayName(nextModel))
 		setDiscoveredModels(
 			providerId === currentProvider.provider && currentProvider.discoveredModels?.length
 				? currentProvider.discoveredModels
@@ -180,7 +188,9 @@ export function SettingsView({
 			}
 			setDiscoveredModels(data.models)
 			if (!data.models.includes(modelName)) {
-				setModelName(data.models[0])
+				const first = data.models[0]
+				setModelName(first)
+				setModelDisplayName(modelAliases[first] || formatModelDisplayName(first))
 			}
 			setDiscoverNotice({
 				ok: true,
@@ -210,6 +220,7 @@ export function SettingsView({
 				body: JSON.stringify({
 					provider: selectedProvider,
 					modelName: modelName.trim(),
+					modelDisplayName: modelDisplayName.trim() || undefined,
 					baseURL: baseURL.trim() || undefined,
 					apiKey: apiKey.trim() || undefined,
 					breakpointMode: gateMode,
@@ -316,9 +327,12 @@ export function SettingsView({
 		}
 	}
 
-	const filteredModels = discoveredModels.filter((m) =>
-		m.toLowerCase().includes(modelSearch.trim().toLowerCase()),
-	)
+	const filteredModels = discoveredModels.filter((m) => {
+		const q = modelSearch.trim().toLowerCase()
+		if (!q) return true
+		const display = (modelAliases[m] || formatModelDisplayName(m)).toLowerCase()
+		return m.toLowerCase().includes(q) || display.includes(q)
+	})
 
 	return (
 		<div className="space-y-4">
@@ -534,13 +548,26 @@ export function SettingsView({
 
 										<SelectBox
 											value={modelName}
-											onChange={(val) => setModelName(val)}
-											buttonClassName="bg-[#0d141b] font-mono"
+											onChange={(val) => {
+												setModelName(val)
+												setModelDisplayName(modelAliases[val] || formatModelDisplayName(val))
+											}}
+											buttonClassName="bg-[#0d141b]"
 											options={[
 												...(!filteredModels.includes(modelName) && modelName
-													? [{ value: modelName, label: `${modelName} (manual)` }]
+													? [
+															{
+																value: modelName,
+																label: modelAliases[modelName] || formatModelDisplayName(modelName),
+																description: `${modelName} (manual)`,
+															},
+														]
 													: []),
-												...filteredModels.map((m) => ({ value: m, label: m })),
+												...filteredModels.map((m) => ({
+													value: m,
+													label: modelAliases[m] || formatModelDisplayName(m),
+													description: m,
+												})),
 											]}
 										/>
 									</>
@@ -550,17 +577,39 @@ export function SettingsView({
 									</div>
 								)}
 
-								<div>
-									<label className="mb-1 block text-[11px] text-[#81949a]">
-										Model ID
-									</label>
-									<input
-										type="text"
-										value={modelName}
-										onChange={(e) => setModelName(e.target.value)}
-										placeholder="Enter Model ID or discover from API"
-										className="h-8 w-full rounded-lg border border-[#32454d] bg-[#0d141b] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
-									/>
+								<div className="grid gap-3 pt-1 sm:grid-cols-2">
+									<div>
+										<label className="mb-1 block text-[11px] font-semibold text-[#c7d3d6]">
+											Display Name (Editable Header Label)
+										</label>
+										<input
+											type="text"
+											value={modelDisplayName}
+											onChange={(e) => {
+												const val = e.target.value
+												setModelDisplayName(val)
+												setModelAliases((prev) => ({ ...prev, [modelName]: val }))
+											}}
+											placeholder="e.g. Nemotron 3.5 Super VL 120B A12B"
+											className="h-8 w-full rounded-lg border border-[#32454d] bg-[#0d141b] px-3 text-xs font-semibold text-[#e3edef] focus:border-emerald-600 focus:outline-none"
+										/>
+									</div>
+									<div>
+										<label className="mb-1 block text-[11px] font-semibold text-[#81949a]">
+											Real Model ID (Sent to Provider API)
+										</label>
+										<input
+											type="text"
+											value={modelName}
+											onChange={(e) => {
+												const nextId = e.target.value
+												setModelName(nextId)
+												setModelDisplayName(modelAliases[nextId] || formatModelDisplayName(nextId))
+											}}
+											placeholder="Enter Model ID or discover from API"
+											className="h-8 w-full rounded-lg border border-[#32454d] bg-[#0d141b] px-3 font-mono text-xs text-[#81949a] focus:border-emerald-600 focus:text-[#e3edef] focus:outline-none"
+										/>
+									</div>
 								</div>
 							</div>
 
