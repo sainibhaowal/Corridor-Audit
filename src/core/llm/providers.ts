@@ -93,6 +93,7 @@ export function resolveInitialProviderConfig(): ActiveProviderConfig {
 		const meta = PROVIDER_DEFAULTS[provider]
 		const upper = provider.toUpperCase()
 		const modelName =
+			process.env.LLM_MODEL ||
 			process.env[`${upper}_MODEL`] ||
 			(provider === "ollama" ? process.env.OLLAMA_MODEL : undefined) ||
 			meta.defaultModel
@@ -449,7 +450,7 @@ export class DynamicEndpointRouter implements InferenceRunner {
 			const ctx = ModelContext.create().addContextItem(UserMessageItem.create("Reply with exactly: OK"))
 			const res = await endpoint.infer({
 				model: this.config.modelName,
-				maxOutputTokens: 64,
+				maxOutputTokens: 256,
 				context: ctx,
 			})
 			const txt =

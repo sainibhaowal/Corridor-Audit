@@ -314,8 +314,9 @@ export async function startCorridorServer(port = Number(process.env.PORT || "300
 		}
 	})
 
+	const host = process.env.HOST?.trim() || "127.0.0.1"
 	await new Promise<void>((resolveListen) => {
-		server.listen(port, "127.0.0.1", resolveListen)
+		server.listen(port, host, resolveListen)
 	})
 	server.on("close", () => {
 		watcher?.close()
@@ -331,5 +332,6 @@ export async function startCorridorServer(port = Number(process.env.PORT || "300
 
 	const addr = server.address()
 	const actualPort = typeof addr === "object" && addr ? addr.port : port
-	return { server, port: actualPort, url: `http://127.0.0.1:${actualPort}`, orchestrator }
+	const displayHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host
+	return { server, port: actualPort, url: `http://${displayHost}:${actualPort}`, orchestrator }
 }

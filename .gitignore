@@ -11,7 +11,8 @@ dist/
 .env.local
 .env.*.local
 
-# Logs & OS metadata
+# Runtime hot-folder & logs
+data/inbox/
 *.log
 .DS_Store
 Thumbs.db
