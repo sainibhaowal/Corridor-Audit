@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="CorridorAudit">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070C18"/>
+      <stop offset="55%" stop-color="#0B1325"/>
+      <stop offset="100%" stop-color="#0D1D30"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.45"/>
+      <stop offset="50%" stop-color="#1E293B" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#10B981" stop-opacity="0.45"/>
+    </linearGradient>
+    <linearGradient id="cyanFlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7DD3FC"/>
+      <stop offset="55%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </linearGradient>
+    <linearGradient id="emeraldFlow" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="55%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#6EE7B7"/>
+    </linearGradient>
+    <radialGradient id="ambientGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#22D3EE" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#070C18" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softGlow" filterUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
+      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="10" y="10" width="236" height="236" rx="54" fill="url(#bg)" stroke="url(#rim)" stroke-width="2.5"/>
+  <circle cx="128" cy="128" r="96" fill="url(#ambientGlow)"/>
+
+  <path d="M56 106 C56 72, 82 54, 118 54 L180 54 C190 54, 198 62, 198 72 C198 82, 190 90, 180 90 L120 90 C102 90, 92 98, 92 114 L92 118 L56 118 Z"
+        fill="url(#cyanFlow)"/>
+
+  <path d="M200 150 C200 184, 174 202, 138 202 L76 202 C66 202, 58 194, 58 184 C58 174, 66 166, 76 166 L136 166 C154 166, 164 158, 164 142 L164 138 L200 138 Z"
+        fill="url(#emeraldFlow)"/>
+
+  <rect x="97" y="97" width="62" height="62" rx="16" transform="rotate(45 128 128)"
+        fill="#080E1C" stroke="#E2E8F0" stroke-opacity="0.22" stroke-width="2.5"/>
+
+  <path d="M112 130 L123 141 L143 121"
+        fill="none" stroke="#6EE7B7" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" filter="url(#softGlow)"/>
+
+  <circle cx="180" cy="72" r="5" fill="#E0F2FE"/>
+  <circle cx="76" cy="184" r="5" fill="#D1FAE5"/>
+</svg>

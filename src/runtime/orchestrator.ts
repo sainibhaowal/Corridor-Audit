@@ -1,5 +1,7 @@
-import { readFileSync } from "node:fs"
-import { resolve } from "node:path"
+import "dotenv/config"
+import { existsSync, mkdirSync, readFileSync, watch } from "node:fs"
+import { extname, resolve } from "node:path"
+import { normalizeInboundPayloadToCases } from "../core/ingest/normalize-upload"
 import { ACTIVE_MODEL_SLOT, DynamicEndpointRouter, resolveInitialProviderConfig } from "../core/llm/providers"
 import type { AuditVerdict, SettlementCase } from "../core/types"
 import { createCorridorAgents } from "./agents/corridor-agents"
@@ -10,19 +12,58 @@ export interface CorridorOrchestrator {
 	state: CorridorState
 	router: DynamicEndpointRouter
 	observerId: string
+	hotFolder: string
 	runCase: (settlementCase: SettlementCase) => Promise<AuditVerdict>
 	enqueueBatch: (cases: SettlementCase[]) => Promise<AuditVerdict[]>
 	loadBundledCases: () => SettlementCase[]
 }
 
-let singleton: CorridorOrchestrator | null = null
+const globalStore = globalThis as typeof globalThis & {
+	__corridorOrchestrator?: CorridorOrchestrator
+	__corridorInboxWatcherStarted?: boolean
+}
+
+function startHotFolderWatcher(orchestrator: CorridorOrchestrator): void {
+	if (globalStore.__corridorInboxWatcherStarted) return
+	globalStore.__corridorInboxWatcherStarted = true
+
+	const hotFolder = orchestrator.hotFolder
+	if (!existsSync(hotFolder)) mkdirSync(hotFolder, { recursive: true })
+	const seenFiles = new Set<string>()
+	try {
+		const watcher = watch(hotFolder, (_eventType, filename) => {
+			if (!filename || seenFiles.has(filename)) return
+			const fullPath = resolve(hotFolder, filename)
+			if (!existsSync(fullPath)) return
+			seenFiles.add(filename)
+			setTimeout(() => {
+				try {
+					const ext = extname(filename).toLowerCase()
+					const buf = readFileSync(fullPath)
+					const cases = normalizeInboundPayloadToCases(
+						ext === ".pdf"
+							? { filename, base64: buf.toString("base64"), format: "pdf" }
+							: { filename, content: buf.toString("utf8"), format: "auto" },
+					)
+					void orchestrator.enqueueBatch(cases)
+				} catch {
+					// ignore transient partial write errors
+				}
+			}, 250)
+		})
+		watcher.unref?.()
+	} catch {
+		// watch optional on restricted filesystems
+	}
+}
 
 export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): CorridorOrchestrator {
-	if (singleton) {
+	const existing = globalStore.__corridorOrchestrator
+	if (existing) {
 		if (options?.autoApprove !== undefined) {
-			singleton.state.autoApproveBreakpoints = options.autoApprove
+			existing.state.autoApproveBreakpoints = options.autoApprove
 		}
-		return singleton
+		return existing
 	}
 
 	const initialConfig = resolveInitialProviderConfig()
@@ -50,8 +91,8 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 	join(agents.anomalyAgent)
 	join(agents.auditorAgent)
 
-	// Serialize queued batches gracefully so parallel specialists per case stay fast
-	// without overwhelming free-tier LLM rate limits.
+	// Serialize queued cases cleanly so parallel specialists per case run concurrently
+	// without colliding on free-tier LLM rate limits.
 	let batchChain: Promise<unknown> = Promise.resolve()
 
 	const runSingleCase = async (settlementCase: SettlementCase): Promise<AuditVerdict> => {
@@ -121,13 +162,21 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 		return parsed.cases
 	}
 
-	singleton = {
+	const hotFolder = process.env.HOT_FOLDER
+		? resolve(process.cwd(), process.env.HOT_FOLDER)
+		: resolve(process.cwd(), "data/inbox")
+
+	const orchestrator: CorridorOrchestrator = {
 		state,
 		router,
 		observerId: observer.getId(),
+		hotFolder,
 		runCase,
 		enqueueBatch,
 		loadBundledCases,
 	}
-	return singleton
+
+	globalStore.__corridorOrchestrator = orchestrator
+	startHotFolderWatcher(orchestrator)
+	return orchestrator
 }
