@@ -111,7 +111,7 @@ export function WorkbenchTerminal({ open, height, events, onHeightChange, onClos
 					onPointerDown={(event) => {
 						const startY = event.clientY
 						const startHeight = height
-						const move = (moveEvent: PointerEvent) => onHeightChange(Math.max(140, Math.min(520, startHeight + startY - moveEvent.clientY)))
+						const move = (moveEvent: PointerEvent) => onHeightChange(Math.max(140, Math.min(320, startHeight + startY - moveEvent.clientY)))
 						const up = () => {
 							window.removeEventListener("pointermove", move)
 							window.removeEventListener("pointerup", up)

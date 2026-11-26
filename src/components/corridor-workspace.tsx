@@ -133,7 +133,7 @@ export function CorridorWorkspace() {
 	const [rightCollapsed, setRightCollapsed] = useState(false)
 	const [rightDrawerOpen, setRightDrawerOpen] = useState(false)
 	const [terminalOpen, setTerminalOpen] = useState(true)
-	const [terminalHeight, setTerminalHeight] = useState(220)
+	const [terminalHeight, setTerminalHeight] = useState(164)
 	const [terminalEvents, setTerminalEvents] = useState<RuntimeConsoleEvent[]>([])
 
 	useEffect(() => {
@@ -275,7 +275,7 @@ export function CorridorWorkspace() {
 				if (typeof saved.rightCollapsed === "boolean") setRightCollapsed(saved.rightCollapsed)
 			}
 			if (typeof saved.terminalOpen === "boolean") setTerminalOpen(saved.terminalOpen)
-			if (typeof saved.terminalHeight === "number") setTerminalHeight(Math.max(140, Math.min(520, saved.terminalHeight)))
+			if (typeof saved.terminalHeight === "number") setTerminalHeight(Math.max(140, Math.min(180, saved.terminalHeight)))
 		} catch {
 			// Use the default workspace layout when browser storage is unavailable.
 		}
@@ -777,7 +777,8 @@ export function CorridorWorkspace() {
 				</aside>
 
 				{/* CENTER MAIN PANEL */}
-				<main className="min-w-0 overflow-y-auto px-3 py-3 md:px-5 lg:px-6">
+				<main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+					<div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 md:px-5 lg:px-6">
 					<div className="mb-3 flex items-center justify-between gap-2 border-b border-[#1c2a33] pb-2 md:hidden">
 						<nav className="flex min-w-0 flex-1 gap-1 overflow-x-auto" aria-label="Mobile workspace navigation">
 							{[
@@ -1206,6 +1207,15 @@ export function CorridorWorkspace() {
 							onProviderSaved={(next) => setProvider(next)}
 						/>
 					)}
+					</div>
+					<WorkbenchTerminal
+						open={terminalOpen}
+						height={terminalHeight}
+						events={terminalEvents}
+						onHeightChange={setTerminalHeight}
+						onClose={() => setTerminalOpen((value) => !value)}
+						onGateChange={setBreakpointMode}
+					/>
 				</main>
 
 				{/* RIGHT PANEL: 3-TAB ARTIFACTS, CASES & LEDGER */}
@@ -1375,15 +1385,6 @@ export function CorridorWorkspace() {
 				</aside>
 			</div>
 			{rightDrawerOpen && <button type="button" aria-label="Close inspection panel" onClick={() => setRightDrawerOpen(false)} className="mobile-inspector-backdrop fixed inset-0 z-30 bg-[#080d12]/30 md:hidden" />}
-
-			<WorkbenchTerminal
-				open={terminalOpen}
-				height={terminalHeight}
-				events={terminalEvents}
-				onHeightChange={setTerminalHeight}
-				onClose={() => setTerminalOpen((value) => !value)}
-				onGateChange={setBreakpointMode}
-			/>
 
 			<footer className="flex h-6 shrink-0 items-center justify-between border-t border-[#1c2a33] bg-[#0d141b] px-2.5 text-[10px] text-[#81949a]">
 				<div className="flex min-w-0 items-center gap-3">

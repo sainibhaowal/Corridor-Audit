@@ -1,10 +1,18 @@
 import assert from "node:assert/strict"
+import { rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { resolve } from "node:path"
 import test from "node:test"
+
+const TEST_DB_PATH = resolve(tmpdir(), `corridor-e2e-${process.pid}-${Date.now()}.db`)
+process.env.CORRIDOR_DB_PATH = TEST_DB_PATH
+
 import { POST as uploadRoute } from "../src/app/api/audit/upload/route"
 import { GET as healthRoute } from "../src/app/api/health/route"
 import { GET as historyRoute } from "../src/app/api/history/route"
 import { POST as terminalRoute } from "../src/app/api/terminal/route"
 import { POST as inboundWebhookRoute } from "../src/app/api/webhooks/inbound/route"
+import { getCorridorDb } from "../src/core/db/database"
 
 test("Next.js App Router API routes serve health, terminal, upload ingestion, webhook ingestion, and history", async () => {
 	const health = (await (await healthRoute()).json()) as {
@@ -91,5 +99,13 @@ test("Next.js App Router API routes serve health, terminal, upload ingestion, we
 })
 
 test.after(() => {
+	try {
+		getCorridorDb().close()
+		rmSync(TEST_DB_PATH, { force: true })
+		rmSync(`${TEST_DB_PATH}-wal`, { force: true })
+		rmSync(`${TEST_DB_PATH}-shm`, { force: true })
+	} catch {
+		// ignore cleanup
+	}
 	setImmediate(() => process.exit(0))
 })

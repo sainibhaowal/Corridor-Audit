@@ -36,9 +36,7 @@ const PROVIDERS: Array<{ id: ProviderId; label: string; subtitle: string }> = [
 	{ id: "ollama", label: "Ollama (Local)", subtitle: "Local self-hosted models" },
 ]
 
-type SettingsSection =
-	| { kind: "provider"; provider: ProviderId }
-	| { kind: "system"; tab: "gate" | "workspace" | "team" }
+type SettingsSection = "providers" | "gate" | "workspace" | "team"
 
 interface WorkspaceSettingsState {
 	name: string
@@ -72,12 +70,8 @@ export function SettingsView({
 	onBreakpointModeChange,
 	onProviderSaved,
 }: SettingsViewProps) {
-	const [section, setSection] = useState<SettingsSection>({
-		kind: "provider",
-		provider: currentProvider.provider,
-	})
-
-	const selectedProvider = section.kind === "provider" ? section.provider : currentProvider.provider
+	const [section, setSection] = useState<SettingsSection>("providers")
+	const [selectedProvider, setSelectedProvider] = useState<ProviderId>(currentProvider.provider)
 
 	const [baseURL, setBaseURL] = useState(
 		currentProvider.baseURL || PROVIDER_DEFAULT_URLS[currentProvider.provider],
@@ -137,7 +131,7 @@ export function SettingsView({
 	}, [breakpointMode, loadWorkspace])
 
 	const selectProvider = (providerId: ProviderId) => {
-		setSection({ kind: "provider", provider: providerId })
+		setSelectedProvider(providerId)
 		setBaseURL(
 			providerId === currentProvider.provider && currentProvider.baseURL
 				? currentProvider.baseURL
@@ -336,98 +330,63 @@ export function SettingsView({
 			</div>
 
 			{/* STABLE TWO-COLUMN SETTINGS WORKSPACE */}
-			<div className="grid min-h-[540px] gap-4 lg:grid-cols-[260px_1fr]">
-				{/* LEFT SETTINGS SIDEBAR */}
-				<Card className="flex flex-col gap-4 p-3">
-					<div>
-						<div className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#71858c]">
-							LLM Model Providers
-						</div>
-						<div className="space-y-1">
-							{PROVIDERS.map((p) => {
-								const isSelected = section.kind === "provider" && section.provider === p.id
-								const isConnected = currentProvider.provider === p.id && currentProvider.mode === "live"
-								return (
-									<button
-										key={p.id}
-										type="button"
-										onClick={() => selectProvider(p.id)}
-										className={cn(
-											"flex w-full items-center justify-between rounded-md border px-2.5 py-2 text-left transition-colors",
-											isSelected
-												? "border-[#225b51] bg-[#0d2725] text-[#e3edef]"
-												: "border-transparent bg-transparent text-[#c7d3d6] hover:bg-[#101820]",
-										)}
-									>
-										<div className="min-w-0">
-											<div className="truncate text-xs font-bold">{p.label}</div>
-											<div className="truncate text-[10.5px] text-[#81949a]">{p.subtitle}</div>
-										</div>
-										<span
-											className={cn(
-												"ml-2 h-2 w-2 shrink-0 rounded-full",
-												isConnected ? "bg-emerald-500" : "bg-[#32454d]",
-											)}
-											title={isConnected ? "Connected" : "Not active"}
-										/>
-									</button>
-								)
-							})}
-						</div>
+			<div className="grid min-h-[480px] gap-4 lg:grid-cols-[230px_1fr]">
+				{/* LEFT SETTINGS SIDEBAR — CLEAN SECTIONS ONLY */}
+				<Card className="flex flex-col gap-1 p-3">
+					<div className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#71858c]">
+						Settings
 					</div>
-
-					<div className="border-t border-[#1c2a33] pt-3">
-						<div className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#71858c]">
-							Platform &amp; Governance
-						</div>
-						<div className="space-y-1">
-							{(
-								[
-									{ tab: "gate", label: "Review Gate & Thresholds", icon: ShieldAlert },
-									{ tab: "workspace", label: "Workspace & Tax Profile", icon: Building2 },
-									{ tab: "team", label: "Team & Webhook Security", icon: Users },
-								] as const
-							).map((item) => {
-								const isSelected = section.kind === "system" && section.tab === item.tab
-								return (
-									<button
-										key={item.tab}
-										type="button"
-										onClick={() => {
-											setSection({ kind: "system", tab: item.tab })
-											setWorkspaceNotice(null)
-										}}
-										className={cn(
-											"flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left text-xs font-semibold transition-colors",
-											isSelected
-												? "border-[#225b51] bg-[#0d2725] text-[#e3edef]"
-												: "border-transparent text-[#c7d3d6] hover:bg-[#101820]",
-										)}
-									>
-										<item.icon className="h-3.5 w-3.5 shrink-0 text-[#62e1c3]" />
-										<span className="truncate">{item.label}</span>
-									</button>
-								)
-							})}
-						</div>
-					</div>
+					{(
+						[
+							{ id: "providers", label: "AI Providers & Models", icon: Cpu },
+							{ id: "gate", label: "Review Gate & Thresholds", icon: ShieldAlert },
+							{ id: "workspace", label: "Workspace & Tax Profile", icon: Building2 },
+							{ id: "team", label: "Team & Webhook Security", icon: Users },
+						] as const
+					).map((item) => {
+						const isSelected = section === item.id
+						return (
+							<button
+								key={item.id}
+								type="button"
+								onClick={() => {
+									setSection(item.id)
+									setWorkspaceNotice(null)
+								}}
+								className={cn(
+									"flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-left text-xs font-semibold transition-colors",
+									isSelected
+										? "border-[#225b51] bg-[#0d2725] text-[#e3edef]"
+										: "border-transparent text-[#c7d3d6] hover:bg-[#101820]",
+								)}
+							>
+								<item.icon className="h-3.5 w-3.5 shrink-0 text-[#62e1c3]" />
+								<span className="truncate">{item.label}</span>
+							</button>
+						)
+					})}
 				</Card>
 
 				{/* RIGHT DETAIL PANE */}
 				<Card className="flex flex-col justify-between p-5">
-					{section.kind === "provider" && (
+					{section === "providers" && (
 						<div className="space-y-4">
-							<div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1c2a33] pb-3">
-								<div>
-									<div className="flex items-center gap-2">
-										<Cpu className="h-4 w-4 text-[#62e1c3]" />
-										<h2 className="text-base font-extrabold text-[#e3edef]">
-											{PROVIDERS.find((p) => p.id === selectedProvider)?.label} Configuration
-										</h2>
-									</div>
-									<p className="mt-0.5 text-xs text-[#81949a]">
-										{PROVIDERS.find((p) => p.id === selectedProvider)?.subtitle}
-									</p>
+							<div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1c2a33] pb-3.5">
+								<div className="min-w-0 flex-1">
+									<label className="mb-1 block text-[10.5px] font-bold uppercase tracking-wider text-[#81949a]">
+										Select Provider
+									</label>
+									<select
+										value={selectedProvider}
+										onChange={(e) => selectProvider(e.target.value as ProviderId)}
+										className="h-9 w-full max-w-sm rounded-md border border-[#32454d] bg-[#080d12] px-3 text-xs font-bold text-[#e3edef] focus:border-emerald-600 focus:outline-none"
+									>
+										{PROVIDERS.map((p) => (
+											<option key={p.id} value={p.id}>
+												{p.label} — {p.subtitle}
+											</option>
+										))}
+									</select>
 								</div>
 								<Badge
 									variant={
@@ -582,7 +541,7 @@ export function SettingsView({
 						</div>
 					)}
 
-					{section.kind === "system" && section.tab === "gate" && (
+					{section === "gate" && (
 						<div className="space-y-4">
 							<h2 className="border-b border-[#1c2a33] pb-3 text-base font-extrabold text-[#e3edef]">
 								Review Gate &amp; Variance Thresholds
@@ -651,7 +610,7 @@ export function SettingsView({
 						</div>
 					)}
 
-					{section.kind === "system" && section.tab === "workspace" && (
+					{section === "workspace" && (
 						<div className="space-y-4">
 							<h2 className="border-b border-[#1c2a33] pb-3 text-base font-extrabold text-[#e3edef]">
 								Workspace &amp; Tax Profile
@@ -725,7 +684,7 @@ export function SettingsView({
 						</div>
 					)}
 
-					{section.kind === "system" && section.tab === "team" && (
+					{section === "team" && (
 						<div className="space-y-4">
 							<h2 className="border-b border-[#1c2a33] pb-3 text-base font-extrabold text-[#e3edef]">
 								Team Members &amp; Webhook Security
