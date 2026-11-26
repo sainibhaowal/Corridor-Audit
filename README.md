@@ -16,7 +16,25 @@
 ---
 
 > [!NOTE]
-> **Compliance & Disclaimer:** All bundled scenarios use synthetic datasets and public European Central Bank reference rates (`api.frankfurter.app`). No real customer data, real bank accounts, or live money transfers are used. Output is for operational reconciliation demonstration only and **is not financial or legal advice**.
+> **Production Architecture & Disclaimer:** CorridorAudit connects to live payout/accounting platforms, signed webhooks, inbound emails, bank SFTP/hot-folder feeds, and public European Central Bank reference rates (`api.frankfurter.app`). All credentials are encrypted with AES-256-GCM and every raw payload is preserved with a SHA-256 checksum in the Raw Data Vault (`raw_ingestions`). Output is for operational reconciliation and **is not financial or legal advice**.
+
+---
+
+## End-to-End Case Study & Architecture Blueprint
+
+Read the complete judge-ready technical & product Case Study in **[`docs/Case Study/`](./docs/Case%20Study/README.md)**:
+
+| Case Study Module | What It Covers |
+| :--- | :--- |
+| **[Case Study Home](./docs/Case%20Study/README.md)** | Executive summary, navigation tiles & full blueprint |
+| **[01 · Problem Statement](./docs/Case%20Study/01-problem-statement.md)** | Why cross-border payouts leak 3%–7% across B2C & B2B |
+| **[02 · Data Ingestion & Raw Vault](./docs/Case%20Study/02-data-ingestion-and-raw-vault.md)** | 5 live channels, 12 vendor platforms, AES-256 vault & `raw_ingestions` |
+| **[03 · System Architecture & Pipeline](./docs/Case%20Study/03-system-architecture-and-pipeline.md)** | Full Input → Vault → Mozaik → Gate → Output blueprint & sequence diagram |
+| **[04 · Mozaik 4+1 Agent System](./docs/Case%20Study/04-mozaik-4-plus-1-agents.md)** | 4+1 concurrent agents, `CorridorState` slots, `DynamicEndpointRouter` & breakpoints |
+| **[05 · Financial Math & Algorithms](./docs/Case%20Study/05-algorithms-and-financial-math.md)** | Integer minor-unit math, Cent-Conservation Equation, FX bps & Mod-97 |
+| **[06 · Outputs, Disputes & ROI](./docs/Case%20Study/06-outputs-disputes-and-roi.md)** | Worked `€5,000` EUR→USD example, dispute letters & B2C/B2B ROI |
+
+![CorridorAudit Production Architecture Blueprint](./docs/Case%20Study/assets/architecture-blueprint.svg)
 
 ---
 
@@ -61,7 +79,7 @@ flowchart LR
 ### Prerequisites
 - **Node.js 20+**
 
-### 1. Install & Configure Any LLM Provider (or Run Out-of-the-Box in Demo Mode)
+### 1. Install & Configure Any LLM Provider
 ```bash
 git clone https://github.com/sainibhaowal/Corridor-Audit.git
 cd Corridor-Audit
@@ -69,7 +87,7 @@ npm install
 cp .env.example .env
 ```
 
-Add **any one** API key inside `.env` (or configure directly inside the Web UI via **⚙ AI Model / API Key** — if no key is set, `CorridorAudit` automatically runs in offline-safe **Deterministic Demo Runner** mode executing all 5 agents and 20 TypeScript tools):
+Add **any one** API key inside `.env` (or configure directly inside the Web UI via **System Settings** with live `/models` auto-discovery):
 
 | Provider | `.env` Setting | Free Tier? |
 |---|---|---|
