@@ -17,6 +17,7 @@ Patch release for the command-line audit completion message and release document
 - `npm run typecheck` passed.
 - `npm run cli` completed all six bundled synthetic cases using the deterministic demo provider; the completion output no longer implies that all cases were clean.
 - `npm run build` passed for the `0.1.1` application version.
+- `npm start -- --no-open` started the production build; `/api/health` reported application version `0.1.1`, source revision `f041affec12c`, a clean working tree, demo provider mode, and audit-rules version `0.1.0`.
 
 ## [0.1.0] - 2026-11-26
 
