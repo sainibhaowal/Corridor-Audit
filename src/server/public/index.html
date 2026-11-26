@@ -109,8 +109,10 @@
 
       <!-- VIEW 2: INBOUND SOURCES -->
       <section id="viewInbound" class="hidden">
-        <h2 style="margin:0 0 4px;font-size:19px;">Autonomous Inbound Channels &amp; Multi-Format Ingestion</h2>
-        <p style="margin:0 0 14px;color:var(--text-muted);">Every incoming file, webhook payload, or pasted wire triggers the concurrent Mozaik runtime automatically.</p>
+        <div class="view-head">
+          <h2 class="view-title">Autonomous Inbound Channels &amp; Multi-Format Ingestion</h2>
+          <p class="view-sub">Every incoming file, webhook payload, or pasted wire triggers the concurrent Mozaik runtime automatically.</p>
+        </div>
 
         <div class="grid-2">
           <div class="card">
@@ -148,22 +150,26 @@
 
       <!-- VIEW 3: CORRIDOR SUMMARY -->
       <section id="viewSummary" class="hidden">
-        <h2 style="margin:0 0 4px;font-size:19px;">Cross-Border Corridor Leak Summary</h2>
-        <p style="margin:0 0 14px;color:var(--text-muted);">Aggregated cents-verified totals across all completed audits and corridor channels.</p>
+        <div class="view-head">
+          <h2 class="view-title">Cross-Border Corridor Leak Summary</h2>
+          <p class="view-sub">Aggregated cents-verified totals across all completed audits and corridor channels.</p>
+        </div>
         <div id="summaryKpis" class="kpi-grid"></div>
         <div class="card table-wrap">
           <table class="ledger" id="summaryTable">
             <thead>
               <tr>
                 <th>Case</th>
-                <th>Channel</th>
+                <th>Channel / Wire</th>
                 <th class="num">FX Spread Leak</th>
                 <th class="num">Fees / Recoverable</th>
                 <th class="num">Variance</th>
                 <th>Verdict</th>
               </tr>
             </thead>
-            <tbody></tbody>
+            <tbody>
+              <tr><td colspan="6" class="empty-cell">No completed audits yet — click <strong>Stream 6-Case Batch</strong> in the left sidebar or upload a file in <strong>Inbound Sources</strong>.</td></tr>
+            </tbody>
           </table>
         </div>
       </section>

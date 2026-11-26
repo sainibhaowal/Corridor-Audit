@@ -171,8 +171,10 @@ function renderHeader() {
   $("queueText").textContent = `Batch: ${q.waiting} wait · ${q.active} active · ${q.done} done`;
 
   const p = appState.provider;
-  $("providerChipText").textContent = `${p.provider.toUpperCase()} · ${p.modelName}`;
-  $("providerChipBtn").className = `provider-chip mono ${p.mode === "demo" ? "demo" : ""}`;
+  const label = p.mode === "demo" ? "Demo · Offline Safe" : `${p.provider.toUpperCase()} · ${p.modelName}`;
+  $("providerChipText").textContent = label;
+  $("providerChipBtn").title = `${p.label} (${p.modelName})`;
+  $("providerChipBtn").className = `provider-chip ${p.mode === "demo" ? "demo" : ""}`;
   $("providerDot").className = `dot ${p.mode === "demo" ? "amber" : ""}`;
   $("gateModeSelect").value = appState.breakpointMode;
 }
@@ -217,6 +219,13 @@ function renderStreamView() {
 
   // Fleet cards
   const orderedNames = ["TermsAgent", "FxBenchmarkAgent", "WireDetectiveAgent", "DuplicateAnomalyAgent", "AuditorAgent"];
+  const roleClass = {
+    TermsAgent: "role-terms",
+    FxBenchmarkAgent: "role-fx",
+    WireDetectiveAgent: "role-wire",
+    DuplicateAnomalyAgent: "role-anomaly",
+    AuditorAgent: "role-auditor",
+  };
   const visibleAgents = orderedNames.map((n) => entry.agents.get(n)).filter(Boolean);
   $("fleetGrid").innerHTML = visibleAgents
     .map((a) => {
@@ -226,7 +235,7 @@ function renderStreamView() {
           : a.status === "done"
             ? `<span class="pill ok">DONE</span>`
             : `<span class="pill">RUNNING</span>`;
-      return `<div class="fleet-card ${a.status === "paused" ? "paused" : ""}">
+      return `<div class="fleet-card ${roleClass[a.name] || ""} ${a.status === "paused" ? "paused" : ""}">
         <div class="fleet-top"><span>${escapeHtml(a.name)}</span>${badge}</div>
         <div class="fleet-meta">${a.tools.size} tool(s) · ${a.status === "done" ? a.elapsed : "active"}</div>
       </div>`;
@@ -389,20 +398,54 @@ function renderRightPanel() {
   }
 }
 
+function formatCurrencyBreakdown(verdicts, selector) {
+  const byCcy = new Map();
+  for (const v of verdicts) {
+    const val = Number(selector(v) || 0);
+    if (val === 0) continue;
+    const ccy = v.numbers.settledCurrency || "USD";
+    byCcy.set(ccy, (byCcy.get(ccy) || 0) + val);
+  }
+  if (byCcy.size === 0) return "$0.00";
+  return [...byCcy.entries()].map(([ccy, amt]) => fmtMoney(amt, ccy)).join(" + ");
+}
+
 function renderSummaryView() {
   const vList = appState.verdicts;
-  const totalRecover = vList.reduce((s, v) => s + v.numbers.recoverableFeeMinor, 0);
-  const totalFx = vList.reduce((s, v) => s + v.numbers.fxSpreadLossMinor, 0);
+  const recoverText = formatCurrencyBreakdown(vList, (v) => v.numbers.recoverableFeeMinor);
+  const fxText = formatCurrencyBreakdown(vList, (v) => v.numbers.fxSpreadLossMinor);
   const varCount = vList.filter((v) => v.numbers.unexplainedVarianceMinor !== 0).length;
 
   $("summaryKpis").innerHTML = `
-    <div class="card"><div style="font-size:11px;font-weight:700;color:var(--text-muted);">CASES AUDITED</div><div class="kpi-val">${vList.length}</div></div>
-    <div class="card"><div style="font-size:11px;font-weight:700;color:var(--text-muted);">RECOVERABLE OUR FEES (MIXED CCY MINOR)</div><div class="kpi-val" style="color:var(--accent-emerald);">${fmtMoney(totalRecover, "USD")}</div></div>
-    <div class="card"><div style="font-size:11px;font-weight:700;color:var(--text-muted);">FX SPREAD LEAK IDENTIFIED</div><div class="kpi-val" style="color:var(--status-amber);">${fmtMoney(totalFx, "USD")}</div></div>
-    <div class="card"><div style="font-size:11px;font-weight:700;color:var(--text-muted);">UNEXPLAINED VARIANCES</div><div class="kpi-val" style="color:${varCount ? "var(--status-red)" : "var(--accent-emerald)"};">${varCount}</div></div>
+    <div class="kpi-card">
+      <div class="kpi-label">Cases Audited</div>
+      <div class="kpi-val">${vList.length}</div>
+      <div class="kpi-sub">${vList.length === 0 ? "Awaiting batch or upload" : "Cent-proof complete"}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Recoverable Fees</div>
+      <div class="kpi-val" style="color:var(--accent-emerald);">${escapeHtml(recoverText)}</div>
+      <div class="kpi-sub">Wrongful :71A:OUR deductions</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Hidden FX Spread</div>
+      <div class="kpi-val" style="color:var(--status-amber);">${escapeHtml(fxText)}</div>
+      <div class="kpi-sub">vs. official ECB mid-market</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Open Variances</div>
+      <div class="kpi-val" style="color:${varCount ? "var(--status-red)" : "var(--accent-emerald)"};">${varCount}</div>
+      <div class="kpi-sub">${varCount ? "Unexplained short-pay flagged" : "Zero unexplained drift"}</div>
+    </div>
   `;
 
-  $("summaryTable").querySelector("tbody").innerHTML = vList
+  const tbody = $("summaryTable").querySelector("tbody");
+  if (vList.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-cell">No completed audits yet — click <strong>Stream 6-Case Batch</strong> in the left sidebar or upload a file in <strong>Inbound Sources</strong>.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = vList
     .map((v) => {
       const ccy = v.numbers.settledCurrency;
       return `<tr>
@@ -411,7 +454,7 @@ function renderSummaryView() {
         <td class="num">${fmtMoney(v.numbers.fxSpreadLossMinor, ccy)} (${(v.numbers.fxSpreadBps / 100).toFixed(2)}%)</td>
         <td class="num">${fmtMoney(v.numbers.liftingAndRepairFeesMinor + v.numbers.platformFeeMinor, ccy)} / <strong>${fmtMoney(v.numbers.recoverableFeeMinor, ccy)}</strong></td>
         <td class="num">${fmtMoney(v.numbers.unexplainedVarianceMinor, ccy)}</td>
-        <td><span class="pill ${badgeClass(v.status)}">${escapeHtml(v.status)}</span></td>
+        <td><span class="pill ${badgeClass(v.status)}">${escapeHtml(v.status.replace(/_/g, " "))}</span></td>
       </tr>`;
     })
     .join("");
