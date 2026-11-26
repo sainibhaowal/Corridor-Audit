@@ -9,21 +9,17 @@ import {
 	ChevronRight,
 	Download,
 	FileUp,
-	PauseCircle,
+	PanelLeftClose,
+	PanelLeftOpen,
 	Play,
 	Settings,
-	Square,
 	Webhook,
-	X,
 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import type { AuditVerdict, PendingBreakpointDecision, TrajectoryEvent } from "@/core/types"
-import { BUILD_PROVENANCE, formatBuildLabel } from "@/core/build-info"
 import { cn } from "@/lib/utils"
-import { BrandLogo } from "./brand-logo"
 import { CaseInspectorModal } from "./case-inspector-modal"
 import { CorridorSummaryView } from "./corridor-summary-view"
 import {
@@ -41,7 +37,7 @@ import { InboundSourcesView } from "./inbound-sources-view"
 import { ProviderSettingsModal } from "./provider-settings-modal"
 
 type WorkspaceView = "stream" | "inbound" | "summary"
-type RightTab = "cases" | "artifacts" | "ledger"
+type InspectorTab = "evidence" | "findings" | "report"
 type ModalTab = "ledger" | "technical" | "letter"
 
 function createEmptyCase(caseId: string): CaseStreamEntry {
@@ -50,7 +46,9 @@ function createEmptyCase(caseId: string): CaseStreamEntry {
 		title: caseId,
 		corridor: "",
 		phase: "PHASE 1 · SPECIALISTS IN PARALLEL",
+		startedAt: Date.now(),
 		agents: {},
+		timeline: [],
 		overlaps: [],
 		pending: null,
 		verdict: null,
@@ -72,17 +70,34 @@ function createEmptyAgent(name: string): AgentRunState {
 	}
 }
 
-const ROLE_BORDER: Record<string, string> = {
-	TermsAgent: "border-t-slate-900",
-	FxBenchmarkAgent: "border-t-emerald-600",
-	WireDetectiveAgent: "border-t-amber-600",
-	DuplicateAnomalyAgent: "border-t-violet-600",
-	AuditorAgent: "border-t-emerald-700",
-}
+const LANE_META: Array<{
+	agentName: string
+	label: string
+	role: string
+	defaultLeft: number
+	defaultWidth: number
+	conditional?: boolean
+}> = [
+	{ agentName: "TermsAgent", label: "Terms Agent", role: "CONTRACT · INVOICE", defaultLeft: 3, defaultWidth: 31 },
+	{ agentName: "FxBenchmarkAgent", label: "FX Agent", role: "RATE · SPREAD", defaultLeft: 2, defaultWidth: 44 },
+	{ agentName: "WireDetectiveAgent", label: "Wire Detective", role: "SWIFT · MT103", defaultLeft: 5, defaultWidth: 48 },
+	{
+		agentName: "DuplicateAnomalyAgent",
+		label: "Anomaly Agent",
+		role: "CONDITIONAL",
+		defaultLeft: 16,
+		defaultWidth: 27,
+		conditional: true,
+	},
+	{ agentName: "AuditorAgent", label: "Auditor Agent", role: "INDEPENDENT CHECK", defaultLeft: 54, defaultWidth: 40 },
+]
 
 export function CorridorWorkspace() {
 	const [view, setView] = useState<WorkspaceView>("stream")
-	const [rightTab, setRightTab] = useState<RightTab>("cases")
+	const [inspectorTab, setInspectorTab] = useState<InspectorTab>("evidence")
+	const [navCollapsed, setNavCollapsed] = useState(false)
+	const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
+
 	const [casesMap, setCasesMap] = useState<Record<string, CaseStreamEntry>>({})
 	const [caseOrder, setCaseOrder] = useState<string[]>([])
 	const [activeCaseId, setActiveCaseId] = useState<string | null>(null)
@@ -177,7 +192,7 @@ export function CorridorWorkspace() {
 				return [...ids]
 			})
 		} catch {
-			// ignore transient network glitches
+			// ignore transient network errors
 		}
 	}, [])
 
@@ -261,18 +276,33 @@ export function CorridorWorkspace() {
 
 				setCasesMap((prev) => {
 					const cur = prev[evt.caseId] || createEmptyCase(evt.caseId)
-					const updated: CaseStreamEntry = { ...cur, agents: { ...cur.agents } }
+					const updated: CaseStreamEntry = {
+						...cur,
+						agents: { ...cur.agents },
+						timeline: [...cur.timeline],
+					}
 
-					if (evt.kind === "phase.changed") {
+					const secOffset = `${((Date.now() - updated.startedAt) / 1000).toFixed(1).padStart(4, "0")}s`
+					const logLine = (text: string) => {
+						updated.timeline.push({ id: evt.id, timeOffset: secOffset, text, kind: evt.kind })
+						if (updated.timeline.length > 50) updated.timeline.shift()
+					}
+
+					if (evt.kind === "case.queued") {
+						updated.startedAt = Date.now()
+						logLine(evt.text || `Queued ${evt.caseId}`)
+					} else if (evt.kind === "phase.changed") {
 						if (evt.phase) updated.phase = evt.phase
 						const ci = evt.payload?.caseInfo as { title?: string; corridor?: string } | undefined
 						if (ci?.title) updated.title = ci.title
 						if (ci?.corridor) updated.corridor = ci.corridor
+						if (evt.phase) logLine(evt.phase)
 					} else if (evt.kind === "agent.started" && evt.agentName) {
 						const a = { ...(updated.agents[evt.agentName] || createEmptyAgent(evt.agentName)) }
 						a.status = "running"
 						a.startedAt = Date.now()
 						updated.agents[evt.agentName] = a
+						logLine(`${evt.agentName} started concurrent review`)
 					} else if (evt.kind === "agent.thinking" && evt.agentName) {
 						const a = { ...(updated.agents[evt.agentName] || createEmptyAgent(evt.agentName)) }
 						a.thinking = true
@@ -319,6 +349,7 @@ export function CorridorWorkspace() {
 							},
 						}
 						updated.agents[evt.agentName] = a
+						logLine(`[${evt.agentName}] ${evt.toolName} (${evt.durationMs ?? 1}ms)`)
 					} else if (evt.kind === "agent.completed" && evt.agentName) {
 						const a = { ...(updated.agents[evt.agentName] || createEmptyAgent(evt.agentName)) }
 						a.thinking = false
@@ -326,6 +357,7 @@ export function CorridorWorkspace() {
 						a.elapsed = `${((Date.now() - a.startedAt) / 1000).toFixed(1)}s`
 						a.finalText = evt.text || a.streamText
 						updated.agents[evt.agentName] = a
+						logLine(`${evt.agentName} completed (${a.elapsed})`)
 					} else if (evt.kind === "overlap.updated" && evt.payload?.overlaps) {
 						updated.overlaps = evt.payload.overlaps as OverlapSignal[]
 					} else if (evt.kind === "breakpoint.paused" && evt.payload?.pending) {
@@ -334,14 +366,17 @@ export function CorridorWorkspace() {
 						a.status = "paused"
 						updated.agents.AuditorAgent = a
 						setShowSteerBox(false)
+						logLine(`Human risk gate paused: ${updated.pending.riskLabel}`)
 					} else if (evt.kind === "breakpoint.resolved") {
 						updated.pending = null
 						const a = { ...(updated.agents.AuditorAgent || createEmptyAgent("AuditorAgent")) }
 						a.status = "running"
 						updated.agents.AuditorAgent = a
+						logLine(`Human gate resolved (${evt.status || "approved"})`)
 					} else if (evt.kind === "audit.verdict" && evt.payload?.verdict) {
 						updated.verdict = evt.payload.verdict as AuditVerdict
 						updated.pending = null
+						logLine(`Verdict finalized: ${updated.verdict.status}`)
 					}
 
 					return { ...prev, [evt.caseId]: updated }
@@ -413,42 +448,67 @@ export function CorridorWorkspace() {
 		? ORDERED_AGENTS.map((name) => activeEntry.agents[name]).filter((a): a is AgentRunState => Boolean(a))
 		: []
 
-	const providerBadgeText =
+	// Derive 5-stage progress state dynamically
+	const stageState = (() => {
+		if (!activeEntry) return 1
+		if (activeEntry.verdict) return 5
+		if (activeEntry.pending) return 4
+		if (activeEntry.agents.AuditorAgent) return 3
+		return 2
+	})()
+
+	const topStatusText = activeEntry?.pending
+		? "RISK GATE PAUSED"
+		: activeEntry?.verdict
+			? "VERDICT VERIFIED"
+			: activeEntry
+				? "PARALLEL TRACE"
+				: provider.mode === "demo"
+					? "DEMO READY"
+					: "LIVE READY"
+
+	const providerChipLabel =
 		provider.mode === "demo"
-			? "Demo · Offline Safe"
+			? "DEMO · OFFLINE"
 			: `${provider.provider.toUpperCase()} · ${provider.modelName}`
 
 	return (
-		<div className="flex h-screen flex-col overflow-hidden bg-slate-50">
-			{/* SLIM INSTITUTIONAL TOP BAR */}
-			<header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4">
-				<div className="flex shrink-0 items-center gap-2.5 whitespace-nowrap">
-					<BrandLogo size={28} />
-					<span className="text-base font-extrabold tracking-tight text-slate-900">
-						Corridor<span className="text-emerald-600">Audit</span>
+		<div className="flex h-screen flex-col overflow-hidden bg-[#070b10] text-[#dce8e9]">
+			{/* TELEMETRY TOP BAR */}
+			<header className="sticky top-0 z-20 flex min-h-[47px] shrink-0 items-center gap-3 border-b border-[#1b2a34] bg-[#090e14] px-4">
+				<div className="flex min-w-0 items-center gap-2.5">
+					<div className="grid h-[22px] w-[22px] shrink-0 rotate-45 place-items-center border border-[#34534f] font-mono text-[10px] font-semibold text-[#62e1c3]">
+						<span className="-rotate-45">CA</span>
+					</div>
+					<span className="text-[11px] font-bold tracking-[0.12em] text-[#dce8e9]">
+						CORRIDOR<span className="text-[#62e1c3]">/</span>AUDIT
 					</span>
-					<span className="hidden rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-500 sm:inline-block">
-						Next.js · Mozaik 6.0
-					</span>
-					<span
-						title={`App v${BUILD_PROVENANCE.appVersion} · Source ${BUILD_PROVENANCE.sourceRevision} · ${BUILD_PROVENANCE.workingTree} tree · Audit rules v${BUILD_PROVENANCE.auditRulesVersion}`}
-						className="hidden rounded bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-800 md:inline-block"
-					>
-						{formatBuildLabel()}
+					<span className="hidden font-mono text-[9px] tracking-wider text-[#50646b] sm:inline">
+						FINANCE SYSTEMS · NEXT.JS 15
 					</span>
 				</div>
 
-				<div className="flex min-w-0 items-center gap-2">
-					<span className="hidden truncate rounded-md bg-slate-100 px-2.5 py-1 text-[11.5px] font-medium text-slate-600 xl:inline-block">
-						Synthetic &amp; Public ECB Data Only · Not Financial Advice
-					</span>
-					<span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2.5 py-1 font-mono text-[11.5px] text-slate-700 tabular">
-						<span className="h-2 w-2 rounded-full bg-emerald-600" />
-						Batch: {queueStats.waiting} wait · {queueStats.active} active · {queueStats.done} done
-					</span>
-				</div>
+				<div className="ml-auto flex items-center gap-2.5">
+					<div className="hidden items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-[#7e9298] lg:flex">
+						<span
+							className={cn(
+								"h-1.5 w-1.5 rounded-full",
+								activeEntry?.pending
+									? "bg-[#e7b56a] shadow-[0_0_9px_rgba(231,181,106,0.55)]"
+									: "bg-[#62e1c3] shadow-[0_0_9px_rgba(98,225,195,0.45)]",
+							)}
+						/>
+						<span>MOZAIK 6.0</span>
+						<span className="text-[#50646b]">/</span>
+						<span className={activeEntry?.pending ? "text-[#e7b56a]" : "text-[#dce8e9]"}>
+							{topStatusText}
+						</span>
+						<span className="text-[#50646b]">·</span>
+						<span className="tabular">
+							{queueStats.waiting}W {queueStats.active}A {queueStats.done}D
+						</span>
+					</div>
 
-				<div className="flex shrink-0 items-center gap-2">
 					<select
 						value={breakpointMode}
 						onChange={async (e) => {
@@ -461,10 +521,10 @@ export function CorridorWorkspace() {
 							})
 						}}
 						title="Mozaik Interruptible Harness Breakpoint Mode"
-						className="h-8 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 focus:border-emerald-600 focus:outline-none"
+						className="h-7 cursor-pointer rounded border border-[#1b2a34] bg-[#0b1118] px-2 font-mono text-[10px] uppercase tracking-wider text-[#c5d4d6] focus:border-[#62e1c3] focus:outline-none"
 					>
-						<option value="risk_only">Gate: Auto-Risk</option>
-						<option value="step_tool">Gate: Step Every Tool</option>
+						<option value="risk_only">GATE: AUTO-RISK</option>
+						<option value="step_tool">GATE: STEP TOOL</option>
 					</select>
 
 					<button
@@ -472,176 +532,164 @@ export function CorridorWorkspace() {
 						onClick={() => setProviderModalOpen(true)}
 						title={`${provider.label} (${provider.modelName})`}
 						className={cn(
-							"inline-flex h-8 max-w-[230px] cursor-pointer items-center gap-1.5 truncate rounded-md border px-2.5 text-[11.5px] font-semibold whitespace-nowrap transition-colors",
+							"inline-flex h-7 max-w-[190px] cursor-pointer items-center gap-1.5 truncate rounded border px-2 font-mono text-[10px] uppercase tracking-wider whitespace-nowrap transition-colors",
 							provider.mode === "demo"
-								? "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
-								: "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100",
+								? "border-[#e7b56a]/40 bg-[#e7b56a]/10 text-[#e7b56a]"
+								: "border-[#31544c] bg-[#62e1c3]/10 text-[#62e1c3]",
 						)}
 					>
-						<span
-							className={cn(
-								"h-2 w-2 shrink-0 rounded-full",
-								provider.mode === "demo" ? "bg-amber-600" : "bg-emerald-600",
-							)}
-						/>
-						<span className="truncate">{providerBadgeText}</span>
+						<span className="truncate">{providerChipLabel}</span>
 					</button>
+
+					<Button size="sm" onClick={() => void handleStreamBatch()}>
+						<Play className="h-3 w-3" />
+						<span className="hidden sm:inline">Run 6-Case Batch</span>
+					</Button>
 				</div>
 			</header>
 
-			{/* 3-PANEL FIXED DESKTOP / LAPTOP WORKSPACE */}
-			<div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[216px_minmax(0,1fr)_268px] xl:grid-cols-[248px_minmax(0,1fr)_324px]">
-				{/* LEFT SIDEBAR */}
-				<aside className="flex min-w-0 flex-col overflow-y-auto border-b border-slate-200 bg-white px-3 py-4 md:border-r md:border-b-0">
-					<div className="px-2 pb-2 text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
-						Workspace
+			{/* 3-COLUMN COLLAPSIBLE WORKSPACE SHELL */}
+			<div
+				className={cn(
+					"grid min-h-0 flex-1 transition-[grid-template-columns] duration-150",
+					"grid-cols-[44px_minmax(0,1fr)]",
+					navCollapsed && inspectorCollapsed
+						? "md:grid-cols-[38px_minmax(0,1fr)_38px]"
+						: navCollapsed
+							? "md:grid-cols-[38px_minmax(0,1fr)_280px]"
+							: inspectorCollapsed
+								? "md:grid-cols-[62px_minmax(0,1fr)_38px]"
+								: "md:grid-cols-[62px_minmax(0,1fr)_280px]",
+				)}
+			>
+				{/* LEFT ICON RAIL */}
+				<nav
+					aria-label="Primary navigation"
+					className="flex flex-col items-center gap-2.5 border-r border-[#1b2a34] bg-[#090e14] px-1.5 py-3.5"
+				>
+					<div className="w-full text-center font-mono text-[8px] tracking-[0.12em] text-[#50646b]">
+						WORK
 					</div>
-					<nav className="space-y-1">
-						{[
-							{ id: "stream" as const, label: "Live Agent Stream", icon: Activity },
-							{ id: "inbound" as const, label: "Inbound Sources", icon: FileUp },
-							{ id: "summary" as const, label: "Corridor Summary", icon: BarChart3 },
-						].map((item) => {
-							const Icon = item.icon
-							const active = view === item.id
-							return (
-								<button
-									key={item.id}
-									type="button"
-									onClick={() => setView(item.id)}
-									className={cn(
-										"flex w-full items-center gap-2.5 rounded-md border-l-[3px] px-3 py-2 text-left text-[13px] transition-colors",
-										active
-											? "border-l-slate-900 bg-slate-100 font-bold text-slate-900"
-											: "border-l-transparent font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900",
-									)}
-								>
-									<Icon className="h-4 w-4 shrink-0" />
-									<span className="truncate">{item.label}</span>
-								</button>
-							)
-						})}
-					</nav>
+					{[
+						{ id: "stream" as const, label: "Live execution", icon: Activity },
+						{ id: "summary" as const, label: "Corridor summary", icon: BarChart3 },
+						{ id: "inbound" as const, label: "Inbound sources", icon: FileUp },
+					].map((item) => {
+						const Icon = item.icon
+						const active = view === item.id
+						return (
+							<button
+								key={item.id}
+								type="button"
+								title={item.label}
+								aria-label={item.label}
+								onClick={() => setView(item.id)}
+								className={cn(
+									"grid place-items-center rounded border transition-colors",
+									navCollapsed ? "h-7 w-7" : "h-9 w-9",
+									active
+										? "border-[#25433f] bg-[#62e1c3]/10 text-[#62e1c3] shadow-[inset_2px_0_0_#62e1c3]"
+										: "border-transparent text-[#7e9298] hover:border-[#1b2a34] hover:text-[#dce8e9]",
+								)}
+							>
+								<Icon className="h-4 w-4" />
+							</button>
+						)
+					})}
 
-					<div className="my-4 h-px bg-slate-100" />
+					<button
+						type="button"
+						title="Fire sample webhook event"
+						aria-label="Fire sample webhook event"
+						onClick={() => void handleTriggerWebhook()}
+						className={cn(
+							"grid place-items-center rounded border border-transparent text-[#7e9298] transition-colors hover:border-[#1b2a34] hover:text-[#62e1c3]",
+							navCollapsed ? "h-7 w-7" : "h-9 w-9",
+						)}
+					>
+						<Webhook className="h-4 w-4" />
+					</button>
 
-					<div className="px-2 pb-2 text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
-						Autonomous Triggers
+					<div className="flex-1" />
+
+					<div className="w-full text-center font-mono text-[8px] tracking-[0.12em] text-[#50646b]">
+						SYS
 					</div>
-					<div className="space-y-2">
-						<Button className="w-full justify-start" onClick={() => void handleStreamBatch()}>
-							<Play className="h-3.5 w-3.5" />
-							Stream 6-Case Batch
-						</Button>
-						<Button
-							variant="outline"
-							className="w-full justify-start"
-							onClick={() => setView("inbound")}
-						>
-							<FileUp className="h-3.5 w-3.5" />
-							Drop MT103 / CSV / PDF
-						</Button>
-						<Button
-							variant="outline"
-							className="w-full justify-start"
-							onClick={() => void handleTriggerWebhook()}
-						>
-							<Webhook className="h-3.5 w-3.5" />
-							Send Webhook Event
-						</Button>
-					</div>
+					<button
+						type="button"
+						title={navCollapsed ? "Expand rail" : "Collapse rail"}
+						onClick={() => setNavCollapsed((c) => !c)}
+						className={cn(
+							"grid place-items-center rounded border border-transparent text-[#7e9298] hover:border-[#1b2a34] hover:text-[#dce8e9]",
+							navCollapsed ? "h-7 w-7" : "h-9 w-9",
+						)}
+					>
+						{navCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+					</button>
+					<button
+						type="button"
+						title="AI Model & API Key settings"
+						aria-label="AI Model & API Key settings"
+						onClick={() => setProviderModalOpen(true)}
+						className={cn(
+							"grid place-items-center rounded border border-transparent text-[#7e9298] hover:border-[#1b2a34] hover:text-[#62e1c3]",
+							navCollapsed ? "h-7 w-7" : "h-9 w-9",
+						)}
+					>
+						<Settings className="h-4 w-4" />
+					</button>
+				</nav>
 
-					<div className="mt-auto border-t border-slate-200 pt-4">
-						<div className="px-1 pb-2 text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
-							System Status
-						</div>
-						<div className="space-y-1.5 px-1 text-xs text-slate-600">
-							<div className="flex items-center gap-2">
-								<span className="h-2 w-2 rounded-full bg-emerald-600" />
-								<span>Mozaik @mozaik-ai/core 6.0</span>
-							</div>
-							<div className="flex items-center gap-2">
-								<span className="h-2 w-2 rounded-full bg-emerald-600" />
-								<span>ECB Frankfurter API + Cache</span>
-							</div>
-							<div className="flex items-center gap-2">
-								<span
-									className={cn(
-										"h-2 w-2 rounded-full",
-										sseConnected ? "bg-emerald-600" : "bg-amber-500",
-									)}
-								/>
-								<span>{sseConnected ? "SSE Stream Active" : "SSE Reconnecting..."}</span>
-							</div>
-						</div>
-						<Button
-							variant="outline"
-							className="mt-3 w-full bg-slate-50"
-							onClick={() => setProviderModalOpen(true)}
-						>
-							<Settings className="h-3.5 w-3.5" />
-							AI Model / API Key
-						</Button>
-					</div>
-				</aside>
-
-				{/* CENTER MAIN PANEL */}
-				<main className="min-w-0 overflow-y-auto px-5 py-5 lg:px-6">
+				{/* CENTER TELEMETRY CORE */}
+				<main className="flex min-w-0 flex-col overflow-y-auto bg-[#070b10] px-5 pt-4">
 					{view === "stream" && (
-						<div className="space-y-3">
-							<div className="flex flex-wrap items-center justify-between gap-2">
-								<div className="flex flex-wrap items-center gap-2">
-									<h1 className="text-lg font-extrabold tracking-tight text-slate-900">
-										{activeEntry
-											? `${activeEntry.caseId} · ${activeEntry.title}`
-											: 'Ready — Click "Stream 6-Case Batch" or Send Inbound Data'}
+						<div className="flex min-h-full flex-col">
+							{/* Case Header */}
+							<div className="flex flex-wrap items-start justify-between gap-3">
+								<div>
+									<div className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-[#62e1c3]">
+										SETTLEMENT FORENSICS <span className="text-[#50646b]">/ LIVE WORKSPACE</span>
+									</div>
+									<h1 className="mt-1 text-xl font-semibold tracking-tight text-[#dce8e9]">
+										{activeEntry ? activeEntry.title : "Agent execution"}
 									</h1>
-									{activeEntry?.corridor && (
-										<Badge className="font-mono">{activeEntry.corridor}</Badge>
-									)}
-									{activeEntry && (
-										<Badge
-											variant={
-												activeEntry.pending
-													? "warn"
-													: activeEntry.verdict
-														? verdictBadgeVariant(activeEntry.verdict.status)
-														: "neutral"
-											}
-										>
-											{activeEntry.pending
-												? "⏸ Paused at Human Gate"
-												: activeEntry.verdict
-													? activeEntry.verdict.status.replace(/_/g, " ")
-													: activeEntry.phase}
-										</Badge>
-									)}
+									<p className="mt-1 text-[11px] text-[#7e9298]">
+										Specialist analysis, independent cross-check, and cent-proof cited result.
+									</p>
 								</div>
 
-								{activeEntry && (
-									<div className="flex items-center gap-1.5">
+								<div className="flex flex-wrap items-center gap-2">
+									<div className="border border-[#1b2a34] px-2.5 py-1.5 font-mono text-[10px] text-[#7e9298]">
+										{activeEntry
+											? `${activeEntry.caseId}${activeEntry.corridor ? ` · ${activeEntry.corridor}` : ""}`
+											: "STANDBY · READY"}
+									</div>
+									{activeEntry && (
 										<Button
 											variant="outline"
 											size="sm"
 											onClick={() => {
-												const next: Record<string, boolean> = {}
-												for (const a of visibleAgents) {
-													for (const cid of Object.keys(a.tools)) next[cid] = true
+												const anyOpen = Object.values(expandedTools).some(Boolean)
+												if (anyOpen) {
+													setExpandedTools({})
+												} else {
+													const next: Record<string, boolean> = {}
+													for (const a of visibleAgents) {
+														for (const cid of Object.keys(a.tools)) next[cid] = true
+													}
+													setExpandedTools(next)
 												}
-												setExpandedTools((prev) => ({ ...prev, ...next }))
 											}}
 										>
-											Expand All Tools
+											{Object.values(expandedTools).some(Boolean) ? "Collapse Tools" : "Inspect Tools"}
 										</Button>
-										<Button variant="outline" size="sm" onClick={() => setExpandedTools({})}>
-											Collapse All
-										</Button>
-									</div>
-								)}
+									)}
+								</div>
 							</div>
 
+							{/* Case Switcher Strip */}
 							{caseOrder.length > 0 && (
-								<div className="flex flex-wrap gap-1.5">
+								<div className="mt-3 flex flex-wrap gap-1.5">
 									{caseOrder.map((cid) => {
 										const c = casesMap[cid]
 										if (!c) return null
@@ -651,10 +699,10 @@ export function CorridorWorkspace() {
 												type="button"
 												onClick={() => setActiveCaseId(cid)}
 												className={cn(
-													"rounded-md border px-2.5 py-1 font-mono text-[11.5px] font-semibold transition-colors",
+													"rounded-[3px] border px-2 py-1 font-mono text-[9.5px] uppercase tracking-wider transition-colors",
 													cid === activeCaseId
-														? "border-slate-900 bg-slate-100 text-slate-900"
-														: "border-slate-200 bg-white text-slate-500 hover:text-slate-900",
+														? "border-[#31544c] bg-[#62e1c3]/10 text-[#62e1c3]"
+														: "border-[#1b2a34] bg-[#0b1118] text-[#7e9298] hover:text-[#dce8e9]",
 												)}
 											>
 												{cid}
@@ -665,410 +713,636 @@ export function CorridorWorkspace() {
 								</div>
 							)}
 
-							{visibleAgents.length > 0 && (
-								<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-									{visibleAgents.map((a) => (
-										<Card
-											key={a.name}
-											className={cn(
-												"border-t-[3px] p-3",
-												ROLE_BORDER[a.name] || "border-t-slate-900",
-												a.status === "paused" && "border-amber-400 border-t-amber-600 bg-amber-50",
-											)}
-										>
-											<div className="mb-1 flex items-center justify-between gap-2">
-												<span className="truncate text-xs font-bold text-slate-900">
-													{a.name}
-												</span>
-												<Badge
-													variant={
-														a.status === "paused"
-															? "warn"
-															: a.status === "done"
-																? "ok"
-																: "neutral"
-													}
+							{/* 5-Stage Fixed Workflow Bar */}
+							<div
+								aria-label="Fixed settlement audit workflow"
+								className="my-4 flex items-center overflow-x-auto border-y border-[#1b2a34] bg-gradient-to-r from-[#62e1c3]/[0.04] to-transparent px-3 py-2.5"
+							>
+								{[
+									{ n: 1, label: "Input" },
+									{ n: 2, label: "Investigate" },
+									{ n: 3, label: "Cross-check" },
+									{ n: 4, label: "Risk gate" },
+									{ n: 5, label: "Report" },
+								].map((s, idx) => {
+									const isDone = stageState > s.n
+									const isCurrent = stageState === s.n
+									return (
+										<div key={s.n} className="flex shrink-0 items-center">
+											<div
+												className={cn(
+													"flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-wider",
+													isCurrent ? "text-[#62e1c3]" : isDone ? "text-[#7e9298]" : "text-[#50646b]",
+												)}
+											>
+												<span
+													className={cn(
+														"grid h-4 w-4 place-items-center rounded-full border text-[8px]",
+														isCurrent
+															? "border-[#62e1c3] bg-[#62e1c3] font-bold text-[#070b10]"
+															: isDone
+																? "border-[#29434c] text-[#62e1c3]"
+																: "border-[#29434c] text-[#50646b]",
+													)}
 												>
-													{a.status === "paused"
-														? "NEEDS YOU"
-														: a.status === "done"
-															? "DONE"
-															: "RUNNING"}
-												</Badge>
+													{isDone ? "✓" : `0${s.n}`}
+												</span>
+												<span>{s.label}</span>
 											</div>
-											<div className="font-mono text-[11px] text-slate-500">
-												{Object.keys(a.tools).length} tool(s) ·{" "}
-												{a.status === "done" ? a.elapsed : "active"}
-											</div>
-										</Card>
-									))}
-								</div>
-							)}
+											{idx < 4 && <span className="mx-3 h-px w-4 bg-[#29434c] sm:w-7" />}
+										</div>
+									)
+								})}
+							</div>
 
-							{activeEntry && activeEntry.overlaps.length > 0 && (
-								<Card className="flex flex-wrap items-center gap-3 px-3.5 py-2.5 text-xs">
-									<span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-										Cross-Check:
+							{/* PARALLEL AGENT TRACE (LIVE GANTT TIMELINE) */}
+							<section aria-label="Parallel agent timeline">
+								<div className="mb-2 flex items-baseline justify-between gap-2">
+									<h2 className="font-mono text-[11px] font-semibold tracking-wider text-[#dce8e9]">
+										PARALLEL AGENT TRACE
+									</h2>
+									<span className="font-mono text-[9.5px] text-[#7e9298]">
+										{activeEntry
+											? activeEntry.pending
+												? "GATE PAUSED"
+												: activeEntry.verdict
+													? "COMPLETE · CENT-VERIFIED"
+													: "LIVE · CONCURRENT"
+											: "READY · CLICK RUN 6-CASE BATCH"}
 									</span>
-									{activeEntry.overlaps.map((o, idx) => (
-										<span key={`${o.left}-${idx}`} className="inline-flex items-center gap-1.5">
-											<span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700">
-												{o.left}
-											</span>
-											<Badge variant={o.tone}>
-												{o.relation === "contradicts" ? "⚡ Contradicts" : "✓ In Sync"}
-											</Badge>
-											<span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700">
-												{o.right}
-											</span>
-										</span>
-									))}
-								</Card>
-							)}
+								</div>
 
-							<Card className="p-4 lg:p-5">
+								<div className="border-t border-[#1b2a34]">
+									<div className="grid h-6 grid-cols-[126px_minmax(0,1fr)] items-end pb-1 font-mono text-[8.5px] text-[#50646b]">
+										<span>AGENT / ROLE</span>
+										<div className="flex justify-between px-0.5">
+											<span>0s</span>
+											<span>2s</span>
+											<span>4s</span>
+											<span>6s</span>
+											<span>8s</span>
+										</div>
+									</div>
+
+									{LANE_META.map((lane) => {
+										const a = activeEntry?.agents[lane.agentName]
+										const toolCount = a ? Object.keys(a.tools).length : 0
+										const spanText = a
+											? a.status === "paused"
+												? "Cross-check complete · awaiting decision"
+												: a.status === "done"
+													? `${toolCount} tool(s) verified (${a.elapsed})`
+													: a.thinking
+														? "Reasoning..."
+														: `Running ${toolCount} tool(s)...`
+											: lane.conditional
+												? "Conditional duplicate / BEC scan"
+												: lane.agentName === "AuditorAgent"
+													? "Awaiting specialist evidence"
+													: "Standby"
+
+										const spanStyle =
+											a?.status === "paused"
+												? "border-l-[#e7b56a] bg-[#e7b56a]/10 text-[#e3c28f]"
+												: a?.status === "done" || a?.status === "running"
+													? lane.conditional
+														? "border-l-[#e7b56a] bg-[#e7b56a]/10 text-[#e3c28f]"
+														: "border-l-[#62e1c3] bg-[#62e1c3]/10 text-[#c5d4d6]"
+													: lane.conditional
+														? "border-l-[#e7b56a]/50 bg-[#e7b56a]/[0.05] text-[#7e9298]"
+														: "border-l-[#52656c] bg-[#7e9298]/[0.07] text-[#7e9298]"
+
+										return (
+											<div
+												key={lane.agentName}
+												className="grid min-h-[44px] grid-cols-[126px_minmax(0,1fr)] items-center border-t border-[#1b2a34]/75"
+											>
+												<div className="min-w-0 pr-2">
+													<div className="truncate text-[10.5px] font-semibold text-[#dce8e9]">
+														{lane.label}
+													</div>
+													<div className="font-mono text-[8.5px] text-[#7e9298]">{lane.role}</div>
+												</div>
+												<div className="plot-grid relative h-7">
+													<span
+														style={{ left: `${lane.defaultLeft}%`, width: `${lane.defaultWidth}%` }}
+														className={cn(
+															"absolute top-1.5 flex h-4 items-center overflow-hidden border-l-2 px-2 font-mono text-[8.5px] whitespace-nowrap transition-all",
+															spanStyle,
+														)}
+													>
+														{spanText}
+													</span>
+												</div>
+											</div>
+										)
+									})}
+								</div>
+
+								<div className="my-3 flex items-center gap-2.5 text-[10px] text-[#7e9298]">
+									<span className="h-px w-6 bg-[#62e1c3] shadow-[0_0_6px_rgba(98,225,195,0.4)]" />
+									<span>
+										<strong className="font-medium text-[#62e1c3]">PARALLEL WINDOW</strong> · specialists
+										execute concurrently in shared <code className="font-mono">CorridorState</code>;
+										AuditorAgent verifies the assembled evidence afterward.
+									</span>
+								</div>
+							</section>
+
+							{/* CHRONOLOGICAL EVENT TRACE + EXPANDABLE TOOL PAYLOADS */}
+							<section aria-label="Chronological execution events" className="mt-1 flex-1">
+								<div className="mb-2 flex items-baseline justify-between gap-2">
+									<h2 className="font-mono text-[11px] font-semibold tracking-wider text-[#dce8e9]">
+										EVENT TRACE &amp; TOOL INSPECTOR
+									</h2>
+									<span className="font-mono text-[9.5px] text-[#7e9298]">CHRONOLOGICAL · SSE</span>
+								</div>
+
 								{!activeEntry ? (
-									<div className="py-5 text-sm leading-relaxed text-slate-600">
-										Agents are standing by on shared <code className="font-mono text-slate-900">CorridorState</code>. Click{" "}
-										<strong className="text-slate-900">Stream 6-Case Batch</strong> in the left sidebar (or upload MT103/CSV/XML/PDF in{" "}
-										<strong className="text-slate-900">Inbound Sources</strong>) to watch all 4–5 Mozaik agents execute in parallel, stream tool calls, cross-check cents, and pause at human approval gates.
+									<div className="border-t border-[#1b2a34] py-4 text-xs text-[#7e9298]">
+										Agents standing by. Click <strong className="text-[#dce8e9]">Run 6-Case Batch</strong>{" "}
+										in the top bar or drop a file in <strong className="text-[#dce8e9]">Inbound Sources</strong>.
 									</div>
 								) : (
-									<div className="relative space-y-4 pl-6 before:absolute before:top-2 before:bottom-2 before:left-[8.5px] before:w-[1.5px] before:bg-slate-300">
-										{visibleAgents.map((a) => {
-											const toolsArr = Object.values(a.tools)
-											const rKey = `${activeEntry.caseId}:${a.name}`
-											const rOpen = Boolean(openReasoning[rKey])
-											const finalMsg = a.finalText || a.streamText
-											return (
-												<div key={a.name} className="relative">
-													<span
-														className={cn(
-															"absolute top-1 -left-[21px] h-3 w-3 rounded-full border-2 border-white",
-															a.status === "paused"
-																? "bg-amber-600"
-																: a.status === "done"
-																	? "bg-emerald-600"
-																	: "animate-pulse bg-slate-900",
-														)}
-													/>
-													<div className="flex flex-wrap items-center gap-2">
-														<span className="text-[13px] font-bold text-slate-900">{a.name}</span>
-														{a.thinking && (
-															<span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
-																◌ Thinking...
-															</span>
-														)}
-														{a.reasoning && (
-															<button
-																type="button"
-																onClick={() =>
-																	setOpenReasoning((p) => ({ ...p, [rKey]: !rOpen }))
-																}
-																className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-600 hover:text-slate-900"
-															>
-																{rOpen ? (
-																	<ChevronDown className="h-3 w-3" />
-																) : (
-																	<ChevronRight className="h-3 w-3" />
-																)}
-																Model Reasoning
-															</button>
-														)}
-														<span className="ml-auto font-mono text-[11px] text-slate-400">
-															{a.status === "done" ? a.elapsed : a.status}
-														</span>
-													</div>
-
-													{a.reasoning && rOpen && (
-														<pre className="mt-2 whitespace-pre-wrap rounded border-l-2 border-slate-400 bg-slate-50 p-2.5 font-mono text-[11px] text-slate-600">
-															{a.reasoning}
-														</pre>
-													)}
-
-													{toolsArr.length > 0 && (
-														<div className="mt-2 flex flex-wrap gap-1.5">
-															{toolsArr.map((t) => {
-																const isOpen = Boolean(expandedTools[t.callId])
-																return (
-																	<div key={t.callId} className={cn(isOpen && "w-full")}>
-																		<button
-																			type="button"
-																			onClick={() =>
-																				setExpandedTools((p) => ({
-																					...p,
-																					[t.callId]: !isOpen,
-																				}))
-																			}
-																			className={cn(
-																				"inline-flex items-center gap-1 rounded border px-2 py-1 font-mono text-[11px] transition-colors",
-																				t.status === "ok"
-																					? "border-emerald-200 bg-emerald-50 text-emerald-800"
-																					: t.status === "error"
-																						? "border-red-200 bg-red-50 text-red-700"
-																						: "border-slate-200 bg-slate-100 text-slate-700",
-																			)}
-																		>
-																			{isOpen ? (
-																				<ChevronDown className="h-3 w-3" />
-																			) : (
-																				<ChevronRight className="h-3 w-3" />
-																			)}
-																			{t.toolName} ·{" "}
-																			{t.durationMs !== null ? `${t.durationMs}ms` : "..."}
-																		</button>
-																		{isOpen && (
-																			<pre className="mt-1.5 whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-50 p-2.5 font-mono text-[11px] text-slate-700">
-																				{`ARGS:   ${t.argsJson || "{}"}\nRESULT: ${t.resultJson || "running..."}`}
-																			</pre>
-																		)}
-																	</div>
-																)
-															})}
-														</div>
-													)}
-
-													{finalMsg && (
-														<div className="mt-1.5 whitespace-pre-wrap text-[13px] text-slate-700">
-															{finalMsg}
-														</div>
-													)}
+									<div className="space-y-3 border-t border-[#1b2a34] pt-2">
+										{/* Chronological feed */}
+										<div className="divide-y divide-[#1b2a34]/65">
+											{activeEntry.timeline.slice(-10).map((ev) => (
+												<div
+													key={ev.id}
+													className="grid grid-cols-[52px_1fr_auto] items-center gap-2 py-1.5 text-[10.5px]"
+												>
+													<span className="font-mono text-[9px] text-[#50646b] tabular">
+														{ev.timeOffset}
+													</span>
+													<span className="truncate text-[#c5d4d6]">{ev.text}</span>
+													<span className="font-mono text-[9px] text-[#50646b]">{ev.kind}</span>
 												</div>
-											)
-										})}
+											))}
+										</div>
+
+										{/* Expandable tool pills per active agent */}
+										<div className="space-y-2 border-t border-[#1b2a34] pt-2.5">
+											{visibleAgents.map((a) => {
+												const toolsArr = Object.values(a.tools)
+												const rKey = `${activeEntry.caseId}:${a.name}`
+												const rOpen = Boolean(openReasoning[rKey])
+												if (toolsArr.length === 0 && !a.reasoning && !a.finalText) return null
+												return (
+													<div key={a.name} className="rounded border border-[#1b2a34] bg-[#0b1118] p-2.5">
+														<div className="flex flex-wrap items-center gap-2">
+															<span className="font-mono text-[10px] font-semibold text-[#62e1c3]">
+																{a.name}
+															</span>
+															{a.reasoning && (
+																<button
+																	type="button"
+																	onClick={() => setOpenReasoning((p) => ({ ...p, [rKey]: !rOpen }))}
+																	className="inline-flex items-center gap-1 rounded border border-[#1b2a34] bg-[#090e14] px-1.5 py-0.5 font-mono text-[9px] text-[#7e9298] hover:text-[#dce8e9]"
+																>
+																	{rOpen ? (
+																		<ChevronDown className="h-3 w-3" />
+																	) : (
+																		<ChevronRight className="h-3 w-3" />
+																	)}
+																	Reasoning
+																</button>
+															)}
+															<span className="ml-auto font-mono text-[9px] text-[#50646b]">
+																{a.status === "done" ? a.elapsed : a.status}
+															</span>
+														</div>
+
+														{a.reasoning && rOpen && (
+															<pre className="mt-2 whitespace-pre-wrap rounded border-l-2 border-[#62e1c3] bg-[#070b10] p-2 font-mono text-[10px] text-[#7e9298]">
+																{a.reasoning}
+															</pre>
+														)}
+
+														{toolsArr.length > 0 && (
+															<div className="mt-1.5 flex flex-wrap gap-1.5">
+																{toolsArr.map((t) => {
+																	const isOpen = Boolean(expandedTools[t.callId])
+																	return (
+																		<div key={t.callId} className={cn(isOpen && "w-full")}>
+																			<button
+																				type="button"
+																				onClick={() =>
+																					setExpandedTools((p) => ({ ...p, [t.callId]: !isOpen }))
+																				}
+																				className={cn(
+																					"inline-flex items-center gap-1 rounded border px-2 py-0.5 font-mono text-[9.5px]",
+																					t.status === "ok"
+																						? "border-[#31544c] bg-[#62e1c3]/10 text-[#62e1c3]"
+																						: t.status === "error"
+																							? "border-[#f17678]/40 bg-[#f17678]/10 text-[#f17678]"
+																							: "border-[#1b2a34] bg-[#090e14] text-[#7e9298]",
+																				)}
+																			>
+																				{isOpen ? (
+																					<ChevronDown className="h-3 w-3" />
+																				) : (
+																					<ChevronRight className="h-3 w-3" />
+																				)}
+																				{t.toolName} · {t.durationMs !== null ? `${t.durationMs}ms` : "..."}
+																			</button>
+																			{isOpen && (
+																				<pre className="mt-1 whitespace-pre-wrap break-words rounded border border-[#1b2a34] bg-[#070b10] p-2 font-mono text-[10px] text-[#c5d4d6]">
+																					{`ARGS:   ${t.argsJson || "{}"}\nRESULT: ${t.resultJson || "running..."}`}
+																				</pre>
+																			)}
+																		</div>
+																	)
+																})}
+															</div>
+														)}
+
+														{(a.finalText || a.streamText) && (
+															<p className="mt-1.5 text-[11px] leading-relaxed text-[#c5d4d6]">
+																{a.finalText || a.streamText}
+															</p>
+														)}
+													</div>
+												)
+											})}
+										</div>
 									</div>
 								)}
-							</Card>
+							</section>
 
-							{/* HUMAN-IN-THE-LOOP MOZAIK BREAKPOINT CARD */}
-							{activeEntry?.pending && (
-								<Card className="border-amber-400 border-l-[5px] border-l-amber-600 p-4">
-									<div className="mb-2 flex items-center justify-between gap-2">
-										<div className="flex items-center gap-2 text-sm font-bold text-slate-900">
-											<PauseCircle className="h-4 w-4 text-amber-600" />
-											Mozaik Breakpoint Paused · Human Approval Required
-										</div>
-										<Badge variant="warn">{activeEntry.pending.riskLabel}</Badge>
-									</div>
-
-									<p className="mb-2.5 text-sm font-semibold text-slate-800">
-										&ldquo;{activeEntry.pending.question}&rdquo;
-									</p>
-									<div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-[11.5px] text-slate-700">
-										{activeEntry.pending.proofLine}
-									</div>
-
-									<div className="flex flex-wrap items-center gap-2">
-										<Button
-											variant="emerald"
-											onClick={() => void resolveBreakpoint(activeEntry.pending!.caseId, "approve")}
-										>
-											<Check className="h-3.5 w-3.5" />
-											Approve Claim [Ctrl+↵]
-										</Button>
-										<Button variant="outline" onClick={() => setShowSteerBox((s) => !s)}>
-											<X className="h-3.5 w-3.5" />
-											Reject &amp; Steer [Esc]
-										</Button>
-										<Button
-											variant="destructive"
-											onClick={() => void resolveBreakpoint(activeEntry.pending!.caseId, "stop")}
-										>
-											<Square className="h-3 w-3" />
-											Stop Case
-										</Button>
-									</div>
-
-									{showSteerBox && (
-										<div className="mt-3 flex flex-wrap gap-2">
-											<input
-												type="text"
-												autoFocus
-												value={steerReason}
-												onChange={(e) => setSteerReason(e.target.value)}
-												placeholder="Type instruction for AuditorAgent (e.g. Client agreed to split fee — treat as SHA)"
-												className="h-9 min-w-[240px] flex-1 rounded-md border border-slate-300 bg-white px-3 text-xs text-slate-900 focus:border-emerald-600 focus:outline-none"
-											/>
-											<Button
-												onClick={() =>
-													void resolveBreakpoint(
-														activeEntry.pending!.caseId,
-														"reject",
-														steerReason.trim() || "Treat as approved SHA fee.",
-													)
-												}
-											>
-												Send Override
-											</Button>
-										</div>
-									)}
-								</Card>
-							)}
+							{/* RUNTIME COMMAND STRIP */}
+							<div className="-mx-5 mt-4 flex min-h-[40px] items-center gap-2 border-t border-[#1b2a34] bg-[#090e14] px-4 font-mono text-[9.5px] text-[#7e9298]">
+								<span className="text-[#62e1c3]">›</span>
+								<span>MOZAIK RUNTIME</span>
+								<span className="text-[#50646b]">/</span>
+								<span className="text-[#c5d4d6]">
+									run {activeEntry?.caseId || "STANDBY"} ({sseConnected ? "sse:live" : "sse:reconnecting"})
+								</span>
+								<span className="ml-auto hidden text-[#50646b] sm:inline">LOCAL APP COMMANDS</span>
+							</div>
 						</div>
 					)}
 
 					{view === "inbound" && (
-						<InboundSourcesView
-							onTriggerWebhook={handleTriggerWebhook}
-							onIngested={() => setView("stream")}
-						/>
+						<div className="pb-6">
+							<InboundSourcesView
+								onTriggerWebhook={handleTriggerWebhook}
+								onIngested={() => setView("stream")}
+							/>
+						</div>
 					)}
 
 					{view === "summary" && (
-						<CorridorSummaryView
-							verdicts={verdicts}
-							onSelectCase={(cid) => {
-								setModalTab("ledger")
-								setModalCaseId(cid)
-							}}
-						/>
+						<div className="pb-6">
+							<CorridorSummaryView
+								verdicts={verdicts}
+								onSelectCase={(cid) => {
+									setModalTab("ledger")
+									setModalCaseId(cid)
+								}}
+							/>
+						</div>
 					)}
 				</main>
 
-				{/* RIGHT PANEL: 3-TAB ARTIFACTS, CASES & LEDGER */}
-				<aside className="flex min-w-0 flex-col overflow-hidden border-t border-slate-200 bg-white md:border-t-0 md:border-l">
-					<div className="m-3 grid grid-cols-3 gap-1 rounded-md border border-slate-200 bg-slate-100 p-1">
-						{[
-							{ id: "cases" as const, label: `Cases (${verdicts.length})` },
-							{ id: "artifacts" as const, label: "Artifacts" },
-							{ id: "ledger" as const, label: "Ledger" },
-						].map((tab) => (
-							<button
-								key={tab.id}
-								type="button"
-								onClick={() => setRightTab(tab.id)}
-								className={cn(
-									"rounded py-1.5 text-[11.5px] font-semibold transition-all",
-									rightTab === tab.id
-										? "bg-white text-slate-900 shadow-sm"
-										: "text-slate-500 hover:text-slate-900",
-								)}
-							>
-								{tab.label}
-							</button>
-						))}
+				{/* RIGHT COLLAPSIBLE CASE INSPECTOR */}
+				<aside
+					aria-label="Evidence and audit inspector"
+					className={cn(
+						"flex min-w-0 flex-col overflow-hidden border-l border-[#1b2a34] bg-[#090e14]",
+						inspectorCollapsed && "items-center px-1 py-3",
+					)}
+				>
+					<div
+						className={cn(
+							"flex items-center justify-between px-3.5 pt-3.5 pb-3",
+							inspectorCollapsed && "flex-col gap-3 px-0 py-0 [writing-mode:vertical-rl]",
+						)}
+					>
+						<span
+							className={cn(
+								"font-mono text-[9.5px] tracking-[0.13em] text-[#62e1c3]",
+								inspectorCollapsed && "rotate-180",
+							)}
+						>
+							CASE INSPECTOR
+						</span>
+						<button
+							type="button"
+							onClick={() => setInspectorCollapsed((c) => !c)}
+							className="font-mono text-[9.5px] text-[#7e9298] hover:text-[#62e1c3]"
+						>
+							{inspectorCollapsed ? "OPEN ›" : "HIDE ›"}
+						</button>
 					</div>
 
-					<div className="flex-1 space-y-2 overflow-y-auto px-3 pb-4">
-						{rightTab === "cases" &&
-							(verdicts.length === 0 ? (
-								<div className="px-1 py-3 text-xs text-slate-500">
-									Completed case verdicts and dispute artifacts will appear here.
-								</div>
-							) : (
-								verdicts.map((v) => {
-									const ccy = v.numbers.settledCurrency
-									const delta =
-										v.numbers.recoverableFeeMinor > 0
-											? `Recover: ${fmtClientMoney(v.numbers.recoverableFeeMinor, ccy)} · FX: ${fmtClientMoney(-v.numbers.fxSpreadLossMinor, ccy)}`
-											: v.numbers.unexplainedVarianceMinor !== 0
-												? `Variance: ${fmtClientMoney(v.numbers.unexplainedVarianceMinor, ccy)}`
-												: `Variance: ${fmtClientMoney(0, ccy)} · FX: ${fmtClientMoney(v.numbers.fxSpreadLossMinor, ccy)}`
-									return (
-										<Card
-											key={v.caseId}
-											onClick={() => {
-												setModalTab("ledger")
-												setModalCaseId(v.caseId)
-											}}
-											className={cn(
-												"cursor-pointer p-3 transition-colors hover:border-slate-300",
-												v.caseId === activeCaseId && "border-amber-400 bg-amber-50/70",
-											)}
-										>
-											<div className="mb-1 flex items-center justify-between gap-2">
-												<strong className="truncate font-mono text-xs text-slate-900">
-													{v.caseId} · {v.invoiceId}
-												</strong>
-												<Badge variant={verdictBadgeVariant(v.status)}>
-													{v.status.replace(/_/g, " ")}
-												</Badge>
-											</div>
-											<div className="font-mono text-[11.5px] text-slate-600">{delta}</div>
-											<div className="mt-2.5 flex flex-wrap gap-1.5" onClick={(e) => e.stopPropagation()}>
-												<Button
-													variant="outline"
-													size="sm"
-													onClick={() => {
-														setModalTab("technical")
-														setModalCaseId(v.caseId)
-													}}
+					{!inspectorCollapsed && (
+						<>
+							<div className="flex gap-4 border-b border-[#1b2a34] px-3.5" role="tablist">
+								{[
+									{ id: "evidence" as const, label: "Evidence" },
+									{ id: "findings" as const, label: `Findings (${verdicts.length})` },
+									{ id: "report" as const, label: "Report" },
+								].map((tab) => (
+									<button
+										key={tab.id}
+										type="button"
+										role="tab"
+										aria-selected={inspectorTab === tab.id}
+										onClick={() => setInspectorTab(tab.id)}
+										className={cn(
+											"-mb-px border-b pb-2 font-mono text-[9.5px] uppercase tracking-wider transition-colors",
+											inspectorTab === tab.id
+												? "border-[#62e1c3] text-[#dce8e9]"
+												: "border-transparent text-[#50646b] hover:text-[#dce8e9]",
+										)}
+									>
+										{tab.label}
+									</button>
+								))}
+							</div>
+
+							<div className="flex-1 overflow-y-auto px-3.5 py-3.5">
+								{inspectorTab === "evidence" && (
+									<div>
+										<div className="text-[11px] font-semibold text-[#dce8e9]">INPUT SOURCES</div>
+										<div className="mt-0.5 text-[9.5px] text-[#7e9298]">
+											Every finding resolves to its source.
+										</div>
+
+										<div className="mt-2 divide-y divide-[#1b2a34]">
+											{[
+												{ code: "INV", name: "Invoice / Contract", state: activeEntry ? "LINKED" : "READY" },
+												{ code: "MT", name: "SWIFT MT103 / CSV", state: activeEntry ? "LINKED" : "READY" },
+												{
+													code: "FX",
+													name: "ECB Rate Benchmark",
+													state: activeEntry?.agents.FxBenchmarkAgent?.status === "done" ? "VERIFIED" : "DATED",
+												},
+											].map((src) => (
+												<div
+													key={src.code}
+													className="grid grid-cols-[26px_minmax(0,1fr)_auto] items-center gap-2 py-2.5"
 												>
-													Full Fields
-													<ArrowUpRight className="h-3 w-3" />
-												</Button>
-												{v.disputeNotice && (
-													<Button
-														variant="outline"
-														size="sm"
+													<span className="grid h-6 w-6 place-items-center border border-[#29434c] font-mono text-[8.5px] text-[#62e1c3]">
+														{src.code}
+													</span>
+													<span className="truncate text-[10px] text-[#dce8e9]">{src.name}</span>
+													<span className="font-mono text-[8.5px] text-[#50646b]">{src.state}</span>
+												</div>
+											))}
+										</div>
+
+										{activeEntry && activeEntry.overlaps.length > 0 && (
+											<div className="mt-3 space-y-1.5 border-t border-[#1b2a34] pt-3">
+												<div className="font-mono text-[9px] uppercase tracking-wider text-[#7e9298]">
+													Cross-Check Signals
+												</div>
+												{activeEntry.overlaps.map((o, idx) => (
+													<div
+														key={`${o.left}-${idx}`}
+														className="flex items-center justify-between gap-1.5 text-[10px]"
+													>
+														<span className="truncate font-mono text-[#7e9298]">{o.left}</span>
+														<Badge variant={o.tone}>{o.right}</Badge>
+													</div>
+												))}
+											</div>
+										)}
+
+										<div className="mt-4 border-t border-[#29434c] pt-3">
+											<div className="flex items-center justify-between gap-2">
+												<span className="text-[10.5px] font-semibold text-[#dce8e9]">Audit status</span>
+												<span
+													className={cn(
+														"font-mono text-[8.5px] uppercase",
+														activeEntry?.pending
+															? "text-[#e7b56a]"
+															: activeEntry?.verdict
+																? "text-[#62e1c3]"
+																: "text-[#7e9298]",
+													)}
+												>
+													{activeEntry?.pending
+														? "REVIEW REQUIRED"
+														: activeEntry?.verdict
+															? activeEntry.verdict.status.replace(/_/g, " ")
+															: activeEntry
+																? "RUNNING"
+																: "STANDBY"}
+												</span>
+											</div>
+											<p className="mt-1.5 text-[10px] leading-relaxed text-[#7e9298]">
+												{activeEntry?.verdict
+													? activeEntry.verdict.plainEnglishSummary
+													: activeEntry?.pending
+														? activeEntry.pending.question
+														: "Final finding appears after cross-check and citation validation."}
+											</p>
+										</div>
+
+										{/* INLINE HUMAN GATE · RISK POLICY CARD */}
+										{activeEntry?.pending && (
+											<div className="mt-3.5 border border-[#e7b56a]/40 bg-[#e7b56a]/[0.04] p-3">
+												<div className="font-mono text-[8.5px] uppercase tracking-[0.11em] text-[#e7b56a]">
+													HUMAN GATE · {activeEntry.pending.riskLabel}
+												</div>
+												<h4 className="mt-1.5 mb-1 text-[11px] font-semibold text-[#dce8e9]">
+													Decision required
+												</h4>
+												<p className="text-[10px] leading-relaxed text-[#7e9298]">
+													{activeEntry.pending.proofLine}
+												</p>
+												<div className="mt-2.5 flex flex-wrap gap-1.5">
+													<button
+														type="button"
+														onClick={() =>
+															void resolveBreakpoint(activeEntry.pending!.caseId, "approve")
+														}
+														className="inline-flex items-center gap-1 rounded-[3px] border border-[#62e1c3] bg-[#62e1c3] px-2.5 py-1 text-[9.5px] font-semibold text-[#070b10] hover:bg-[#7ae8ce]"
+													>
+														<Check className="h-3 w-3" />
+														Approve
+													</button>
+													<button
+														type="button"
+														onClick={() => setShowSteerBox((s) => !s)}
+														className="rounded-[3px] border border-[#29434c] px-2 py-1 text-[9.5px] text-[#c5d4d6] hover:border-[#62e1c3]"
+													>
+														Reject with reason
+													</button>
+													<button
+														type="button"
+														onClick={() => void resolveBreakpoint(activeEntry.pending!.caseId, "stop")}
+														className="rounded-[3px] border border-[#f17678]/40 px-2 py-1 text-[9.5px] text-[#f17678] hover:bg-[#f17678]/10"
+													>
+														Stop
+													</button>
+												</div>
+
+												{showSteerBox && (
+													<div className="mt-2.5 space-y-1.5">
+														<input
+															type="text"
+															autoFocus
+															value={steerReason}
+															onChange={(e) => setSteerReason(e.target.value)}
+															placeholder="Override reason (e.g. Approved as SHA)"
+															className="h-7 w-full rounded border border-[#29434c] bg-[#070b10] px-2 font-mono text-[10px] text-[#dce8e9] focus:border-[#62e1c3] focus:outline-none"
+														/>
+														<Button
+															size="sm"
+															className="w-full"
+															onClick={() =>
+																void resolveBreakpoint(
+																	activeEntry.pending!.caseId,
+																	"reject",
+																	steerReason.trim() || "Treat as approved SHA fee.",
+																)
+															}
+														>
+															Send Override
+														</Button>
+													</div>
+												)}
+											</div>
+										)}
+
+										<div className="mt-4 border-t border-[#1b2a34] pt-2.5 font-mono text-[8.5px] leading-relaxed text-[#50646b]">
+											SYNTHETIC &amp; PUBLIC ECB DATA ONLY
+											<br />
+											Ctrl+Enter approves gate · Esc steers
+										</div>
+									</div>
+								)}
+
+								{inspectorTab === "findings" && (
+									<div className="space-y-2">
+										{verdicts.length === 0 ? (
+											<div className="py-3 text-xs text-[#7e9298]">
+												Completed case verdicts will appear here.
+											</div>
+										) : (
+											verdicts.map((v) => {
+												const ccy = v.numbers.settledCurrency
+												return (
+													<div
+														key={v.caseId}
 														onClick={() => {
-															setModalTab("letter")
+															setModalTab("ledger")
 															setModalCaseId(v.caseId)
 														}}
+														className={cn(
+															"cursor-pointer rounded border p-2.5 transition-colors",
+															v.caseId === activeCaseId
+																? "border-[#62e1c3]/50 bg-[#62e1c3]/[0.05]"
+																: "border-[#1b2a34] bg-[#0b1118] hover:border-[#29434c]",
+														)}
 													>
-														Dispute.txt
-													</Button>
+														<div className="flex items-center justify-between gap-1.5">
+															<span className="font-mono text-[10px] font-bold text-[#dce8e9]">
+																{v.caseId}
+															</span>
+															<Badge variant={verdictBadgeVariant(v.status)}>
+																{v.status.replace(/_/g, " ")}
+															</Badge>
+														</div>
+														<div className="mt-1 font-mono text-[9.5px] text-[#7e9298]">
+															{v.numbers.recoverableFeeMinor > 0
+																? `Recover ${fmtClientMoney(v.numbers.recoverableFeeMinor, ccy)}`
+																: `Variance ${fmtClientMoney(v.numbers.unexplainedVarianceMinor, ccy)}`}
+															{" · "}FX {fmtClientMoney(v.numbers.fxSpreadLossMinor, ccy)}
+														</div>
+														<div
+															className="mt-2 flex gap-1.5"
+															onClick={(e) => e.stopPropagation()}
+														>
+															<button
+																type="button"
+																onClick={() => {
+																	setModalTab("ledger")
+																	setModalCaseId(v.caseId)
+																}}
+																className="inline-flex items-center gap-0.5 rounded border border-[#29434c] px-1.5 py-0.5 font-mono text-[9px] text-[#c5d4d6] hover:border-[#62e1c3]"
+															>
+																Inspect
+																<ArrowUpRight className="h-2.5 w-2.5" />
+															</button>
+															{v.disputeNotice && (
+																<button
+																	type="button"
+																	onClick={() => {
+																		setModalTab("letter")
+																		setModalCaseId(v.caseId)
+																	}}
+																	className="rounded border border-[#29434c] px-1.5 py-0.5 font-mono text-[9px] text-[#e7b56a] hover:border-[#e7b56a]"
+																>
+																	Dispute.txt
+																</button>
+															)}
+														</div>
+													</div>
+												)
+											})
+										)}
+									</div>
+								)}
+
+								{inspectorTab === "report" && (
+									<div className="space-y-3">
+										{verdicts.length === 0 && ledgerEvents.length === 0 ? (
+											<div className="py-3 text-xs text-[#7e9298]">
+												Downloadable dispute letters and ledger logs appear here after completion.
+											</div>
+										) : (
+											<>
+												{verdicts.map((v) => (
+													<div
+														key={v.caseId}
+														className="rounded border border-[#1b2a34] bg-[#0b1118] p-2.5"
+													>
+														<div className="mb-1.5 font-mono text-[10px] font-bold text-[#dce8e9]">
+															{v.caseId} · {v.invoiceId}
+														</div>
+														<div className="flex flex-wrap gap-1.5">
+															<a
+																href={`/api/report/${encodeURIComponent(v.caseId)}?format=txt`}
+																download
+																className="inline-flex items-center gap-1 rounded border border-[#29434c] px-2 py-1 font-mono text-[9px] text-[#62e1c3] hover:border-[#62e1c3]"
+															>
+																<Download className="h-2.5 w-2.5" />
+																Letter (.txt)
+															</a>
+															<a
+																href={`/api/report/${encodeURIComponent(v.caseId)}?format=json`}
+																download
+																className="inline-flex items-center gap-1 rounded border border-[#29434c] px-2 py-1 font-mono text-[9px] text-[#c5d4d6] hover:border-[#62e1c3]"
+															>
+																<Download className="h-2.5 w-2.5" />
+																Audit (.json)
+															</a>
+														</div>
+													</div>
+												))}
+												{ledgerEvents.length > 0 && (
+													<div className="divide-y divide-[#1b2a34] border-t border-[#1b2a34] pt-2">
+														{ledgerEvents.slice(0, 12).map((l, idx) => (
+															<div key={`${l.timestamp}-${idx}`} className="py-1.5 text-[10px]">
+																<div className="font-mono text-[8.5px] text-[#50646b]">
+																	{l.timestamp.slice(11, 19)} · {l.caseId}
+																</div>
+																<div className="text-[#c5d4d6]">{l.summary}</div>
+															</div>
+														))}
+													</div>
 												)}
-												<a
-													href={`/api/report/${encodeURIComponent(v.caseId)}?format=json`}
-													download
-													className="inline-flex h-7 items-center rounded border border-slate-300 bg-white px-2.5 text-[11.5px] font-semibold text-slate-700 hover:bg-slate-50"
-												>
-													JSON
-												</a>
-											</div>
-										</Card>
-									)
-								})
-							))}
-
-						{rightTab === "artifacts" &&
-							(verdicts.length === 0 ? (
-								<div className="px-1 py-3 text-xs text-slate-500">No downloadable artifacts yet.</div>
-							) : (
-								verdicts.map((v) => (
-									<Card key={v.caseId} className="p-3">
-										<div className="mb-2 font-mono text-xs font-bold text-slate-900">{v.caseId}</div>
-										<div className="flex flex-wrap gap-1.5">
-											<a
-												href={`/api/report/${encodeURIComponent(v.caseId)}?format=txt`}
-												download
-												className="inline-flex h-7 items-center gap-1 rounded border border-slate-300 bg-white px-2.5 text-[11.5px] font-semibold text-slate-700 hover:bg-slate-50"
-											>
-												<Download className="h-3 w-3" />
-												Dispute / Cert (.txt)
-											</a>
-											<a
-												href={`/api/report/${encodeURIComponent(v.caseId)}?format=json`}
-												download
-												className="inline-flex h-7 items-center gap-1 rounded border border-slate-300 bg-white px-2.5 text-[11.5px] font-semibold text-slate-700 hover:bg-slate-50"
-											>
-												<Download className="h-3 w-3" />
-												Full Audit (.json)
-											</a>
-										</div>
-									</Card>
-								))
-							))}
-
-						{rightTab === "ledger" &&
-							(ledgerEvents.length === 0 ? (
-								<div className="px-1 py-3 text-xs text-slate-500">
-									Ledger events stream here as agents finalize audits.
-								</div>
-							) : (
-								<div className="divide-y divide-slate-100">
-									{ledgerEvents.map((l, idx) => (
-										<div key={`${l.timestamp}-${idx}`} className="px-1 py-2 text-xs">
-											<div className="font-mono text-[10.5px] text-slate-400">
-												{l.timestamp.slice(11, 19)} · {l.caseId}
-											</div>
-											<div className="text-slate-700">{l.summary}</div>
-										</div>
-									))}
-								</div>
-							))}
-					</div>
+											</>
+										)}
+									</div>
+								)}
+							</div>
+						</>
+					)}
 				</aside>
 			</div>
 

@@ -16,7 +16,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-	title: "CorridorAudit — Concurrent Mozaik Settlement Forensics",
+	title: "CorridorAudit — Settlement Forensics & Mozaik 6.0 Telemetry",
 	description:
 		"Cross-border settlement, FX spread & hidden-fee forensics powered by concurrent Mozaik agents.",
 	icons: {
@@ -26,8 +26,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
 	return (
-		<html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
-			<body className="font-sans bg-slate-50 text-slate-900">{children}</body>
+		<html lang="en" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
+			<body className="font-sans bg-[#070b10] text-[#dce8e9]">{children}</body>
 		</html>
 	)
 }

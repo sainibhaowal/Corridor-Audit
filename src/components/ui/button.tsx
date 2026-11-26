@@ -3,21 +3,21 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-	"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
+	"inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded border text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#62e1c3] disabled:pointer-events-none disabled:opacity-45 cursor-pointer",
 	{
 		variants: {
 			variant: {
-				default: "bg-slate-900 text-white hover:bg-slate-800 shadow-sm",
-				emerald: "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm",
-				outline: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900",
-				secondary: "bg-slate-100 text-slate-800 hover:bg-slate-200",
-				destructive: "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100",
-				ghost: "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+				default: "border-[#62e1c3] bg-[#62e1c3] text-[#070b10] hover:bg-[#7ae8ce]",
+				emerald: "border-[#62e1c3] bg-[#62e1c3] text-[#070b10] hover:bg-[#7ae8ce]",
+				outline: "border-[#29434c] bg-[#0b1118] text-[#c5d4d6] hover:border-[#62e1c3]/60 hover:text-[#dce8e9]",
+				secondary: "border-[#1b2a34] bg-[#0e1720] text-[#dce8e9] hover:border-[#29434c]",
+				destructive: "border-[#f17678]/40 bg-[#f17678]/10 text-[#f17678] hover:bg-[#f17678]/20",
+				ghost: "border-transparent bg-transparent text-[#7e9298] hover:text-[#62e1c3]",
 			},
 			size: {
-				default: "h-9 px-3.5 py-2",
-				sm: "h-7 rounded px-2.5 text-[11.5px]",
-				lg: "h-10 rounded-md px-5 text-sm",
+				default: "h-8 px-3 py-1.5",
+				sm: "h-7 px-2.5 text-[11px]",
+				lg: "h-9 px-4 text-xs",
 				icon: "h-8 w-8",
 			},
 		},

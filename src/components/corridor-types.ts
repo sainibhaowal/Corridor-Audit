@@ -38,6 +38,8 @@ export interface AgentRunState {
 	name: string
 	status: "idle" | "running" | "done" | "paused"
 	startedAt: number
+	finishedAt?: number
+	segments: Array<{ startedAt: number; endedAt?: number }>
 	elapsed: string
 	thinking: boolean
 	reasoning: string
@@ -53,12 +55,22 @@ export interface OverlapSignal {
 	tone: "bad" | "ok" | "warn"
 }
 
+export interface TimelineEventItem {
+	id: string
+	timeOffset: string
+	text: string
+	kind: string
+}
+
 export interface CaseStreamEntry {
 	caseId: string
 	title: string
 	corridor: string
 	phase: string
+	startedAt: number
+	expectedRoles: string[]
 	agents: Record<string, AgentRunState>
+	timeline: TimelineEventItem[]
 	overlaps: OverlapSignal[]
 	pending: PendingBreakpointDecision | null
 	verdict: AuditVerdict | null

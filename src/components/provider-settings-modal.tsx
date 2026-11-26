@@ -84,7 +84,7 @@ export function ProviderSettingsModal({
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[1px]"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-[#03060a]/80 p-4 backdrop-blur-sm"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) onClose()
 			}}
@@ -92,10 +92,10 @@ export function ProviderSettingsModal({
 			<div
 				role="dialog"
 				aria-modal="true"
-				className="w-full max-w-2xl overflow-hidden rounded-xl border border-slate-300 bg-white shadow-2xl"
+				className="w-full max-w-2xl overflow-hidden rounded border border-[#29434c] bg-[#090e14] text-[#dce8e9] shadow-2xl"
 			>
-				<div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5">
-					<h2 className="text-base font-extrabold text-slate-900">
+				<div className="flex items-center justify-between border-b border-[#1b2a34] px-5 py-3.5">
+					<h2 className="text-sm font-bold text-[#dce8e9]">
 						AI Model, API Key &amp; Mozaik Harness Settings
 					</h2>
 					<Button variant="outline" size="sm" onClick={onClose}>
@@ -104,16 +104,16 @@ export function ProviderSettingsModal({
 				</div>
 
 				<div className="space-y-4 p-5">
-					<div className="flex items-start gap-2.5 rounded-lg border border-slate-200 border-l-4 border-l-emerald-600 bg-slate-50 p-3 text-xs text-slate-700">
-						<ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+					<div className="flex items-start gap-2.5 rounded border border-[#1b2a34] border-l-2 border-l-[#62e1c3] bg-[#0b1118] p-3 text-xs text-[#c5d4d6]">
+						<ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#62e1c3]" />
 						<div>
-							<strong>In-Memory Security:</strong> Keys entered here remain strictly in server RAM for
-							this session — never written to disk, `.env`, or Git.
+							<strong className="text-[#dce8e9]">In-Memory Security:</strong> Keys entered here remain
+							strictly in server RAM for this session — never written to disk, `.env`, or Git.
 						</div>
 					</div>
 
 					<div>
-						<div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+						<div className="mb-2 font-mono text-[10px] font-bold uppercase tracking-wider text-[#7e9298]">
 							Select LLM Provider (Zero Lock-In)
 						</div>
 						<div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -126,10 +126,10 @@ export function ProviderSettingsModal({
 										setModelName(PROVIDER_DEFAULT_MODELS[p.id])
 									}}
 									className={cn(
-										"h-10 rounded-md border px-2 text-xs font-semibold transition-colors",
+										"h-9 rounded border px-2 text-xs font-semibold transition-colors",
 										selected === p.id
-											? "border-slate-900 bg-slate-900 text-white"
-											: "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+											? "border-[#62e1c3] bg-[#62e1c3]/15 text-[#62e1c3]"
+											: "border-[#1b2a34] bg-[#0b1118] text-[#7e9298] hover:border-[#29434c] hover:text-[#dce8e9]",
 									)}
 								>
 									{p.label}
@@ -140,16 +140,16 @@ export function ProviderSettingsModal({
 
 					<div className="space-y-3">
 						<div>
-							<label className="mb-1 block text-xs font-semibold text-slate-700">Model ID</label>
+							<label className="mb-1 block text-xs font-semibold text-[#c5d4d6]">Model ID</label>
 							<input
 								type="text"
 								value={modelName}
 								onChange={(e) => setModelName(e.target.value)}
-								className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 font-mono text-xs text-slate-900 focus:border-emerald-600 focus:outline-none"
+								className="h-9 w-full rounded border border-[#29434c] bg-[#070b10] px-3 font-mono text-xs text-[#dce8e9] focus:border-[#62e1c3] focus:outline-none"
 							/>
 						</div>
 						<div>
-							<label className="mb-1 block text-xs font-semibold text-slate-700">
+							<label className="mb-1 block text-xs font-semibold text-[#c5d4d6]">
 								API Key (optional if already configured in .env)
 							</label>
 							<input
@@ -157,7 +157,7 @@ export function ProviderSettingsModal({
 								value={apiKey}
 								onChange={(e) => setApiKey(e.target.value)}
 								placeholder="Leave blank to keep existing .env / RAM key"
-								className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 font-mono text-xs text-slate-900 focus:border-emerald-600 focus:outline-none"
+								className="h-9 w-full rounded border border-[#29434c] bg-[#070b10] px-3 font-mono text-xs text-[#dce8e9] placeholder:text-[#50646b] focus:border-[#62e1c3] focus:outline-none"
 							/>
 						</div>
 					</div>
@@ -165,10 +165,10 @@ export function ProviderSettingsModal({
 					{testStatus && (
 						<div
 							className={cn(
-								"flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium",
+								"flex items-center gap-2 rounded border px-3 py-2 text-xs font-medium",
 								testStatus.ok
-									? "border-emerald-200 bg-emerald-50 text-emerald-800"
-									: "border-red-200 bg-red-50 text-red-700",
+									? "border-[#31544c] bg-[#62e1c3]/10 text-[#62e1c3]"
+									: "border-[#f17678]/40 bg-[#f17678]/10 text-[#f17678]",
 							)}
 						>
 							{testStatus.ok ? (

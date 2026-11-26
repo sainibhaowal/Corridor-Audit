@@ -4,24 +4,24 @@
 
 @layer base {
 	:root {
-		--background: 210 40% 98%;
-		--foreground: 222 47% 11%;
-		--card: 0 0% 100%;
-		--card-foreground: 222 47% 11%;
-		--primary: 221 39% 11%;
-		--primary-foreground: 210 40% 98%;
-		--secondary: 210 40% 96%;
-		--secondary-foreground: 222 47% 11%;
-		--muted: 210 40% 96%;
-		--muted-foreground: 215 16% 47%;
-		--accent: 210 40% 96%;
-		--accent-foreground: 222 47% 11%;
-		--destructive: 0 84% 60%;
-		--destructive-foreground: 210 40% 98%;
-		--border: 214 32% 91%;
-		--input: 214 32% 85%;
-		--ring: 160 84% 39%;
-		--radius: 0.5rem;
+		--background: 213 39% 4%;
+		--foreground: 185 21% 89%;
+		--card: 212 37% 7%;
+		--card-foreground: 185 21% 89%;
+		--primary: 166 67% 63%;
+		--primary-foreground: 213 39% 4%;
+		--secondary: 209 39% 9%;
+		--secondary-foreground: 185 21% 89%;
+		--muted: 209 39% 9%;
+		--muted-foreground: 194 12% 55%;
+		--accent: 197 30% 18%;
+		--accent-foreground: 185 21% 89%;
+		--destructive: 359 81% 70%;
+		--destructive-foreground: 213 39% 4%;
+		--border: 204 32% 15%;
+		--input: 196 30% 23%;
+		--ring: 166 67% 63%;
+		--radius: 0.375rem;
 	}
 
 	* {
@@ -30,11 +30,22 @@
 
 	html,
 	body {
-		@apply h-full bg-background text-foreground antialiased;
+		@apply h-full bg-[#070b10] text-[#dce8e9] antialiased;
+		color-scheme: dark;
 		font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 	}
 }
 
 .tabular {
 	font-variant-numeric: tabular-nums;
+}
+
+.plot-grid {
+	background-image: repeating-linear-gradient(
+		90deg,
+		transparent 0,
+		transparent calc(25% - 1px),
+		rgba(41, 67, 76, 0.45) calc(25% - 1px),
+		rgba(41, 67, 76, 0.45) 25%
+	);
 }
