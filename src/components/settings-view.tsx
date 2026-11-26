@@ -79,9 +79,7 @@ export function SettingsView({
 	const [modelName, setModelName] = useState(currentProvider.modelName)
 	const [apiKey, setApiKey] = useState("")
 	const [discoveredModels, setDiscoveredModels] = useState<string[]>(
-		currentProvider.discoveredModels?.length
-			? currentProvider.discoveredModels
-			: [currentProvider.modelName],
+		currentProvider.discoveredModels ?? [],
 	)
 	const [modelSearch, setModelSearch] = useState("")
 	const [discovering, setDiscovering] = useState(false)
@@ -145,7 +143,7 @@ export function SettingsView({
 		setDiscoveredModels(
 			providerId === currentProvider.provider && currentProvider.discoveredModels?.length
 				? currentProvider.discoveredModels
-				: [PROVIDER_DEFAULT_MODELS[providerId]],
+				: [],
 		)
 		setApiKey("")
 		setModelSearch("")
@@ -468,45 +466,54 @@ export function SettingsView({
 							)}
 
 							<div className="space-y-2 rounded-lg border border-[#1c2a33] bg-[#080d12] p-3.5">
-								<div className="flex flex-wrap items-center justify-between gap-2">
-									<label className="text-xs font-bold text-[#e3edef]">
-										Select Model ({filteredModels.length} available)
-									</label>
-									<div className="relative w-56">
-										<Search className="pointer-events-none absolute top-2 left-2.5 h-3.5 w-3.5 text-[#71858c]" />
-										<input
-											type="text"
-											value={modelSearch}
-											onChange={(e) => setModelSearch(e.target.value)}
-											placeholder="Filter discovered models..."
-											className="h-7 w-full rounded border border-[#32454d] bg-[#0d141b] pr-2 pl-8 text-[11px] text-[#e3edef] focus:border-emerald-600 focus:outline-none"
-										/>
-									</div>
-								</div>
+								{discoveredModels.length > 0 ? (
+									<>
+										<div className="flex flex-wrap items-center justify-between gap-2">
+											<label className="text-xs font-bold text-[#e3edef]">
+												Discovered Models ({filteredModels.length} fetched from API)
+											</label>
+											<div className="relative w-56">
+												<Search className="pointer-events-none absolute top-2 left-2.5 h-3.5 w-3.5 text-[#71858c]" />
+												<input
+													type="text"
+													value={modelSearch}
+													onChange={(e) => setModelSearch(e.target.value)}
+													placeholder="Filter discovered models..."
+													className="h-7 w-full rounded border border-[#32454d] bg-[#0d141b] pr-2 pl-8 text-[11px] text-[#e3edef] focus:border-emerald-600 focus:outline-none"
+												/>
+											</div>
+										</div>
 
-								<select
-									value={modelName}
-									onChange={(e) => setModelName(e.target.value)}
-									className="h-9 w-full rounded-md border border-[#32454d] bg-[#0d141b] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
-								>
-									{!filteredModels.includes(modelName) && (
-										<option value={modelName}>{modelName} (custom)</option>
-									)}
-									{filteredModels.map((m) => (
-										<option key={m} value={m}>
-											{m}
-										</option>
-									))}
-								</select>
+										<select
+											value={modelName}
+											onChange={(e) => setModelName(e.target.value)}
+											className="h-9 w-full rounded-md border border-[#32454d] bg-[#0d141b] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
+										>
+											{!filteredModels.includes(modelName) && modelName && (
+												<option value={modelName}>{modelName} (manual)</option>
+											)}
+											{filteredModels.map((m) => (
+												<option key={m} value={m}>
+													{m}
+												</option>
+											))}
+										</select>
+									</>
+								) : (
+									<div className="text-xs text-[#81949a]">
+										No live models fetched yet. Enter your API key above and click <strong>Discover Models</strong> to load available models from this provider, or type a Model ID below.
+									</div>
+								)}
 
 								<div>
 									<label className="mb-1 block text-[11px] text-[#81949a]">
-										Or enter exact Model ID manually
+										Model ID
 									</label>
 									<input
 										type="text"
 										value={modelName}
 										onChange={(e) => setModelName(e.target.value)}
+										placeholder="Enter Model ID or discover from API"
 										className="h-8 w-full rounded-md border border-[#32454d] bg-[#0d141b] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
 									/>
 								</div>

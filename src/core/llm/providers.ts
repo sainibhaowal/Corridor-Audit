@@ -235,7 +235,7 @@ export class DynamicEndpointRouter implements InferenceRunner {
 	constructor(initialConfig: ActiveProviderConfig, maxConcurrent = 3) {
 		this.config = initialConfig
 		this.semaphore = new AsyncSemaphore(Math.max(1, maxConcurrent))
-		this.discoveredModels = [initialConfig.modelName]
+		this.discoveredModels = []
 	}
 
 	getConfig(): ActiveProviderConfig {
@@ -244,9 +244,7 @@ export class DynamicEndpointRouter implements InferenceRunner {
 
 	setDiscoveredModels(models: string[]): void {
 		const unique = [...new Set(models.filter(Boolean))]
-		if (unique.length > 0) {
-			this.discoveredModels = unique
-		}
+		this.discoveredModels = unique
 	}
 
 	getPublicStatus(): {
@@ -259,9 +257,6 @@ export class DynamicEndpointRouter implements InferenceRunner {
 		discoveredModels: string[]
 	} {
 		const hasKey = Boolean(this.config.apiKey || this.config.provider === "ollama")
-		const models = this.discoveredModels.includes(this.config.modelName)
-			? this.discoveredModels
-			: [this.config.modelName, ...this.discoveredModels]
 		return {
 			provider: this.config.provider,
 			label: PROVIDER_DEFAULTS[this.config.provider].label,
@@ -269,7 +264,7 @@ export class DynamicEndpointRouter implements InferenceRunner {
 			baseURL: this.config.baseURL || PROVIDER_DEFAULTS[this.config.provider].baseURL,
 			hasKey,
 			mode: hasKey ? "live" : "unconfigured",
-			discoveredModels: models,
+			discoveredModels: [...this.discoveredModels],
 		}
 	}
 
