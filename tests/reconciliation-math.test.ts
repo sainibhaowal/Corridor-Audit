@@ -6,6 +6,7 @@ import {
 	computeCentProofVarianceMinor,
 	computeFxSpread,
 	computeRecoverableOurViolationMinor,
+	computeTaxWithholding,
 	convertMinorUnits,
 } from "../src/core/money"
 import type { SettlementCase } from "../src/core/types"
@@ -73,10 +74,59 @@ test("All bundled scenarios satisfy exact integer-cents reconciliation rules", (
 			assert.equal(recoverable, 4500)
 			assert.equal(variance, 0)
 		} else if (c.caseId === "CASE-003") {
-			// Intentionally carries €120.00 unexplained short-pay (12000 minor units)
+			// Intentionally carries €120.00 unexplained short-pay (12000 minor units) and positive FX spread
+			assert.ok(fx.fxSpreadLossMinor > 0, "Expected non-negative FX spread loss")
 			assert.equal(variance, 12000)
 		} else {
 			assert.equal(variance, 0, `${c.caseId} must reconcile to 0 unexplained variance`)
 		}
 	}
+})
+
+test("Cross-currency withholding tax preserves exact zero-drift balance conservation", () => {
+	const grossEurMinor = 100000 // €1,000.00
+	const whtBps = 1000 // 10% = €100.00
+	const ecbRate = 1.0963
+	const bankRate = 1.05
+	const feeUsdMinor = 2000 // $20.00
+
+	const taxEurMinor = computeTaxWithholding(grossEurMinor, whtBps) // 10000 EUR cents
+	const taxUsdMinor = convertMinorUnits(taxEurMinor, "EUR", "USD", ecbRate) // 10963 USD cents
+	const settledUsdMinor =
+		convertMinorUnits(grossEurMinor, "EUR", "USD", bankRate) - feeUsdMinor - taxUsdMinor
+
+	const fxWithRate = computeFxSpread({
+		instructedGrossMinor: grossEurMinor,
+		instructedCurrency: "EUR",
+		settledMinor: settledUsdMinor,
+		settledCurrency: "USD",
+		normalizedReceiverChargesMinor: feeUsdMinor,
+		normalizedRepairFeeMinor: 0,
+		normalizedPlatformFeeMinor: 0,
+		normalizedWithholdingTaxMinor: taxUsdMinor,
+		midMarketRate: ecbRate,
+		bankAppliedRate: bankRate,
+	})
+	const varianceWithRate = computeCentProofVarianceMinor({
+		midMarketExpectedMinor: fxWithRate.midMarketExpectedMinor,
+		fxSpreadLossMinor: fxWithRate.fxSpreadLossMinor,
+		deductedFeesMinor: feeUsdMinor,
+		withholdingTaxMinor: taxUsdMinor,
+		netSettledMinor: settledUsdMinor,
+	})
+	assert.equal(varianceWithRate, 0)
+
+	// Without disclosed bankAppliedRate, tax must NOT be misclassified into FX spread
+	const fxNoRate = computeFxSpread({
+		instructedGrossMinor: grossEurMinor,
+		instructedCurrency: "EUR",
+		settledMinor: settledUsdMinor,
+		settledCurrency: "USD",
+		normalizedReceiverChargesMinor: feeUsdMinor,
+		normalizedRepairFeeMinor: 0,
+		normalizedPlatformFeeMinor: 0,
+		normalizedWithholdingTaxMinor: taxUsdMinor,
+		midMarketRate: ecbRate,
+	})
+	assert.equal(fxNoRate.fxSpreadLossMinor, fxWithRate.fxSpreadLossMinor)
 })

@@ -494,8 +494,9 @@ function renderCaseModal() {
           <tbody>
             <tr><td>Invoice Expected (${escapeHtml(v.numbers.invoicedCurrency)})</td><td class="num">${fmtMoney(v.numbers.invoicedMinor, v.numbers.invoicedCurrency)}</td><td class="mono">[INV:${escapeHtml(v.invoiceId)}]</td></tr>
             <tr><td>ECB Mid-Market Equivalent</td><td class="num">${fmtMoney(v.numbers.midMarketEquivalentMinor, ccy)}</td><td class="mono">[ECB:${escapeHtml(entry?.technical?.fx?.rateRecord?.ecbRateDate || "reference")}]</td></tr>
-            <tr><td>Bank / Platform Hidden FX Spread (${(v.numbers.fxSpreadBps / 100).toFixed(2)}%)</td><td class="num" style="color:var(--status-amber)">-${fmtMoney(v.numbers.fxSpreadLossMinor, ccy)}</td><td class="mono">[FX_SPREAD:${v.numbers.fxSpreadBps}bps]</td></tr>
-            <tr><td>Lifting / Repair / Platform Fees</td><td class="num" style="color:var(--status-red)">-${fmtMoney(v.numbers.liftingAndRepairFeesMinor + v.numbers.platformFeeMinor, ccy)}</td><td class="mono">[WIRE:${escapeHtml(v.wireId)}]</td></tr>
+            <tr><td>Bank / Platform Hidden FX Spread (${(v.numbers.fxSpreadBps / 100).toFixed(2)}%)</td><td class="num" style="color:var(--status-amber)">${v.numbers.fxSpreadLossMinor < 0 ? `+${fmtMoney(-v.numbers.fxSpreadLossMinor, ccy)}` : fmtMoney(-v.numbers.fxSpreadLossMinor, ccy)}</td><td class="mono">[FX_SPREAD:${v.numbers.fxSpreadBps}bps]</td></tr>
+            <tr><td>Lifting / Repair / Platform Fees</td><td class="num" style="color:var(--status-red)">${fmtMoney(-(v.numbers.liftingAndRepairFeesMinor + v.numbers.platformFeeMinor), ccy)}</td><td class="mono">[WIRE:${escapeHtml(v.wireId)}]</td></tr>
+            ${v.numbers.withholdingTaxMinor ? `<tr><td>Withholding Tax (Converted to ${escapeHtml(ccy)})</td><td class="num">${fmtMoney(-v.numbers.withholdingTaxMinor, ccy)}</td><td class="mono">[TAX:${escapeHtml(v.invoiceId)}]</td></tr>` : ""}
             <tr><td>Net Cash Landed</td><td class="num" style="color:var(--accent-emerald)"><strong>${fmtMoney(v.numbers.settledMinor, ccy)}</strong></td><td class="mono">[:32A:/SETTLED]</td></tr>
             <tr><td><strong>Unexplained Variance</strong></td><td class="num"><strong>${fmtMoney(v.numbers.unexplainedVarianceMinor, ccy)}</strong></td><td class="mono">${v.sourceRefs.length} SourceRefs</td></tr>
           </tbody>
@@ -659,20 +660,55 @@ async function init() {
     });
   });
 
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function postJsonSafe(url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const errJson = await res.json();
+      if (errJson.error) msg = errJson.error;
+    } catch {
+      // ignore
+    }
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
   // File & raw paste upload
   $("browseFileBtn").addEventListener("click", () => $("fileInput").click());
   $("fileInput").addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.name.toLowerCase().endsWith(".pdf")) {
-      const buf = await file.arrayBuffer();
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-      await fetch("/api/audit/upload", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: file.name, base64: b64, format: "pdf" }) });
-    } else {
-      const text = await file.text();
-      await fetch("/api/audit/upload", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: file.name, content: text, format: "auto" }) });
+    try {
+      if (file.name.toLowerCase().endsWith(".pdf")) {
+        const buf = await file.arrayBuffer();
+        const b64 = arrayBufferToBase64(buf);
+        await postJsonSafe("/api/audit/upload", { filename: file.name, base64: b64, format: "pdf" });
+      } else {
+        const text = await file.text();
+        await postJsonSafe("/api/audit/upload", { filename: file.name, content: text, format: "auto" });
+      }
+      document.querySelector('[data-view="stream"]').click();
+    } catch (err) {
+      alert(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      e.target.value = "";
     }
-    document.querySelector('[data-view="stream"]').click();
   });
 
   $("loadSampleMt103Btn").addEventListener("click", () => {
@@ -681,8 +717,12 @@ async function init() {
   $("runPasteBtn").addEventListener("click", async () => {
     const content = $("rawPasteInput").value.trim();
     if (!content) return;
-    await fetch("/api/audit/upload", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content, format: "auto" }) });
-    document.querySelector('[data-view="stream"]').click();
+    try {
+      await postJsonSafe("/api/audit/upload", { content, format: "auto" });
+      document.querySelector('[data-view="stream"]').click();
+    } catch (err) {
+      alert(`Ingest failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   });
 
   // Delegated UI interactions

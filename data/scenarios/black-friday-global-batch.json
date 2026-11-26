@@ -103,15 +103,15 @@
         "platformName": "direct_bank",
         "valueDate": "2026-11-24",
         "instructedAmount": { "amountMinor": 400000, "currency": "GBP" },
-        "settledAmount": { "amountMinor": 464700, "currency": "EUR" },
-        "bankAppliedRate": 1.19875,
+        "settledAmount": { "amountMinor": 461200, "currency": "EUR" },
+        "bankAppliedRate": 1.19,
         "chargeBearer": "SHA",
         "senderCharges": [],
         "receiverCharges": [],
         "repairFee": { "amountMinor": 2800, "currency": "EUR" },
         "remittanceInfo": "INV-2026-103",
         "senderName": "Albion Freight Ltd",
-        "rawText": "<Ntry><NtryRef>TXN20261124BF03</NtryRef><Amt Ccy=\"EUR\">4647.00</Amt><InstdAmt Ccy=\"GBP\">4000.00</InstdAmt><ChrgBr>SHAR</ChrgBr><ValDt><Dt>2026-11-24</Dt></ValDt><Ustrd>INV-2026-103</Ustrd><AddtlNtryInf>REPAIR: EUR 28.00 IBAN_MOD97_ERR</AddtlNtryInf></Ntry>"
+        "rawText": "<Ntry><NtryRef>TXN20261124BF03</NtryRef><Amt Ccy=\"EUR\">4612.00</Amt><InstdAmt Ccy=\"GBP\">4000.00</InstdAmt><ChrgBr>SHAR</ChrgBr><ValDt><Dt>2026-11-24</Dt></ValDt><Ustrd>INV-2026-103</Ustrd><AddtlNtryInf>REPAIR: EUR 28.00 IBAN_MOD97_ERR</AddtlNtryInf></Ntry>"
       }
     },
     {

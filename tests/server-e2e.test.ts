@@ -77,6 +77,60 @@ test("HTTP server streams 6-case batch, pauses at Mozaik breakpoint, approves cl
 		const txt = await (await fetch(`${url}/api/report/CASE-002?format=txt`)).text()
 		assert.ok(txt.includes("INV-2041"))
 		assert.ok(txt.includes("$45.00"))
+
+		// Verify Reject & Steer overrides CASE-002 to CLEAN with humanOverrideNote
+		const rejectCopy = { ...(case2 as object), caseId: "CASE-REJECT-TEST" }
+		const rWh = await fetch(`${url}/api/webhooks/inbound`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(rejectCopy),
+		})
+		assert.equal(rWh.status, 202)
+
+		let rejectPaused = false
+		for (let i = 0; i < 40; i++) {
+			const h = (await (await fetch(`${url}/api/history`)).json()) as {
+				pendingApprovals?: Array<{ caseId: string }>
+			}
+			if (h.pendingApprovals?.some((p) => p.caseId === "CASE-REJECT-TEST")) {
+				rejectPaused = true
+				break
+			}
+			await new Promise((r) => setTimeout(r, 150))
+		}
+		assert.equal(rejectPaused, true, "Expected CASE-REJECT-TEST to pause at Mozaik breakpoint")
+
+		const rejRes = await fetch(`${url}/api/breakpoints/CASE-REJECT-TEST/resolve`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ decision: "reject", reason: "Approved by CFO as SHA" }),
+		})
+		assert.equal(rejRes.status, 200)
+
+		let rejectedVerdict: {
+			caseId: string
+			status: string
+			humanOverrideNote?: string
+			numbers: { recoverableFeeMinor: number; unexplainedVarianceMinor: number }
+		} | undefined
+		for (let i = 0; i < 40; i++) {
+			const h = (await (await fetch(`${url}/api/history`)).json()) as {
+				verdicts?: Array<{
+					caseId: string
+					status: string
+					humanOverrideNote?: string
+					numbers: { recoverableFeeMinor: number; unexplainedVarianceMinor: number }
+				}>
+			}
+			rejectedVerdict = h.verdicts?.find((v) => v.caseId === "CASE-REJECT-TEST")
+			if (rejectedVerdict) break
+			await new Promise((r) => setTimeout(r, 150))
+		}
+		assert.ok(rejectedVerdict, "Expected CASE-REJECT-TEST to finish cleanly after Reject & Steer")
+		assert.equal(rejectedVerdict.status, "CLEAN")
+		assert.equal(rejectedVerdict.numbers.recoverableFeeMinor, 0)
+		assert.equal(rejectedVerdict.numbers.unexplainedVarianceMinor, 0)
+		assert.equal(rejectedVerdict.humanOverrideNote, "Approved by CFO as SHA")
 	} finally {
 		if (prevProvider === undefined) delete process.env.LLM_PROVIDER
 		else process.env.LLM_PROVIDER = prevProvider
