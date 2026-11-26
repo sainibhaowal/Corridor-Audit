@@ -336,7 +336,7 @@ export function ProviderSettingsModal({
 										"flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium",
 										testStatus.ok
 											? "border-[#225b51] bg-[#0d2725] text-[#75e4c7]"
-											: "border-red-500/40 bg-red-950/30 text-red-300",
+											: "border-red-300 bg-red-50 text-red-800",
 									)}
 								>
 									{testStatus.ok ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <XCircle className="h-4 w-4 shrink-0" />}

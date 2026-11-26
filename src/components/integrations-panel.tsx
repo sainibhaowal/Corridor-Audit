@@ -237,7 +237,7 @@ export function IntegrationsPanel({ onCasesQueued }: { onCasesQueued: () => void
 						"rounded-lg border px-3 py-2 text-xs font-medium",
 						banner.ok
 							? "border-[#225b51] bg-[#0d2725] text-[#75e4c7]"
-							: "border-red-500/40 bg-red-950/30 text-red-300",
+							: "border-red-300 bg-red-50 text-red-800",
 					)}
 				>
 					{banner.text}

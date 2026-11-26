@@ -180,51 +180,106 @@ export async function discoverModelsForProvider(params: {
 	baseURL?: string
 }): Promise<string[]> {
 	const defaults = PROVIDER_DEFAULTS[params.provider]
-	const baseUrl = (params.baseURL?.trim() || defaults.baseURL || "").replace(/\/+$/, "")
+	const baseUrl = normalizeProviderBaseUrl(params.baseURL?.trim() || defaults.baseURL || "")
 	const apiKey = params.apiKey?.trim()
 
 	if (!apiKey && params.provider !== "ollama") {
 		throw new Error(`Enter an API key for ${defaults.label} to discover models.`)
 	}
 
+	const headers = new Headers({ Accept: "application/json" })
+	let url: string
 	if (params.provider === "gemini") {
-		const res = await fetch(`${baseUrl}/models?key=${encodeURIComponent(apiKey || "")}`)
-		if (!res.ok) {
-			throw new Error(`Gemini model discovery failed (${res.status}): ${(await res.text()).slice(0, 200)}`)
-		}
-		const json = (await res.json()) as {
-			models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>
-		}
-		return (json.models ?? [])
-			.filter((m) => !m.supportedGenerationMethods || m.supportedGenerationMethods.includes("generateContent"))
-			.map((m) => (m.name || "").replace(/^models\//, ""))
-			.filter(Boolean)
-			.sort()
+		url = providerResourceUrl(baseUrl, "/models")
+		if (apiKey) headers.set("x-goog-api-key", apiKey)
+	} else if (params.provider === "anthropic") {
+		url = providerResourceUrl(baseUrl, "/models")
+		if (apiKey) headers.set("x-api-key", apiKey)
+		headers.set("anthropic-version", "2023-06-01")
+	} else if (params.provider === "ollama") {
+		// Ollama's native tags endpoint is the canonical inventory API; its
+		// OpenAI-compatible /v1/models endpoint is not implemented consistently.
+		url = ollamaTagsUrl(baseUrl)
+	} else {
+		url = providerResourceUrl(baseUrl, "/models")
+		if (apiKey) headers.set("Authorization", `Bearer ${apiKey}`)
 	}
 
-	if (params.provider === "anthropic") {
-		const res = await fetch(`${baseUrl}/models`, {
-			headers: {
-				"x-api-key": apiKey || "",
-				"anthropic-version": "2023-06-01",
-			},
-		})
-		if (!res.ok) {
-			throw new Error(`Anthropic model discovery failed (${res.status}): ${(await res.text()).slice(0, 200)}`)
+	let response: Response
+	try {
+		response = await fetch(url, { headers, signal: AbortSignal.timeout(12_000) })
+	} catch (error) {
+		if (error instanceof Error && error.name === "TimeoutError") {
+			throw new Error(`${defaults.label} model discovery timed out after 12 seconds. Check the provider URL and network.`)
 		}
-		const json = (await res.json()) as { data?: Array<{ id?: string }> }
-		return (json.data ?? []).map((m) => m.id || "").filter(Boolean).sort()
+		throw new Error(`${defaults.label} could not be reached. Check the provider URL, network, and local service status.`)
 	}
 
-	const headers: Record<string, string> = { Accept: "application/json" }
-	if (apiKey) headers.Authorization = `Bearer ${apiKey}`
-	const res = await fetch(`${baseUrl}/models`, { headers })
-	if (!res.ok) {
-		throw new Error(`${defaults.label} model discovery failed (${res.status}): ${(await res.text()).slice(0, 200)}`)
+	if (!response.ok) {
+		const reason = response.status === 401 || response.status === 403
+			? "The API key is invalid or does not have permission to list models."
+			: response.status === 404
+				? "The model-list endpoint was not found. Check the provider base URL."
+				: response.status === 429
+					? "The provider rate-limited model discovery. Wait briefly and retry."
+					: `The provider returned HTTP ${response.status}.`
+		throw new Error(`${defaults.label} model discovery failed. ${reason}`)
 	}
-	const json = (await res.json()) as { data?: Array<{ id?: string }>; models?: Array<{ name?: string }> }
-	const ids = (json.data ?? []).map((m) => m.id || "").concat((json.models ?? []).map((m) => m.name || ""))
-	return [...new Set(ids.filter(Boolean))].sort()
+
+	let json: unknown
+	try {
+		json = await response.json()
+	} catch {
+		throw new Error(`${defaults.label} returned an invalid model-list response.`)
+	}
+	const record = isRecord(json) ? json : {}
+	if (params.provider === "gemini") {
+		const models = Array.isArray(record.models) ? record.models : []
+		return uniqueSorted(models.flatMap((entry) => {
+			if (!isRecord(entry)) return []
+			const methods = Array.isArray(entry.supportedGenerationMethods)
+				? entry.supportedGenerationMethods.filter((method): method is string => typeof method === "string")
+				: undefined
+			if (methods && !methods.includes("generateContent")) return []
+			return typeof entry.name === "string" ? [entry.name.replace(/^models\//, "")] : []
+		}))
+	}
+	if (params.provider === "ollama") {
+		const models = Array.isArray(record.models) ? record.models : []
+		return uniqueSorted(models.flatMap((entry) =>
+			isRecord(entry) && typeof entry.name === "string" ? [entry.name] : [],
+		))
+	}
+
+	const data = Array.isArray(record.data) ? record.data : []
+	const models = Array.isArray(record.models) ? record.models : []
+	return uniqueSorted([
+		...data.flatMap((entry) => isRecord(entry) && typeof entry.id === "string" ? [entry.id] : []),
+		...models.flatMap((entry) => isRecord(entry)
+			? [typeof entry.id === "string" ? entry.id : typeof entry.name === "string" ? entry.name : ""]
+			: []),
+	])
+}
+
+function normalizeProviderBaseUrl(value: string): string {
+	return value.trim().replace(/\/+$/, "")
+}
+
+function providerResourceUrl(baseUrl: string, resource: string): string {
+	return `${baseUrl.endsWith(resource) ? baseUrl : `${baseUrl}${resource}`}`
+}
+
+function ollamaTagsUrl(baseUrl: string): string {
+	const withoutOpenAiPath = baseUrl.replace(/\/v1(?:\/.*)?$/, "")
+	return providerResourceUrl(withoutOpenAiPath, "/api/tags")
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function uniqueSorted(values: string[]): string[] {
+	return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b))
 }
 
 export class DynamicEndpointRouter implements InferenceRunner {

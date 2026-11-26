@@ -185,7 +185,12 @@ export function SettingsView({
 		} catch (err) {
 			setDiscoverNotice({
 				ok: false,
-				text: err instanceof Error ? err.message : String(err),
+				text:
+					err instanceof TypeError && /fetch/i.test(err.message)
+						? "Cannot reach the app server. Make sure CorridorAudit is running at http://127.0.0.1:3000, then retry."
+						: err instanceof Error
+							? err.message
+							: "Model discovery failed before a response was received.",
 			})
 		} finally {
 			setDiscovering(false)
@@ -480,7 +485,7 @@ export function SettingsView({
 										"rounded-md border px-3 py-2 text-xs font-medium",
 										discoverNotice.ok
 											? "border-[#225b51] bg-[#0d2725] text-[#75e4c7]"
-											: "border-red-500/40 bg-red-950/30 text-red-300",
+											: "border-red-300 bg-red-50 text-red-800",
 									)}
 								>
 									{discoverNotice.text}
@@ -544,7 +549,7 @@ export function SettingsView({
 										"flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium",
 										testStatus.ok
 											? "border-[#225b51] bg-[#0d2725] text-[#75e4c7]"
-											: "border-red-500/40 bg-red-950/30 text-red-300",
+											: "border-red-300 bg-red-50 text-red-800",
 									)}
 								>
 									{testStatus.ok ? (
