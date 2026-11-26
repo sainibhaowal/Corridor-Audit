@@ -73,7 +73,15 @@ export class CorridorDatabase {
 		if (!row) {
 			throw new Error(`Workspace ${workspaceId} not found.`)
 		}
-		const secret = decryptSecret(String(row.webhook_signing_secret_enc))
+		let secretMasked = "whsec_••••••••"
+		try {
+			const secret = decryptSecret(String(row.webhook_signing_secret_enc))
+			secretMasked = maskSecret(secret)
+		} catch {
+			// Self-heal if local .vault-key was rotated/recreated after DB creation
+			const regenerated = this.rotateWebhookSecret(workspaceId)
+			secretMasked = maskSecret(regenerated)
+		}
 		return {
 			id: String(row.id),
 			name: String(row.name),
@@ -83,7 +91,7 @@ export class CorridorDatabase {
 			withholdingTaxBps: Number(row.withholding_tax_bps),
 			varianceThresholdMinor: Number(row.variance_threshold_minor),
 			inboundEmailAddress: String(row.inbound_email_address),
-			webhookSigningSecretMasked: maskSecret(secret),
+			webhookSigningSecretMasked: secretMasked,
 			requireWebhookSignature: Boolean(row.require_webhook_signature),
 			createdAt: String(row.created_at),
 			updatedAt: String(row.updated_at),
@@ -95,7 +103,11 @@ export class CorridorDatabase {
 			.prepare("SELECT webhook_signing_secret_enc FROM workspaces WHERE id = ?")
 			.get(workspaceId) as { webhook_signing_secret_enc: string } | undefined
 		if (!row) throw new Error(`Workspace ${workspaceId} not found.`)
-		return decryptSecret(row.webhook_signing_secret_enc)
+		try {
+			return decryptSecret(row.webhook_signing_secret_enc)
+		} catch {
+			return this.rotateWebhookSecret(workspaceId)
+		}
 	}
 
 	rotateWebhookSecret(workspaceId = DEFAULT_WORKSPACE_ID): string {

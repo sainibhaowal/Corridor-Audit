@@ -45,15 +45,41 @@ export function TooltipLayer() {
 			if (!active?.isConnected || tooltip.dataset.visible !== "true") return
 			const anchor = active.getBoundingClientRect()
 			const box = tooltip.getBoundingClientRect()
-			const halfWidth = box.width / 2
+			const edgeThreshold = Math.max(180, box.width / 2 + 20)
+			const centerY = anchor.top + anchor.height / 2
+			const clampedTop = Math.max(10, Math.min(window.innerHeight - box.height - 10, centerY - box.height / 2))
+			const setArrowOffset = (offset: number, size: number) => {
+				const safeOffset = Math.max(10, Math.min(size - 10, offset))
+				tooltip.style.setProperty("--tooltip-arrow-offset", `${safeOffset}px`)
+			}
+
+			if (anchor.right >= window.innerWidth - edgeThreshold && anchor.left >= box.width + 16) {
+				tooltip.dataset.placement = "left"
+				tooltip.style.left = `${anchor.left - box.width - 9}px`
+				tooltip.style.top = `${clampedTop}px`
+				tooltip.style.transform = "none"
+				setArrowOffset(centerY - clampedTop, box.height)
+				return
+			}
+
+			if (anchor.left <= edgeThreshold && anchor.right + box.width + 16 <= window.innerWidth) {
+				tooltip.dataset.placement = "right"
+				tooltip.style.left = `${anchor.right + 9}px`
+				tooltip.style.top = `${clampedTop}px`
+				tooltip.style.transform = "none"
+				setArrowOffset(centerY - clampedTop, box.height)
+				return
+			}
+
 			const centerX = anchor.left + anchor.width / 2
-			const left = Math.min(window.innerWidth - halfWidth - 10, Math.max(halfWidth + 10, centerX))
+			const left = Math.max(10, Math.min(window.innerWidth - box.width - 10, centerX - box.width / 2))
 			const above = anchor.top >= box.height + 14
 
 			tooltip.dataset.placement = above ? "top" : "bottom"
 			tooltip.style.left = `${left}px`
 			tooltip.style.top = `${above ? anchor.top - 8 : anchor.bottom + 8}px`
-			tooltip.style.transform = above ? "translate(-50%, -100%)" : "translate(-50%, 0)"
+			tooltip.style.transform = above ? "translateY(-100%)" : "none"
+			setArrowOffset(centerX - left, box.width)
 		}
 
 		const hide = () => {

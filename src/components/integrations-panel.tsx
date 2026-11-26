@@ -80,9 +80,14 @@ export function IntegrationsPanel({ onCasesQueued }: { onCasesQueued: () => void
 				setWorkspace(data.workspace ?? null)
 				setIntegrations(data.integrations ?? [])
 				setSyncRuns(data.syncRuns ?? [])
+			} else {
+				setBanner({ ok: false, text: "Failed to load integrations from server." })
 			}
-		} catch {
-			// ignore transient load error
+		} catch (err) {
+			setBanner({
+				ok: false,
+				text: err instanceof Error ? err.message : "Could not reach /api/integrations.",
+			})
 		}
 	}, [])
 

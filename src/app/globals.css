@@ -215,6 +215,7 @@ html.theme-transition::view-transition-new(root) {
 .app-tooltip {
 	position: fixed;
 	z-index: 10000;
+	width: max-content;
 	max-width: min(320px, calc(100vw - 20px));
 	padding: 6px 9px;
 	border: 1px solid #3a4248;
@@ -241,26 +242,47 @@ html.theme-transition::view-transition-new(root) {
 }
 
 .app-tooltip[data-placement="top"]::after,
-.app-tooltip[data-placement="bottom"]::after {
+.app-tooltip[data-placement="bottom"]::after,
+.app-tooltip[data-placement="left"]::after,
+.app-tooltip[data-placement="right"]::after {
 	position: absolute;
-	left: 50%;
 	width: 7px;
 	height: 7px;
 	background: #202428;
 	content: "";
-	transform: translateX(-50%) rotate(45deg);
+	transform: rotate(45deg);
 }
 
 .app-tooltip[data-placement="top"]::after {
+	left: var(--tooltip-arrow-offset, 50%);
 	bottom: -4px;
 	border-right: 1px solid #3a4248;
 	border-bottom: 1px solid #3a4248;
+	transform: translateX(-50%) rotate(45deg);
 }
 
 .app-tooltip[data-placement="bottom"]::after {
+	left: var(--tooltip-arrow-offset, 50%);
 	top: -4px;
 	border-top: 1px solid #3a4248;
 	border-left: 1px solid #3a4248;
+	transform: translateX(-50%) rotate(45deg);
+}
+
+.app-tooltip[data-placement="left"]::after {
+	right: -4px;
+	top: var(--tooltip-arrow-offset, 50%);
+	border-top: 1px solid #3a4248;
+	border-right: 1px solid #3a4248;
+	transform: translateY(-50%) rotate(45deg);
+}
+
+.app-tooltip[data-placement="right"]::after {
+	left: -4px;
+	top: var(--tooltip-arrow-offset, 50%);
+	border-bottom: 1px solid #3a4248;
+	border-left: 1px solid #3a4248;
+	transform: translateY(-50%) rotate(45deg);
 }
 
 @media (prefers-reduced-motion: reduce) {
