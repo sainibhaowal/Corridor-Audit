@@ -632,7 +632,7 @@ export function CorridorWorkspace() {
 						]}
 					/>
 
-					{provider.mode === "live" && (provider.discoveredModels?.length ?? 0) > 0 && (
+					{provider.mode === "live" && (provider.discoveredModels?.length ?? 0) > 0 ? (
 						<SelectBox
 							value={provider.modelName}
 							onChange={async (nextModel) => {
@@ -644,38 +644,38 @@ export function CorridorWorkspace() {
 								const data = (await res.json()) as { provider?: ProviderStatus }
 								if (data.provider) setProvider(data.provider)
 							}}
-							data-tooltip="Switch active connected model"
-							className="hidden max-w-[210px] md:block"
+							title={`${provider.label} (${provider.modelName})`}
+							className="max-w-[230px]"
 							buttonClassName="h-8 rounded-lg border-[#225b51] bg-[#0d2725] font-mono text-[11px] text-[#75e4c7]"
 							options={(provider.discoveredModels ?? [provider.modelName]).map((m) => ({
 								value: m,
 								label: m,
 							}))}
 						/>
-					)}
-
-					<button
-						type="button"
-						onClick={() => setView("settings")}
-						data-tooltip={`${provider.label} (${provider.modelName})`}
-						className={cn(
-						"inline-flex h-8 w-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 truncate rounded-lg border px-0 text-[11.5px] font-semibold whitespace-nowrap transition-colors sm:w-auto sm:px-2.5 xl:max-w-[230px] xl:justify-start",
-							provider.mode === "unconfigured"
-								? "border-[#674b23] bg-[#2c2111] text-[#f0c77f] hover:bg-[#3a2a14]"
-								: "border-[#225b51] bg-[#0d2725] text-[#75e4c7] hover:bg-[#12342e]",
-						)}
-					>
-						<span
+					) : (
+						<button
+							type="button"
+							onClick={() => setView("settings")}
+							data-tooltip={`${provider.label} (${provider.modelName})`}
 							className={cn(
-								"h-2 w-2 shrink-0 rounded-[3px]",
-								provider.mode === "unconfigured" ? "bg-amber-600" : "bg-emerald-600",
+								"inline-flex h-8 w-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 truncate rounded-lg border px-0 text-[11.5px] font-semibold whitespace-nowrap transition-colors sm:w-auto sm:px-2.5 xl:max-w-[230px] xl:justify-start",
+								provider.mode === "unconfigured"
+									? "border-[#674b23] bg-[#2c2111] text-[#f0c77f] hover:bg-[#3a2a14]"
+									: "border-[#225b51] bg-[#0d2725] text-[#75e4c7] hover:bg-[#12342e]",
 							)}
-						/>
-						<span className="hidden truncate sm:inline xl:hidden">
-							{provider.mode === "unconfigured" ? "No Key" : provider.provider.toUpperCase()}
-						</span>
-						<span className="hidden truncate xl:inline">{providerBadgeText}</span>
-					</button>
+						>
+							<span
+								className={cn(
+									"h-2 w-2 shrink-0 rounded-[3px]",
+									provider.mode === "unconfigured" ? "bg-amber-600" : "bg-emerald-600",
+								)}
+							/>
+							<span className="hidden truncate sm:inline xl:hidden">
+								{provider.mode === "unconfigured" ? "No Key" : provider.provider.toUpperCase()}
+							</span>
+							<span className="hidden truncate xl:inline">{providerBadgeText}</span>
+						</button>
+					)}
 				</div>
 			</header>
 
