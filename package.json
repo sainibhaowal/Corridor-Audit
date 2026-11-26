@@ -1,0 +1,32 @@
+{
+	"name": "corridor-audit",
+	"version": "1.0.0",
+	"description": "Cross-border settlement, FX spread & hidden-fee forensics powered by concurrent Mozaik agents",
+	"type": "module",
+	"private": false,
+	"scripts": {
+		"start": "tsx src/index.ts",
+		"cli": "tsx src/cli.ts",
+		"test": "node --import tsx --test tests/*.test.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"keywords": [
+		"mozaik",
+		"multi-agent",
+		"fintech",
+		"reconciliation",
+		"swift-mt103",
+		"cross-border-payments"
+	],
+	"license": "MIT",
+	"dependencies": {
+		"@mozaik-ai/core": "6.0.0",
+		"dotenv": "^17.4.2",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"@types/node": "^22.0.0",
+		"tsx": "^4.21.0",
+		"typescript": "^5.9.3"
+	}
+}

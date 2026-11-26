@@ -1,0 +1,17 @@
+# Pre-kickoff prep & planning folders (excluded from git & GitHub submission repo)
+/assets/
+/docs/
+
+# Dependencies & build output
+node_modules/
+dist/
+
+# Secrets & local environment
+.env
+.env.local
+.env.*.local
+
+# Logs & OS metadata
+*.log
+.DS_Store
+Thumbs.db
