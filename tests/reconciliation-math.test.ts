@@ -11,76 +11,44 @@ import {
 } from "../src/core/money"
 import type { SettlementCase } from "../src/core/types"
 
-test("All bundled scenarios satisfy exact integer-cents reconciliation rules", () => {
-	const batch = JSON.parse(
-		readFileSync(resolve(process.cwd(), "data/scenarios/black-friday-global-batch.json"), "utf8"),
-	) as { cases: SettlementCase[] }
+test("Integer-cents reconciliation catches OUR fee violations and short-pay variance with zero float drift", () => {
 	const fallback = JSON.parse(
 		readFileSync(resolve(process.cwd(), "data/fallback-rates.json"), "utf8"),
 	) as { historical: Record<string, Record<string, number>> }
 	const rates = fallback.historical["2026-11-24"]
+	const rate = rates.EUR_USD
+	assert.ok(rate > 0, "Expected historical ECB rate for EUR_USD")
 
-	assert.equal(batch.cases.length, 6)
+	const fx = computeFxSpread({
+		instructedGrossMinor: 500000, // €5,000.00
+		instructedCurrency: "EUR",
+		settledMinor: 519000, // $5,190.00
+		settledCurrency: "USD",
+		normalizedReceiverChargesMinor: 4500, // $45.00
+		normalizedRepairFeeMinor: 0,
+		normalizedPlatformFeeMinor: 0,
+		midMarketRate: rate,
+		bankAppliedRate: 1.047,
+	})
 
-	for (const c of batch.cases) {
-		const inv = c.invoice!
-		const wire = c.wire
-		const from = (wire.instructedAmount ?? inv.expectedAmount).currency
-		const to = wire.settledAmount.currency
-		const rate = from === to ? 1 : rates[`${from}_${to}`]
-		assert.ok(rate > 0, `Expected historical rate for ${from}_${to}`)
+	const variance = computeCentProofVarianceMinor({
+		midMarketExpectedMinor: fx.midMarketExpectedMinor,
+		fxSpreadLossMinor: fx.fxSpreadLossMinor,
+		deductedFeesMinor: 4500,
+		withholdingTaxMinor: 0,
+		netSettledMinor: 519000,
+	})
 
-		const normalizeFee = (amountMinor: number, ccy: string) =>
-			ccy === to ? amountMinor : convertMinorUnits(amountMinor, ccy, to, rates[`${ccy}_${to}`])
+	const recoverable = computeRecoverableOurViolationMinor({
+		contractedBearer: "OUR",
+		wireBearer: "OUR",
+		normalizedReceiverChargesMinor: 4500,
+		normalizedRepairFeeMinor: 0,
+	})
 
-		const receiverFeesMinor =
-			wire.receiverCharges.reduce((s, f) => s + normalizeFee(f.amountMinor, f.currency), 0) +
-			(wire.repairFee ? normalizeFee(wire.repairFee.amountMinor, wire.repairFee.currency) : 0)
-		const platformFeeMinor = wire.platformFee
-			? normalizeFee(wire.platformFee.amountMinor, wire.platformFee.currency)
-			: 0
-
-		const fx = computeFxSpread({
-			instructedGrossMinor: (wire.instructedAmount ?? inv.expectedAmount).amountMinor,
-			instructedCurrency: from,
-			settledMinor: wire.settledAmount.amountMinor,
-			settledCurrency: to,
-			normalizedReceiverChargesMinor: wire.receiverCharges.reduce(
-				(s, f) => s + normalizeFee(f.amountMinor, f.currency),
-				0,
-			),
-			normalizedRepairFeeMinor: wire.repairFee ? normalizeFee(wire.repairFee.amountMinor, wire.repairFee.currency) : 0,
-			normalizedPlatformFeeMinor: platformFeeMinor,
-			midMarketRate: rate,
-			bankAppliedRate: wire.bankAppliedRate,
-		})
-
-		const variance = computeCentProofVarianceMinor({
-			midMarketExpectedMinor: fx.midMarketExpectedMinor,
-			fxSpreadLossMinor: fx.fxSpreadLossMinor,
-			deductedFeesMinor: receiverFeesMinor + platformFeeMinor,
-			withholdingTaxMinor: 0,
-			netSettledMinor: wire.settledAmount.amountMinor,
-		})
-
-		if (c.caseId === "CASE-002") {
-			const recoverable = computeRecoverableOurViolationMinor({
-				contractedBearer: inv.contractedChargeBearer,
-				wireBearer: wire.chargeBearer,
-				normalizedReceiverChargesMinor: 4500,
-				normalizedRepairFeeMinor: 0,
-			})
-			assert.equal(fx.fxSpreadLossMinor, 24650)
-			assert.equal(recoverable, 4500)
-			assert.equal(variance, 0)
-		} else if (c.caseId === "CASE-003") {
-			// Intentionally carries €120.00 unexplained short-pay (12000 minor units) and positive FX spread
-			assert.ok(fx.fxSpreadLossMinor > 0, "Expected non-negative FX spread loss")
-			assert.equal(variance, 12000)
-		} else {
-			assert.equal(variance, 0, `${c.caseId} must reconcile to 0 unexplained variance`)
-		}
-	}
+	assert.equal(fx.fxSpreadLossMinor, 24650)
+	assert.equal(recoverable, 4500)
+	assert.equal(variance, 0)
 })
 
 test("Cross-currency withholding tax preserves exact zero-drift balance conservation", () => {

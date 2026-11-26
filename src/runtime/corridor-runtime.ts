@@ -19,7 +19,7 @@ export interface BreakpointDecision {
 }
 
 export class CorridorState extends RuntimeState {
-	public batchId = "BF-2026-CORRIDOR-DEMO"
+	public batchId = "CORRIDOR-LIVE-BATCH"
 	public rawInvoices: InvoiceInput[] = []
 	public rawWires: WireOrBankInput[] = []
 	public fxCache = new Map<string, FxRateRecord>()

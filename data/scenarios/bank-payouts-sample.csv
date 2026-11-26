@@ -1,4 +1,0 @@
-wire_id,platform,sender,value_date,instructed_amount,instructed_currency,settled_amount,settled_currency,platform_fee,platform_fee_currency,receiver_fee,fee_currency,charge_bearer,remittance_info
-PAYOUT-UPW-906,upwork,Upwork Global Escrow,2026-11-24,1500.00,USD,1305.30,EUR,15.00,USD,0.00,EUR,SHA,INV-UPW-106
-WIRE-BF01,direct_bank,Rheinland Optics GmbH,2026-11-24,2000.00,EUR,2174.60,USD,0.00,EUR,18.00,USD,SHA,/INV/INV-2026-101
-WIRE-2041,direct_bank,Nordic Gear GmbH,2026-11-24,5000.00,EUR,5190.00,USD,0.00,EUR,45.00,USD,OUR,/INV/INV-2041

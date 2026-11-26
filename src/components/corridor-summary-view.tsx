@@ -30,56 +30,59 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 	return (
 		<div className="space-y-4">
 			<div>
-				<div className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#62e1c3]">
-					CORRIDOR ANALYTICS <span className="text-[#50646b]">/ CENT-PROOF LEDGER</span>
-				</div>
-				<h1 className="mt-1 text-xl font-semibold tracking-tight text-[#dce8e9]">
+				<h1 className="text-xl font-extrabold tracking-tight text-[#e3edef]">
 					Cross-Border Corridor Leak Summary
 				</h1>
-				<p className="mt-1 text-xs text-[#7e9298]">
+				<p className="mt-1 text-xs text-[#81949a]">
 					Aggregated cents-verified totals across all completed audits and corridor channels.
 				</p>
 			</div>
 
 			<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-				<Card className="flex min-h-[96px] flex-col justify-between p-4">
-					<div className="font-mono text-[10px] uppercase tracking-wider text-[#7e9298]">
+				<Card className="flex min-h-[100px] flex-col justify-between p-4">
+					<div className="text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
 						Cases Audited
 					</div>
-					<div className="tabular font-mono text-2xl font-bold text-[#dce8e9]">{verdicts.length}</div>
-					<div className="text-[11px] text-[#50646b]">
+					<div className="tabular text-2xl font-extrabold tracking-tight text-[#e3edef]">
+						{verdicts.length}
+					</div>
+					<div className="text-[11px] text-[#71858c]">
 						{verdicts.length === 0 ? "Awaiting batch or upload" : "Cent-proof complete"}
 					</div>
 				</Card>
 
-				<Card className="flex min-h-[96px] flex-col justify-between p-4">
-					<div className="font-mono text-[10px] uppercase tracking-wider text-[#7e9298]">
+				<Card className="flex min-h-[100px] flex-col justify-between p-4">
+					<div className="text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
 						Recoverable Fees
 					</div>
-					<div className="tabular font-mono text-2xl font-bold text-[#62e1c3]">{recoverLabel}</div>
-					<div className="text-[11px] text-[#50646b]">Wrongful :71A:OUR deductions</div>
+					<div className="tabular text-2xl font-extrabold tracking-tight text-[#62e1c3]">
+						{recoverLabel}
+					</div>
+					<div className="text-[11px] text-[#71858c]">Wrongful :71A:OUR deductions</div>
 				</Card>
 
-				<Card className="flex min-h-[96px] flex-col justify-between p-4">
-					<div className="font-mono text-[10px] uppercase tracking-wider text-[#7e9298]">
+				<Card className="flex min-h-[100px] flex-col justify-between p-4">
+					<div className="text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
 						Hidden FX Spread
 					</div>
-					<div className="tabular font-mono text-2xl font-bold text-[#e7b56a]">{fxLabel}</div>
-					<div className="text-[11px] text-[#50646b]">vs. official ECB mid-market</div>
+					<div className="tabular text-2xl font-extrabold tracking-tight text-amber-700">
+						{fxLabel}
+					</div>
+					<div className="text-[11px] text-[#71858c]">vs. official ECB mid-market</div>
 				</Card>
 
-				<Card className="flex min-h-[96px] flex-col justify-between p-4">
-					<div className="font-mono text-[10px] uppercase tracking-wider text-[#7e9298]">
+				<Card className="flex min-h-[100px] flex-col justify-between p-4">
+					<div className="text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
 						Open Variances
 					</div>
 					<div
-						className={`tabular font-mono text-2xl font-bold ${
-							varianceCount > 0 ? "text-[#f17678]" : "text-[#62e1c3]"
+						className={`tabular text-2xl font-extrabold tracking-tight ${
+							varianceCount > 0 ? "text-red-600" : "text-[#62e1c3]"
 						}`}
 					>
 						{varianceCount}
 					</div>
-					<div className="text-[11px] text-[#50646b]">
+					<div className="text-[11px] text-[#71858c]">
 						{varianceCount > 0 ? "Unexplained short-pay flagged" : "Zero unexplained drift"}
 					</div>
 				</Card>
@@ -89,7 +92,7 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 				<div className="overflow-x-auto">
 					<table className="w-full border-collapse text-xs">
 						<thead>
-							<tr className="border-b border-[#1b2a34] bg-[#090e14] font-mono text-[10px] uppercase tracking-wider text-[#7e9298]">
+							<tr className="border-b border-[#1c2a33] bg-[#080d12] text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
 								<th className="px-4 py-3 text-left">Case</th>
 								<th className="px-4 py-3 text-left">Wire / Channel</th>
 								<th className="px-4 py-3 text-right">FX Spread Leak</th>
@@ -98,13 +101,12 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 								<th className="px-4 py-3 text-left">Verdict</th>
 							</tr>
 						</thead>
-						<tbody className="divide-y divide-[#1b2a34]/70">
+						<tbody className="divide-y divide-[#1c2a33]">
 							{verdicts.length === 0 ? (
 								<tr>
-									<td colSpan={6} className="px-4 py-8 text-center text-xs text-[#7e9298]">
-										No completed audits yet — click{" "}
-										<strong className="text-[#dce8e9]">Stream 6-Case Batch</strong> or upload a file
-										in <strong className="text-[#dce8e9]">Inbound Sources</strong>.
+									<td colSpan={6} className="px-4 py-8 text-center text-xs text-[#81949a]">
+										No completed audits yet — click <strong>Stream 6-Case Batch</strong> in the left
+										sidebar or upload a file in <strong>Inbound Sources</strong>.
 									</td>
 								</tr>
 							) : (
@@ -115,24 +117,24 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 										<tr
 											key={v.caseId}
 											onClick={() => onSelectCase(v.caseId)}
-											className="cursor-pointer transition-colors hover:bg-[#0e1720]"
+											className="cursor-pointer transition-colors hover:bg-[#080d12]"
 										>
 											<td className="px-4 py-3 font-mono">
-												<div className="font-bold text-[#dce8e9]">{v.caseId}</div>
-												<div className="text-[11px] text-[#7e9298]">{v.invoiceId}</div>
+												<div className="font-bold text-[#e3edef]">{v.caseId}</div>
+												<div className="text-[11px] text-[#81949a]">{v.invoiceId}</div>
 											</td>
-											<td className="px-4 py-3 text-[#c5d4d6]">{v.wireId}</td>
-											<td className="px-4 py-3 text-right font-mono tabular text-[#e7b56a]">
+											<td className="px-4 py-3 text-[#c7d3d6]">{v.wireId}</td>
+											<td className="px-4 py-3 text-right font-mono tabular text-amber-700">
 												{fmtClientMoney(v.numbers.fxSpreadLossMinor, ccy)} (
 												{(v.numbers.fxSpreadBps / 100).toFixed(2)}%)
 											</td>
-											<td className="px-4 py-3 text-right font-mono tabular text-[#c5d4d6]">
+											<td className="px-4 py-3 text-right font-mono tabular">
 												{fmtClientMoney(fees, ccy)} /{" "}
-												<strong className="text-[#62e1c3]">
+												<strong className="text-[#75e4c7]">
 													{fmtClientMoney(v.numbers.recoverableFeeMinor, ccy)}
 												</strong>
 											</td>
-											<td className="px-4 py-3 text-right font-mono tabular font-semibold text-[#dce8e9]">
+											<td className="px-4 py-3 text-right font-mono tabular font-semibold">
 												{fmtClientMoney(v.numbers.unexplainedVarianceMinor, ccy)}
 											</td>
 											<td className="px-4 py-3">

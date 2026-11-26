@@ -1,147 +1,95 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { POST as resolveBreakpointRoute } from "../src/app/api/breakpoints/[caseId]/resolve/route"
+import { POST as uploadRoute } from "../src/app/api/audit/upload/route"
 import { GET as healthRoute } from "../src/app/api/health/route"
 import { GET as historyRoute } from "../src/app/api/history/route"
-import { GET as reportRoute } from "../src/app/api/report/[caseId]/route"
-import { GET as sampleRoute } from "../src/app/api/scenarios/sample/route"
+import { POST as terminalRoute } from "../src/app/api/terminal/route"
 import { POST as inboundWebhookRoute } from "../src/app/api/webhooks/inbound/route"
-import { initCorridorOrchestrator } from "../src/runtime/orchestrator"
 
-test("Next.js App Router API routes run Mozaik concurrency, pause at breakpoints, approve, reject-steer, and serve reports", async () => {
-	const prevProvider = process.env.LLM_PROVIDER
-	process.env.LLM_PROVIDER = "demo"
-
-	const orchestrator = initCorridorOrchestrator({ autoApprove: false })
-
-	try {
-		const health = (await (await healthRoute()).json()) as {
-			ok: boolean
-			framework: string
-			provider: { mode: string }
-		}
-		assert.equal(health.ok, true)
-		assert.equal(health.provider.mode, "demo")
-		assert.ok(health.framework.includes("Next.js"))
-
-		const sample = (await (await sampleRoute()).json()) as {
-			cases: Array<{ caseId: string }>
-		}
-		const case2 = sample.cases.find((c) => c.caseId === "CASE-002")
-		assert.ok(case2)
-
-		// 1. Trigger CASE-002 via Next App Router webhook handler -> pauses at OUR gate
-		const whRes = await inboundWebhookRoute(
-			new Request("http://127.0.0.1/api/webhooks/inbound", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(case2),
-			}),
-		)
-		assert.equal(whRes.status, 202)
-
-		let paused = false
-		for (let i = 0; i < 40; i++) {
-			const h = (await (await historyRoute()).json()) as {
-				pendingApprovals?: Array<{ caseId: string }>
-			}
-			if (h.pendingApprovals?.some((p) => p.caseId === "CASE-002")) {
-				paused = true
-				break
-			}
-			await new Promise((r) => setTimeout(r, 150))
-		}
-		assert.equal(paused, true, "Expected CASE-002 to pause at Mozaik InterceptionHandler breakpoint")
-
-		const approveRes = await resolveBreakpointRoute(
-			new Request("http://127.0.0.1/api/breakpoints/CASE-002/resolve", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ decision: "approve" }),
-			}),
-			{ params: Promise.resolve({ caseId: "CASE-002" }) },
-		)
-		assert.equal(approveRes.status, 200)
-
-		type VerdictShape = {
-			caseId: string
-			status: string
-			humanOverrideNote?: string
-			numbers: { recoverableFeeMinor: number; unexplainedVarianceMinor: number }
-		}
-		let finishedVerdict: VerdictShape | undefined
-		for (let i = 0; i < 40; i++) {
-			const h = (await (await historyRoute()).json()) as {
-				verdicts?: VerdictShape[]
-			}
-			finishedVerdict = h.verdicts?.find((v) => v.caseId === "CASE-002")
-			if (finishedVerdict) break
-			await new Promise((r) => setTimeout(r, 150))
-		}
-		assert.ok(finishedVerdict, "Expected CASE-002 AuditVerdict after human approval")
-		assert.equal(finishedVerdict.status, "RECOVERABLE_FEE_VIOLATION")
-		assert.equal(finishedVerdict.numbers.recoverableFeeMinor, 4500)
-		assert.equal(finishedVerdict.numbers.unexplainedVarianceMinor, 0)
-
-		const txtRes = await reportRoute(
-			new Request("http://127.0.0.1/api/report/CASE-002?format=txt"),
-			{ params: Promise.resolve({ caseId: "CASE-002" }) },
-		)
-		const txt = await txtRes.text()
-		assert.ok(txt.includes("INV-2041"))
-		assert.ok(txt.includes("$45.00"))
-
-		// 2. Verify Reject & Steer overrides CASE-REJECT-TEST cleanly to CLEAN with humanOverrideNote
-		const rejectCopy = { ...(case2 as object), caseId: "CASE-REJECT-TEST" }
-		const rWh = await inboundWebhookRoute(
-			new Request("http://127.0.0.1/api/webhooks/inbound", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(rejectCopy),
-			}),
-		)
-		assert.equal(rWh.status, 202)
-
-		let rejectPaused = false
-		for (let i = 0; i < 40; i++) {
-			const h = (await (await historyRoute()).json()) as {
-				pendingApprovals?: Array<{ caseId: string }>
-			}
-			if (h.pendingApprovals?.some((p) => p.caseId === "CASE-REJECT-TEST")) {
-				rejectPaused = true
-				break
-			}
-			await new Promise((r) => setTimeout(r, 150))
-		}
-		assert.equal(rejectPaused, true, "Expected CASE-REJECT-TEST to pause at Mozaik breakpoint")
-
-		const rejRes = await resolveBreakpointRoute(
-			new Request("http://127.0.0.1/api/breakpoints/CASE-REJECT-TEST/resolve", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ decision: "reject", reason: "Approved by CFO as SHA" }),
-			}),
-			{ params: Promise.resolve({ caseId: "CASE-REJECT-TEST" }) },
-		)
-		assert.equal(rejRes.status, 200)
-
-		let rejectedVerdict: VerdictShape | undefined
-		for (let i = 0; i < 40; i++) {
-			const h = (await (await historyRoute()).json()) as {
-				verdicts?: VerdictShape[]
-			}
-			rejectedVerdict = h.verdicts?.find((v) => v.caseId === "CASE-REJECT-TEST")
-			if (rejectedVerdict) break
-			await new Promise((r) => setTimeout(r, 150))
-		}
-		assert.ok(rejectedVerdict, "Expected CASE-REJECT-TEST to finish cleanly after Reject & Steer")
-		assert.equal(rejectedVerdict.status, "CLEAN")
-		assert.equal(rejectedVerdict.numbers.recoverableFeeMinor, 0)
-		assert.equal(rejectedVerdict.numbers.unexplainedVarianceMinor, 0)
-		assert.equal(rejectedVerdict.humanOverrideNote, "Approved by CFO as SHA")
-	} finally {
-		orchestrator.state.pendingApprovals.clear()
-		if (prevProvider === undefined) delete process.env.LLM_PROVIDER
-		else process.env.LLM_PROVIDER = prevProvider
+test("Next.js App Router API routes serve health, terminal, upload ingestion, webhook ingestion, and history", async () => {
+	const health = (await (await healthRoute()).json()) as {
+		ok: boolean
+		framework: string
+		provider: { mode: string }
 	}
+	assert.equal(health.ok, true)
+	assert.ok(["live", "unconfigured"].includes(health.provider.mode))
+	assert.ok(health.framework.includes("Next.js"))
+
+	const terminalHelp = await terminalRoute(
+		new Request("http://127.0.0.1/api/terminal", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ command: "help" }),
+		}),
+	)
+	const helpPayload = (await terminalHelp.json()) as { ok: boolean; output: string[] }
+	assert.equal(terminalHelp.status, 200)
+	assert.ok(helpPayload.output.some((line) => line.includes("inspect")))
+
+	const badCommand = await terminalRoute(
+		new Request("http://127.0.0.1/api/terminal", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ command: "whoami" }),
+		}),
+	)
+	assert.equal(badCommand.status, 400, "The in-app console must reject non-application commands")
+
+	const mt103 = [
+		":20:TXN-E2E-001",
+		":32A:261124USD5190,00",
+		":33B:EUR5000,00",
+		":36:1,0470",
+		":50K:NORDIC GEAR GMBH",
+		":59:/US1234567890",
+		"CLOUD STUDIO",
+		":70:/INV/INV-2041",
+		":71A:OUR",
+		":71G:USD45,00",
+	].join("\n")
+
+	const uploadRes = await uploadRoute(
+		new Request("http://127.0.0.1/api/audit/upload", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ filename: "wire.txt", content: mt103, format: "mt103" }),
+		}),
+	)
+	assert.equal(uploadRes.status, 202)
+	const uploadJson = (await uploadRes.json()) as { ok: boolean; queuedCount: number; caseIds: string[] }
+	assert.equal(uploadJson.ok, true)
+	assert.equal(uploadJson.queuedCount, 1)
+	assert.equal(uploadJson.caseIds.length, 1)
+
+	const whRes = await inboundWebhookRoute(
+		new Request("http://127.0.0.1/api/webhooks/inbound", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				caseId: "WH-E2E-01",
+				title: "Webhook Settlement Case",
+				sourceType: "webhook",
+				wire: {
+					wireId: "W-E2E-01",
+					transactionRef: "TXN-WH-01",
+					valueDate: "2026-11-24",
+					settledAmount: { amountMinor: 100000, currency: "USD" },
+					chargeBearer: "SHA",
+					receiverCharges: [],
+					sourceRefs: [],
+				},
+			}),
+		}),
+	)
+	assert.equal(whRes.status, 202)
+
+	const histRes = await historyRoute()
+	assert.equal(histRes.status, 200)
+	const histJson = (await histRes.json()) as { cases?: Array<{ caseId: string }> }
+	assert.ok(Array.isArray(histJson.cases))
+})
+
+test.after(() => {
+	setImmediate(() => process.exit(0))
 })

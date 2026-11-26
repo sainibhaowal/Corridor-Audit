@@ -1,16 +1,27 @@
 import "dotenv/config"
+import { readFileSync } from "node:fs"
+import { basename, resolve } from "node:path"
+import { normalizeInboundPayloadToCases } from "./core/ingest/normalize-upload"
 import { formatMoney } from "./core/money"
 import { initCorridorOrchestrator } from "./runtime/orchestrator"
 
 async function main() {
 	const interactive = process.argv.includes("--interactive") && Boolean(process.stdin.isTTY)
+	const fileArg = process.argv.slice(2).find((arg) => !arg.startsWith("--"))
+	if (!fileArg) {
+		console.error("Usage: npx tsx src/cli.ts <file-path-to-audit> [--interactive]")
+		process.exit(1)
+	}
+
+	const resolved = resolve(process.cwd(), fileArg)
+	const content = readFileSync(resolved, "utf8")
 	const orchestrator = initCorridorOrchestrator({ autoApprove: !interactive })
 	const status = orchestrator.router.getPublicStatus()
 
 	console.log("====================================================================")
 	console.log(" CorridorAudit CLI — Concurrent Mozaik Settlement Forensics")
 	console.log(` Provider: ${status.label} (${status.modelName}) | Mode: ${status.mode.toUpperCase()}`)
-	console.log(" Synthetic & public ECB data only. Not financial or legal advice.")
+	console.log(` Source:   ${resolved}`)
 	console.log("====================================================================\n")
 
 	orchestrator.state.subscribers.add((evt) => {
@@ -23,7 +34,11 @@ async function main() {
 		}
 	})
 
-	const cases = orchestrator.loadBundledCases()
+	const cases = await normalizeInboundPayloadToCases({
+		filename: basename(resolved),
+		content,
+		format: "auto",
+	})
 	const verdicts = await orchestrator.enqueueBatch(cases)
 
 	console.log("\n=================== FINAL CENT-PROOF LEDGER ===================")
@@ -43,7 +58,7 @@ async function main() {
 			`  Sources (${v.sourceRefs.length}): ${v.sourceRefs.map((r) => `[${r.sourceType}:${r.recordId}:${r.field}]`).join(" ")}`,
 		)
 	}
-	console.log("\nAll 6 case audits finished. Review the verdicts above for findings.")
+	console.log(`\nFinished auditing ${verdicts.length} case(s). Review the verdicts above for findings.`)
 }
 
 main().catch((err) => {

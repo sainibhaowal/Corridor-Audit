@@ -99,7 +99,7 @@ export function WorkbenchTerminal({ open, height, events, onHeightChange, onClos
 	return (
 		<section
 			aria-label="Integrated application terminal"
-			className={cn("relative flex shrink-0 flex-col border-t border-slate-700 bg-[#11151b] text-slate-200", !open && "h-9")}
+			className={cn("relative flex shrink-0 flex-col border-t border-[#32454d] bg-[#11151b] text-[#c7d3d6]", !open && "h-9")}
 			style={open ? { height } : undefined}
 		>
 			{open && (
@@ -123,24 +123,24 @@ export function WorkbenchTerminal({ open, height, events, onHeightChange, onClos
 			)}
 			<header className="flex h-9 shrink-0 items-center justify-between border-b border-white/10 px-3">
 				<div className="flex h-full items-center gap-4 text-[11px] font-semibold uppercase tracking-wide">
-					<button type="button" className="h-full border-b-2 border-emerald-400 text-slate-100" onClick={() => inputRef.current?.focus()}>
+					<button type="button" className="h-full border-b-2 border-emerald-400 text-[#bccacd]" onClick={() => inputRef.current?.focus()}>
 						Terminal
 					</button>
-					<span className="hidden text-slate-500 sm:inline">Mozaik runtime · local app console</span>
+					<span className="hidden text-[#81949a] sm:inline">Mozaik runtime · local app console</span>
 				</div>
 				<div className="flex items-center gap-1">
-					<button type="button" aria-label="Show terminal commands" title="Show command help" onClick={() => void submit("help")} className="rounded p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"><CircleHelp className="h-3.5 w-3.5" /></button>
-					<button type="button" aria-label="Clear terminal" title="Clear terminal" onClick={() => { setLines([]); inputRef.current?.focus() }} className="rounded p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"><Trash2 className="h-3.5 w-3.5" /></button>
-					<button type="button" aria-label={open ? "Collapse terminal" : "Expand terminal"} title={open ? "Collapse terminal" : "Expand terminal"} onClick={onClose} className="rounded p-1.5 text-slate-400 hover:bg-white/10 hover:text-white">{open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}</button>
-					{open && <button type="button" aria-label="Hide terminal" title="Hide terminal" onClick={onClose} className="rounded p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"><X className="h-3.5 w-3.5" /></button>}
+					<button type="button" aria-label="Show terminal commands" title="Show command help" onClick={() => void submit("help")} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><CircleHelp className="h-3.5 w-3.5" /></button>
+					<button type="button" aria-label="Clear terminal" title="Clear terminal" onClick={() => { setLines([]); inputRef.current?.focus() }} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><Trash2 className="h-3.5 w-3.5" /></button>
+					<button type="button" aria-label={open ? "Collapse terminal" : "Expand terminal"} title={open ? "Collapse terminal" : "Expand terminal"} onClick={onClose} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white">{open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}</button>
+					{open && <button type="button" aria-label="Hide terminal" title="Hide terminal" onClick={onClose} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><X className="h-3.5 w-3.5" /></button>}
 				</div>
 			</header>
 			{open && (
 				<>
 					<div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-5" onClick={() => inputRef.current?.focus()}>
 						{lines.map((line) => (
-							<div key={line.id} className={cn("grid grid-cols-[58px_minmax(0,1fr)] gap-2 whitespace-pre-wrap break-words", line.tone === "input" ? "text-emerald-300" : line.tone === "error" ? "text-rose-300" : line.tone === "runtime" ? "text-sky-200" : "text-slate-300")}>
-								<span className="select-none text-slate-600">{line.time}</span><span>{line.text}</span>
+							<div key={line.id} className={cn("grid grid-cols-[58px_minmax(0,1fr)] gap-2 whitespace-pre-wrap break-words", line.tone === "input" ? "text-emerald-300" : line.tone === "error" ? "text-rose-300" : line.tone === "runtime" ? "text-sky-200" : "text-[#bccacd]")}>
+								<span className="select-none text-[#a4b4b8]">{line.time}</span><span>{line.text}</span>
 							</div>
 						))}
 						{busy && <div className="text-amber-300">Processing app command…</div>}
@@ -155,11 +155,11 @@ export function WorkbenchTerminal({ open, height, events, onHeightChange, onClos
 								if (event.key === "ArrowUp" && history.length) { event.preventDefault(); const i = Math.min(historyIndex + 1, history.length - 1); setHistoryIndex(i); setCommand(history[i]) }
 								if (event.key === "ArrowDown" && historyIndex >= 0) { event.preventDefault(); const i = historyIndex - 1; setHistoryIndex(i); setCommand(i >= 0 ? history[i] : "") }
 							}}
-							placeholder="help · status · cases · run demo · inspect CASE-001"
+							placeholder="help · status · cases · inspect &lt;caseId&gt;"
 							aria-label="Enter an application console command"
-							className="min-w-0 flex-1 bg-transparent text-slate-100 outline-none placeholder:text-slate-600"
+							className="min-w-0 flex-1 bg-transparent text-[#bccacd] outline-none placeholder:text-[#a4b4b8]"
 						/>
-						<span className="hidden text-slate-600 md:inline">Enter to run · ↑↓ history</span>
+						<span className="hidden text-[#a4b4b8] md:inline">Enter to run · ↑↓ history</span>
 					</form>
 				</>
 			)}

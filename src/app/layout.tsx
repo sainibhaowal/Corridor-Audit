@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Inter, JetBrains_Mono } from "next/font/google"
+import Script from "next/script"
 import type { ReactNode } from "react"
 import "./globals.css"
 
@@ -16,7 +17,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-	title: "CorridorAudit — Settlement Forensics & Mozaik 6.0 Telemetry",
+	title: "CorridorAudit — Concurrent Mozaik Settlement Forensics",
 	description:
 		"Cross-border settlement, FX spread & hidden-fee forensics powered by concurrent Mozaik agents.",
 	icons: {
@@ -26,8 +27,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
 	return (
-		<html lang="en" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
-			<body className="font-sans bg-[#070b10] text-[#dce8e9]">{children}</body>
+		<html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
+			<Script id="corridor-theme-init" strategy="beforeInteractive">
+				{`try { document.documentElement.dataset.theme = localStorage.getItem("corridor-theme") === "light" ? "light" : "dark" } catch { document.documentElement.dataset.theme = "dark" }`}
+			</Script>
+			<body className="font-sans bg-[#080d12] text-[#e3edef]">{children}</body>
 		</html>
 	)
 }

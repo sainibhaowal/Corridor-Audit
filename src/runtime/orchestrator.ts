@@ -15,7 +15,6 @@ export interface CorridorOrchestrator {
 	hotFolder: string
 	runCase: (settlementCase: SettlementCase) => Promise<AuditVerdict>
 	enqueueBatch: (cases: SettlementCase[]) => Promise<AuditVerdict[]>
-	loadBundledCases: () => SettlementCase[]
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -156,12 +155,6 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 		return Promise.all(promises)
 	}
 
-	const loadBundledCases = (): SettlementCase[] => {
-		const path = resolve(process.cwd(), "data/scenarios/black-friday-global-batch.json")
-		const parsed = JSON.parse(readFileSync(path, "utf8")) as { cases: SettlementCase[] }
-		return parsed.cases
-	}
-
 	const hotFolder = process.env.HOT_FOLDER
 		? resolve(process.cwd(), process.env.HOT_FOLDER)
 		: resolve(process.cwd(), "data/inbox")
@@ -173,7 +166,6 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 		hotFolder,
 		runCase,
 		enqueueBatch,
-		loadBundledCases,
 	}
 
 	globalStore.__corridorOrchestrator = orchestrator

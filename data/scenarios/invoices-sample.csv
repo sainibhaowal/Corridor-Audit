@@ -1,4 +1,0 @@
-invoice_id,vendor,iban,bic,issue_date,due_date,amount,currency,settlement_currency,charge_bearer,withholding_tax_bps,remittance_hint
-INV-2026-101,Rheinland Optics GmbH,DE89370400440532013000,COBADEFFXXX,2026-11-18,2026-11-25,2000.00,EUR,USD,SHA,0,INV-2026-101
-INV-2041,Nordic Gear GmbH,DE89370400440532013000,DEUTDEFFXXX,2026-11-19,2026-11-26,5000.00,EUR,USD,OUR,0,INV-2041
-INV-UPW-106,Upwork Global Escrow,,,2026-11-23,2026-11-24,1500.00,USD,EUR,SHA,0,INV-UPW-106

@@ -14,7 +14,6 @@ const PROVIDERS: Array<{ id: ProviderId; label: string }> = [
 	{ id: "openai", label: "OpenAI" },
 	{ id: "anthropic", label: "Anthropic" },
 	{ id: "ollama", label: "Ollama (Local)" },
-	{ id: "demo", label: "Demo Mock" },
 ]
 
 interface ProviderSettingsModalProps {
@@ -84,7 +83,7 @@ export function ProviderSettingsModal({
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-[#03060a]/80 p-4 backdrop-blur-sm"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-[#121c24]/40 p-4 backdrop-blur-[1px]"
 			onClick={(e) => {
 				if (e.target === e.currentTarget) onClose()
 			}}
@@ -92,10 +91,10 @@ export function ProviderSettingsModal({
 			<div
 				role="dialog"
 				aria-modal="true"
-				className="w-full max-w-2xl overflow-hidden rounded border border-[#29434c] bg-[#090e14] text-[#dce8e9] shadow-2xl"
+				className="w-full max-w-2xl overflow-hidden rounded-xl border border-[#32454d] bg-[#0d141b] shadow-2xl"
 			>
-				<div className="flex items-center justify-between border-b border-[#1b2a34] px-5 py-3.5">
-					<h2 className="text-sm font-bold text-[#dce8e9]">
+				<div className="flex items-center justify-between border-b border-[#1c2a33] px-5 py-3.5">
+					<h2 className="text-base font-extrabold text-[#e3edef]">
 						AI Model, API Key &amp; Mozaik Harness Settings
 					</h2>
 					<Button variant="outline" size="sm" onClick={onClose}>
@@ -104,16 +103,16 @@ export function ProviderSettingsModal({
 				</div>
 
 				<div className="space-y-4 p-5">
-					<div className="flex items-start gap-2.5 rounded border border-[#1b2a34] border-l-2 border-l-[#62e1c3] bg-[#0b1118] p-3 text-xs text-[#c5d4d6]">
+					<div className="flex items-start gap-2.5 rounded-lg border border-[#1c2a33] border-l-4 border-l-emerald-600 bg-[#080d12] p-3 text-xs text-[#c7d3d6]">
 						<ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#62e1c3]" />
 						<div>
-							<strong className="text-[#dce8e9]">In-Memory Security:</strong> Keys entered here remain
-							strictly in server RAM for this session — never written to disk, `.env`, or Git.
+							<strong>In-Memory Security:</strong> Keys entered here remain strictly in server RAM for
+							this session — never written to disk, `.env`, or Git.
 						</div>
 					</div>
 
 					<div>
-						<div className="mb-2 font-mono text-[10px] font-bold uppercase tracking-wider text-[#7e9298]">
+						<div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
 							Select LLM Provider (Zero Lock-In)
 						</div>
 						<div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -126,10 +125,10 @@ export function ProviderSettingsModal({
 										setModelName(PROVIDER_DEFAULT_MODELS[p.id])
 									}}
 									className={cn(
-										"h-9 rounded border px-2 text-xs font-semibold transition-colors",
+										"h-10 rounded-md border px-2 text-xs font-semibold transition-colors",
 										selected === p.id
-											? "border-[#62e1c3] bg-[#62e1c3]/15 text-[#62e1c3]"
-											: "border-[#1b2a34] bg-[#0b1118] text-[#7e9298] hover:border-[#29434c] hover:text-[#dce8e9]",
+											? "border-[#29434c] bg-[#121c24] text-white"
+											: "border-[#1c2a33] bg-[#0d141b] text-[#c7d3d6] hover:bg-[#080d12]",
 									)}
 								>
 									{p.label}
@@ -140,16 +139,16 @@ export function ProviderSettingsModal({
 
 					<div className="space-y-3">
 						<div>
-							<label className="mb-1 block text-xs font-semibold text-[#c5d4d6]">Model ID</label>
+							<label className="mb-1 block text-xs font-semibold text-[#c7d3d6]">Model ID</label>
 							<input
 								type="text"
 								value={modelName}
 								onChange={(e) => setModelName(e.target.value)}
-								className="h-9 w-full rounded border border-[#29434c] bg-[#070b10] px-3 font-mono text-xs text-[#dce8e9] focus:border-[#62e1c3] focus:outline-none"
+								className="h-9 w-full rounded-md border border-[#32454d] bg-[#0d141b] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
 							/>
 						</div>
 						<div>
-							<label className="mb-1 block text-xs font-semibold text-[#c5d4d6]">
+							<label className="mb-1 block text-xs font-semibold text-[#c7d3d6]">
 								API Key (optional if already configured in .env)
 							</label>
 							<input
@@ -157,7 +156,7 @@ export function ProviderSettingsModal({
 								value={apiKey}
 								onChange={(e) => setApiKey(e.target.value)}
 								placeholder="Leave blank to keep existing .env / RAM key"
-								className="h-9 w-full rounded border border-[#29434c] bg-[#070b10] px-3 font-mono text-xs text-[#dce8e9] placeholder:text-[#50646b] focus:border-[#62e1c3] focus:outline-none"
+								className="h-9 w-full rounded-md border border-[#32454d] bg-[#0d141b] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
 							/>
 						</div>
 					</div>
@@ -165,10 +164,10 @@ export function ProviderSettingsModal({
 					{testStatus && (
 						<div
 							className={cn(
-								"flex items-center gap-2 rounded border px-3 py-2 text-xs font-medium",
+								"flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium",
 								testStatus.ok
-									? "border-[#31544c] bg-[#62e1c3]/10 text-[#62e1c3]"
-									: "border-[#f17678]/40 bg-[#f17678]/10 text-[#f17678]",
+									? "border-[#225b51] bg-[#0d2725] text-[#75e4c7]"
+									: "border-red-200 bg-red-50 text-red-700",
 							)}
 						>
 							{testStatus.ok ? (

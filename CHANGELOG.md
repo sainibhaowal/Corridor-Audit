@@ -2,6 +2,23 @@
 
 CorridorAudit release history. Versions follow the policy in [docs/VERSIONING.md](docs/VERSIONING.md). Each release entry records the application scope and verified behavior at that release; it is not limited to files changed in the release commit.
 
+## [Unreleased]
+
+### Changed
+
+- Reworked the application workspace into a compact three-panel workbench with collapsible navigation and inspection rails, persistent layout preferences, keyboard shortcuts, and a responsive case-inspector drawer.
+- Added an integrated runtime console backed by an allowlisted Next.js API route. Supported operations cover runtime status, loaded cases, bundled demo execution, individual sample cases, case inspection, and review-gate mode. Live Mozaik agent, tool, breakpoint, and verdict events are forwarded into the console. The command surface does not execute operating-system shell commands.
+- Added a resizable, hideable terminal panel and a focused ready state for the settlement review workspace.
+- Added a header theme switch for the light and dark workbench appearances. The selected theme is stored in browser local storage and applied before the page renders; palette mappings cover navigation, case panels, inspectors, dialogs, and the integrated terminal.
+- Added a circular theme reveal anchored to the theme control, with a reduced-motion path, and tightened responsive top-bar sizing so mode and panel controls remain visible on narrower screens.
+
+### Verification
+
+- `npm run typecheck` passed.
+- `npm test` passed: 10 tests, including the terminal runtime command and rejection of unsupported commands.
+- `npm run build` passed for application version `0.1.1`.
+- `npm start -- --no-open` started the production build; `/` returned HTTP 200 and `/api/health` reported Mozaik core `6.0.0`, demo provider mode, and audit-rules version `0.1.0`.
+
 ## [0.1.1] - 2026-11-26
 
 Patch release for the command-line audit completion message and release documentation. Reconciliation rules and audit-rules version remain unchanged from `0.1.0`.

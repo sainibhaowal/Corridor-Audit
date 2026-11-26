@@ -8,14 +8,13 @@ export type ProviderId =
 	| "openai"
 	| "anthropic"
 	| "ollama"
-	| "demo"
 
 export interface ProviderStatus {
 	provider: ProviderId
 	label: string
 	modelName: string
 	hasKey: boolean
-	mode: "live" | "demo"
+	mode: "live" | "unconfigured"
 }
 
 export interface QueueStats {
@@ -55,13 +54,6 @@ export interface OverlapSignal {
 	tone: "bad" | "ok" | "warn"
 }
 
-export interface TimelineEventItem {
-	id: string
-	timeOffset: string
-	text: string
-	kind: string
-}
-
 export interface CaseStreamEntry {
 	caseId: string
 	title: string
@@ -70,7 +62,6 @@ export interface CaseStreamEntry {
 	startedAt: number
 	expectedRoles: string[]
 	agents: Record<string, AgentRunState>
-	timeline: TimelineEventItem[]
 	overlaps: OverlapSignal[]
 	pending: PendingBreakpointDecision | null
 	verdict: AuditVerdict | null
@@ -92,7 +83,6 @@ export const PROVIDER_DEFAULT_MODELS: Record<ProviderId, string> = {
 	openai: "gpt-5.4",
 	anthropic: "claude-haiku-4-5",
 	ollama: "llama3.2",
-	demo: "deterministic-demo",
 }
 
 export const ORDERED_AGENTS = [
