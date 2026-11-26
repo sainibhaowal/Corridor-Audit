@@ -8,6 +8,7 @@ import {
 } from "@mozaik-ai/core"
 import { createInterface } from "node:readline/promises"
 import { formatMoney } from "../../core/money"
+import { BUILD_PROVENANCE } from "../../core/build-info"
 import type { AuditVerdict, PendingBreakpointDecision } from "../../core/types"
 import { type BreakpointDecision, resolveRuntime } from "../corridor-runtime"
 import { computeCaseAuditNumbers } from "../tools/audit-tools"
@@ -168,6 +169,7 @@ export class SettlementGateInterceptionHandler implements InterceptionHandler {
 				caseId,
 				invoiceId: terms?.invoiceId ?? caseId,
 				wireId: c?.wire.wireId ?? caseId,
+				provenance: BUILD_PROVENANCE,
 				status: "ABORTED_BY_OPERATOR",
 				plainEnglishSummary: `Operator stopped ${caseId} cleanly at Mozaik breakpoint before finalizing action.`,
 				numbers: {

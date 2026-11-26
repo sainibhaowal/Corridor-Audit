@@ -24,7 +24,7 @@ export async function GET(
 	if (fmt === "txt") {
 		const text =
 			verdict.disputeNotice ||
-			`CORRIDOR AUDIT CERTIFICATE — ${verdict.caseId}\nStatus: ${verdict.status}\nSummary: ${verdict.plainEnglishSummary}\nUnexplained Variance: ${verdict.numbers.unexplainedVarianceMinor}\n${verdict.disclaimer}`
+			`CORRIDOR AUDIT CERTIFICATE — ${verdict.caseId}\nStatus: ${verdict.status}\nSummary: ${verdict.plainEnglishSummary}\nUnexplained Variance: ${verdict.numbers.unexplainedVarianceMinor}\nBuild: v${verdict.provenance.appVersion} · Source ${verdict.provenance.sourceRevision} · ${verdict.provenance.workingTree} tree · Audit rules v${verdict.provenance.auditRulesVersion}\n${verdict.disclaimer}`
 		return new Response(text, {
 			headers: {
 				"Content-Type": "text/plain; charset=utf-8",

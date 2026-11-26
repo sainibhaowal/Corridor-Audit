@@ -34,15 +34,11 @@ async function main() {
 	const host = (process.env.HOST || "127.0.0.1").trim()
 	const port = (process.env.PORT || "3000").trim()
 	const noOpen = process.argv.includes("--no-open") || process.env.NO_OPEN === "1"
-	const nextBin = resolve(
-		process.cwd(),
-		"node_modules/.bin",
-		process.platform === "win32" ? "next.cmd" : "next",
-	)
+	const nextCli = resolve(process.cwd(), "node_modules/next/dist/bin/next")
 
 	if (!existsSync(resolve(process.cwd(), ".next/BUILD_ID"))) {
 		console.log("Building CorridorAudit Next.js production bundle (first run)...")
-		await runCommand(nextBin, ["build"])
+		await runCommand(process.execPath, [nextCli, "build"])
 	}
 
 	const displayHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host
@@ -54,9 +50,8 @@ async function main() {
 	console.log(" Synthetic & public ECB data only. Not financial or legal advice.")
 	console.log("====================================================================")
 
-	const child = spawn(nextBin, ["start", "-H", host, "-p", port], {
+	const child = spawn(process.execPath, [nextCli, "start", "-H", host, "-p", port], {
 		stdio: "inherit",
-		shell: process.platform === "win32",
 		env: process.env,
 	})
 

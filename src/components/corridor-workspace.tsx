@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import type { AuditVerdict, PendingBreakpointDecision, TrajectoryEvent } from "@/core/types"
+import { BUILD_PROVENANCE, formatBuildLabel } from "@/core/build-info"
 import { cn } from "@/lib/utils"
 import { BrandLogo } from "./brand-logo"
 import { CaseInspectorModal } from "./case-inspector-modal"
@@ -428,6 +429,12 @@ export function CorridorWorkspace() {
 					</span>
 					<span className="hidden rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-500 sm:inline-block">
 						Next.js · Mozaik 6.0
+					</span>
+					<span
+						title={`App v${BUILD_PROVENANCE.appVersion} · Source ${BUILD_PROVENANCE.sourceRevision} · ${BUILD_PROVENANCE.workingTree} tree · Audit rules v${BUILD_PROVENANCE.auditRulesVersion}`}
+						className="hidden rounded bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-800 md:inline-block"
+					>
+						{formatBuildLabel()}
 					</span>
 				</div>
 

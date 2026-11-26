@@ -175,6 +175,12 @@ export interface AuditVerdict {
 	caseId: string
 	invoiceId: string
 	wireId: string
+	provenance: {
+		appVersion: string
+		sourceRevision: string
+		workingTree: "clean" | "modified" | "unknown"
+		auditRulesVersion: string
+	}
 	status: AuditStatus
 	plainEnglishSummary: string
 	numbers: {
