@@ -99,7 +99,7 @@ export function WorkbenchTerminal({ open, height, events, onHeightChange, onClos
 	return (
 		<section
 			aria-label="Integrated application terminal"
-			className={cn("relative flex shrink-0 flex-col border-t border-[#32454d] bg-[#11151b] text-[#c7d3d6] overflow-hidden", !open && "h-9")}
+			className={cn("relative flex shrink-0 flex-col rounded-xl border border-[#32454d] bg-[#11151b] text-[#c7d3d6] overflow-hidden", !open && "h-9")}
 			style={{
 				...(open ? { height } : {}),
 				transition: "height 320ms cubic-bezier(0.4, 0, 0.2, 1), opacity 180ms ease",
@@ -126,16 +126,16 @@ export function WorkbenchTerminal({ open, height, events, onHeightChange, onClos
 			)}
 			<header className="flex h-9 shrink-0 items-center justify-between border-b border-white/10 px-3">
 				<div className="flex h-full items-center gap-4 text-[11px] font-semibold uppercase tracking-wide">
-					<button type="button" className="h-full border-b-2 border-emerald-400 text-[#bccacd]" onClick={() => inputRef.current?.focus()}>
+					<button type="button" className="rounded-lg bg-[#0d2725] px-2.5 py-1 text-[#75e4c7]" onClick={() => inputRef.current?.focus()}>
 						Terminal
 					</button>
 					<span className="hidden text-[#81949a] sm:inline">Mozaik runtime · local app console</span>
 				</div>
 				<div className="flex items-center gap-1">
-					<button type="button" aria-label="Show terminal commands" data-tooltip="Show command help" onClick={() => void submit("help")} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><CircleHelp className="h-3.5 w-3.5" /></button>
-					<button type="button" aria-label="Clear terminal" data-tooltip="Clear terminal" onClick={() => { setLines([]); inputRef.current?.focus() }} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><Trash2 className="h-3.5 w-3.5" /></button>
-					<button type="button" aria-label={open ? "Collapse terminal" : "Expand terminal"} data-tooltip={open ? "Collapse terminal" : "Expand terminal"} onClick={onClose} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white transition-transform duration-300">{open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}</button>
-					{open && <button type="button" aria-label="Hide terminal" data-tooltip="Hide terminal" onClick={onClose} className="rounded p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><X className="h-3.5 w-3.5" /></button>}
+					<button type="button" aria-label="Show terminal commands" data-tooltip="Show command help" onClick={() => void submit("help")} className="rounded-lg p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><CircleHelp className="h-3.5 w-3.5" /></button>
+					<button type="button" aria-label="Clear terminal" data-tooltip="Clear terminal" onClick={() => { setLines([]); inputRef.current?.focus() }} className="rounded-lg p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><Trash2 className="h-3.5 w-3.5" /></button>
+					<button type="button" aria-label={open ? "Collapse terminal" : "Expand terminal"} data-tooltip={open ? "Collapse terminal" : "Expand terminal"} onClick={onClose} className="rounded-lg p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white transition-transform duration-300">{open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}</button>
+					{open && <button type="button" aria-label="Hide terminal" data-tooltip="Hide terminal" onClick={onClose} className="rounded-lg p-1.5 text-[#71858c] hover:bg-[#0d141b]/10 hover:text-white"><X className="h-3.5 w-3.5" /></button>}
 				</div>
 			</header>
 			{open && (

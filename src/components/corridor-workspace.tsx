@@ -566,9 +566,9 @@ export function CorridorWorkspace() {
 			: `${provider.provider.toUpperCase()} · ${provider.modelName}`
 
 	return (
-		<div className="workbench-shell flex h-screen flex-col overflow-hidden bg-[#080d12]">
+		<div className="workbench-shell flex h-screen flex-col gap-2 overflow-hidden bg-[#080d12] p-2">
 			{/* SLIM INSTITUTIONAL TOP BAR */}
-			<header className="sticky top-0 z-20 flex h-11 shrink-0 items-center justify-between gap-2 border-b border-[#1c2a33] bg-[#0d141b] px-3">
+			<header className="sticky top-0 z-20 flex h-11 shrink-0 items-center justify-between gap-2 rounded-xl border border-[#1c2a33] bg-[#0d141b] px-3">
 				<div className="flex shrink-0 items-center gap-2.5 whitespace-nowrap">
 					<BrandLogo size={28} />
 					<span className="text-base font-extrabold tracking-tight text-[#e3edef]">
@@ -685,11 +685,11 @@ export function CorridorWorkspace() {
 
 			{/* 3-PANEL FIXED DESKTOP / LAPTOP WORKSPACE */}
 			<div
-				className="workbench-grid grid min-h-0 flex-1"
+				className="workbench-grid grid min-h-0 flex-1 gap-2"
 				style={{ "--nav-width": leftCollapsed ? "54px" : "244px", "--inspector-width": rightCollapsed ? "48px" : "320px" } as React.CSSProperties}
 			>
 				{/* LEFT SIDEBAR */}
-				<aside className={cn("hidden min-w-0 flex-col overflow-y-auto border-b border-[#1c2a33] bg-[#0d141b] py-3 md:flex md:border-r md:border-b-0", leftCollapsed ? "items-center px-1.5" : "px-3")}>
+				<aside className={cn("hidden min-w-0 flex-col overflow-y-auto rounded-xl border border-[#1c2a33] bg-[#0d141b] py-3 md:flex", leftCollapsed ? "items-center px-1.5" : "px-3")}>
 					<div className={cn("flex items-center pb-2", leftCollapsed ? "justify-center" : "justify-between px-2")}>
 						{!leftCollapsed && <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#71858c]">Workspace</span>}
 						{leftCollapsed && <Activity className="h-4 w-4 text-[#71858c]" />}
@@ -782,7 +782,7 @@ export function CorridorWorkspace() {
 				</aside>
 
 				{/* CENTER MAIN PANEL */}
-				<main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+				<main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-[#1c2a33] bg-[#080d12]">
 					<div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 md:px-5 lg:px-6">
 					<div className="mb-3 flex items-center justify-between gap-2 border-b border-[#1c2a33] pb-2 md:hidden">
 						<nav className="flex min-w-0 flex-1 gap-1 overflow-x-auto" aria-label="Mobile workspace navigation">
@@ -1235,7 +1235,7 @@ export function CorridorWorkspace() {
 
 				{/* RIGHT PANEL: 3-TAB ARTIFACTS, CASES & LEDGER */}
 				<aside className={cn(
-					"workbench-inspector min-w-0 flex-col overflow-hidden border-t border-[#1c2a33] bg-[#0d141b] md:border-t-0 md:border-l",
+					"workbench-inspector min-w-0 flex-col overflow-hidden rounded-xl border border-[#1c2a33] bg-[#0d141b]",
 					rightCollapsed ? "items-center" : "",
 					rightDrawerOpen ? "mobile-inspector-open" : "",
 				)}>
@@ -1401,7 +1401,7 @@ export function CorridorWorkspace() {
 			</div>
 			{rightDrawerOpen && <button type="button" aria-label="Close inspection panel" onClick={() => setRightDrawerOpen(false)} className="mobile-inspector-backdrop fixed inset-0 z-30 bg-[#080d12]/30 md:hidden" />}
 
-			<footer className="flex h-6 shrink-0 items-center justify-between border-t border-[#1c2a33] bg-[#0d141b] px-2.5 text-[10px] text-[#81949a]">
+			<footer className="flex h-7 shrink-0 items-center justify-between rounded-xl border border-[#1c2a33] bg-[#0d141b] px-3 text-[10px] text-[#81949a]">
 				<div className="flex min-w-0 items-center gap-3">
 					<span className="flex items-center gap-1.5"><span className={cn("h-1.5 w-1.5 rounded-full", sseConnected ? "bg-emerald-600" : "bg-[#2c2111]0")} />{sseConnected ? "Runtime connected" : "Reconnecting"}</span>
 					<span className="hidden truncate sm:inline">{provider.label}</span>
