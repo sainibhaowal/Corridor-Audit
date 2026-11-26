@@ -13,8 +13,11 @@ next-env.d.ts
 .env.local
 .env.*.local
 
-# Runtime hot-folder & logs
+# Runtime hot-folder, local SQLite vault & logs
 data/inbox/
+data/corridoraudit.db*
+data/.vault-key
+tsconfig.tsbuildinfo
 *.log
 .DS_Store
 Thumbs.db

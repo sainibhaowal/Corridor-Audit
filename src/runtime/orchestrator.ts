@@ -1,12 +1,14 @@
 import "dotenv/config"
 import { existsSync, mkdirSync, readFileSync, watch } from "node:fs"
 import { extname, resolve } from "node:path"
+import { getCorridorDb } from "../core/db/database"
 import { normalizeInboundPayloadToCases } from "../core/ingest/normalize-upload"
 import { ACTIVE_MODEL_SLOT, DynamicEndpointRouter, resolveInitialProviderConfig } from "../core/llm/providers"
 import type { AuditVerdict, SettlementCase } from "../core/types"
 import { createCorridorAgents } from "./agents/corridor-agents"
 import { createTrajectoryObserver } from "./agents/trajectory-observer"
 import { CorridorState, initializeRuntime, join, publishCorridorEvent } from "./corridor-runtime"
+import { startBackgroundSyncWorker } from "./workers/sync-worker"
 
 export interface CorridorOrchestrator {
 	state: CorridorState
@@ -72,6 +74,14 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 	state.autoApproveBreakpoints =
 		options?.autoApprove ?? process.env.AUTO_APPROVE_BREAKPOINTS === "true"
 
+	const db = getCorridorDb()
+	for (const persistedCase of db.listPersistedCases()) {
+		state.casesById.set(persistedCase.caseId, persistedCase)
+	}
+	for (const persistedVerdict of db.listPersistedVerdicts()) {
+		state.auditByCaseId.set(persistedVerdict.caseId, persistedVerdict)
+	}
+
 	initializeRuntime({
 		state,
 		inferenceRunnerConfig: {
@@ -96,6 +106,7 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 
 	const runSingleCase = async (settlementCase: SettlementCase): Promise<AuditVerdict> => {
 		state.registerCase(settlementCase)
+		getCorridorDb().saveCase(settlementCase)
 		state.queueStats.active += 1
 		if (state.queueStats.waiting > 0) state.queueStats.waiting -= 1
 
@@ -128,6 +139,7 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 
 		try {
 			const verdict = await state.waitForCaseVerdict(settlementCase.caseId, 180_000)
+			getCorridorDb().saveAuditVerdict(verdict)
 			state.queueStats.done += 1
 			return verdict
 		} catch (err) {
@@ -170,5 +182,6 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 
 	globalStore.__corridorOrchestrator = orchestrator
 	startHotFolderWatcher(orchestrator)
+	startBackgroundSyncWorker(orchestrator)
 	return orchestrator
 }

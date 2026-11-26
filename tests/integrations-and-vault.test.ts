@@ -1,0 +1,273 @@
+import assert from "node:assert/strict"
+import { createHmac } from "node:crypto"
+import { rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { resolve } from "node:path"
+import test from "node:test"
+
+const TEST_DB_PATH = resolve(tmpdir(), `corridor-test-${process.pid}-${Date.now()}.db`)
+process.env.CORRIDOR_DB_PATH = TEST_DB_PATH
+
+import { GET as listIntegrationsRoute } from "../src/app/api/integrations/route"
+import { POST as connectIntegrationRoute } from "../src/app/api/integrations/[provider]/connect/route"
+import { POST as disconnectIntegrationRoute } from "../src/app/api/integrations/[provider]/disconnect/route"
+import { GET as getWorkspaceRoute, POST as postWorkspaceRoute } from "../src/app/api/settings/workspace/route"
+import { POST as emailWebhookRoute } from "../src/app/api/webhooks/email/route"
+import { POST as inboundWebhookRoute } from "../src/app/api/webhooks/inbound/route"
+import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/core/db/database"
+import { parseInboundEmailToCases } from "../src/core/integrations/email-parser"
+import { decryptJson, decryptSecret, encryptJson, encryptSecret, maskSecret } from "../src/core/security/vault"
+import {
+	verifyCorridorSignature,
+	verifyInboundWebhookRequest,
+	verifyStripeSignature,
+	verifyWiseSignature,
+} from "../src/core/security/webhook-signatures"
+
+test("AES-256-GCM vault encrypts and decrypts secrets and JSON credentials", () => {
+	const raw = "sk_live_super_secret_token_123456"
+	const enc = encryptSecret(raw)
+	assert.ok(enc.startsWith("v1:"))
+	assert.notEqual(enc, raw)
+	assert.equal(decryptSecret(enc), raw)
+	assert.equal(maskSecret(raw), "sk_l••••3456")
+
+	const obj = { apiKey: "rk_123", webhookSecret: "whsec_abc" }
+	const encObj = encryptJson(obj)
+	assert.deepEqual(decryptJson(encObj), obj)
+})
+
+test("HMAC-SHA256 webhook signature verification supports Stripe, Wise, and Corridor signatures", () => {
+	const body = JSON.stringify({ event: "payout.paid", amount: 5000 })
+	const secret = "whsec_test_secret_123"
+	const ts = Math.floor(Date.now() / 1000)
+
+	const stripeSig = createHmac("sha256", secret).update(`${ts}.${body}`, "utf8").digest("hex")
+	assert.equal(verifyStripeSignature(body, `t=${ts},v1=${stripeSig}`, secret).valid, true)
+	assert.equal(verifyStripeSignature(body, `t=${ts},v1=deadbeef`, secret).valid, false)
+
+	const wiseSig = createHmac("sha256", secret).update(body, "utf8").digest("base64")
+	assert.equal(verifyWiseSignature(body, wiseSig, secret).valid, true)
+	assert.equal(verifyWiseSignature(body, "invalid", secret).valid, false)
+
+	const corridorSig = createHmac("sha256", secret).update(body, "utf8").digest("hex")
+	assert.equal(verifyCorridorSignature(body, `sha256=${corridorSig}`, secret).valid, true)
+
+	const missing = verifyInboundWebhookRequest({
+		rawBody: body,
+		headers: new Headers(),
+		secrets: { corridor: secret },
+		requireSignature: true,
+	})
+	assert.equal(missing.valid, false)
+})
+
+test("CorridorDatabase persists workspaces, team members, encrypted integrations, sync runs, and cases", () => {
+	const db = new CorridorDatabase(":memory:")
+	const ws = db.getWorkspace(DEFAULT_WORKSPACE_ID)
+	assert.equal(ws.accountMode, "b2b")
+	assert.ok(ws.inboundEmailAddress.includes(DEFAULT_WORKSPACE_ID))
+
+	const updated = db.updateWorkspace(DEFAULT_WORKSPACE_ID, {
+		name: "Acme Global Ops",
+		accountMode: "b2c",
+		defaultCurrency: "eur",
+		taxCountry: "de",
+		withholdingTaxBps: 1500,
+		varianceThresholdMinor: 250,
+	})
+	assert.equal(updated.name, "Acme Global Ops")
+	assert.equal(updated.accountMode, "b2c")
+	assert.equal(updated.defaultCurrency, "EUR")
+	assert.equal(updated.taxCountry, "DE")
+	assert.equal(updated.withholdingTaxBps, 1500)
+
+	const member = db.addTeamMember({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		name: "Alice Controller",
+		email: "alice@acme.test",
+		role: "controller",
+	})
+	assert.equal(db.listTeamMembers(DEFAULT_WORKSPACE_ID).length, 1)
+	db.removeTeamMember(DEFAULT_WORKSPACE_ID, member.id)
+	assert.equal(db.listTeamMembers(DEFAULT_WORKSPACE_ID).length, 0)
+
+	const integration = db.upsertIntegration({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider: "wise",
+		category: "payouts",
+		authMode: "api_token",
+		status: "connected",
+		accountLabel: "Wise Business",
+		credentials: { apiKey: "wise-secret-token" },
+	})
+	assert.equal(integration.status, "connected")
+	assert.equal(db.getDecryptedCredentials(DEFAULT_WORKSPACE_ID, "wise")?.apiKey, "wise-secret-token")
+
+	const syncRun = db.createSyncRun({
+		integrationId: integration.id,
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider: "wise",
+		trigger: "manual",
+	})
+	db.finishSyncRun({ id: syncRun.id, status: "success", recordsFetched: 4, casesQueued: 2 })
+	assert.equal(db.listRecentSyncRuns(DEFAULT_WORKSPACE_ID, 5)[0]?.casesQueued, 2)
+
+	db.disconnectIntegration(DEFAULT_WORKSPACE_ID, "wise")
+	assert.equal(db.getIntegration(DEFAULT_WORKSPACE_ID, "wise")?.status, "disconnected")
+	assert.equal(db.getDecryptedCredentials(DEFAULT_WORKSPACE_ID, "wise"), null)
+	db.close()
+})
+
+test("parseInboundEmailToCases extracts MT103 attachments from inbound email payloads", () => {
+	const mt103 = [
+		":20:TXN-EMAIL-01",
+		":32A:261124USD2500,00",
+		":33B:USD2500,00",
+		":50K:CLIENT CORP",
+		":70:/INV/INV-EMAIL-99",
+		":71A:SHA",
+	].join("\n")
+
+	const cases = parseInboundEmailToCases({
+		from: "billing@client.test",
+		subject: "Wire Advice INV-EMAIL-99",
+		attachments: [
+			{
+				filename: "wire-advice.txt",
+				contentBase64: Buffer.from(mt103, "utf8").toString("base64"),
+			},
+		],
+	})
+	assert.equal(cases.length, 1)
+	assert.ok(cases[0]?.channelLabel.includes("billing@client.test"))
+	assert.equal(cases[0]?.wire.settledAmount.amountMinor, 250000)
+})
+
+test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs work end-to-end", async () => {
+	// 1. Connect & disconnect Stripe via API routes
+	const connectRes = await connectIntegrationRoute(
+		new Request("http://127.0.0.1/api/integrations/stripe/connect", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				authMode: "api_token",
+				apiKey: "rk_test_123456789",
+				accountLabel: "Stripe Main",
+			}),
+		}),
+		{ params: Promise.resolve({ provider: "stripe" }) },
+	)
+	assert.equal(connectRes.status, 200)
+
+	const listRes = await listIntegrationsRoute()
+	const listJson = (await listRes.json()) as {
+		ok: boolean
+		integrations: Array<{ provider: string; connection: { status: string } }>
+	}
+	assert.equal(listJson.ok, true)
+	assert.equal(listJson.integrations.find((i) => i.provider === "stripe")?.connection.status, "connected")
+
+	const disconnectRes = await disconnectIntegrationRoute(
+		new Request("http://127.0.0.1/api/integrations/stripe/disconnect", { method: "POST" }),
+		{ params: Promise.resolve({ provider: "stripe" }) },
+	)
+	assert.equal(disconnectRes.status, 200)
+
+	// 2. Workspace settings & webhook signature enforcement
+	const wsGet = await getWorkspaceRoute()
+	assert.equal(wsGet.status, 200)
+
+	const wsPost = await postWorkspaceRoute(
+		new Request("http://127.0.0.1/api/settings/workspace", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				action: "update_workspace",
+				requireWebhookSignature: true,
+			}),
+		}),
+	)
+	assert.equal(wsPost.status, 200)
+
+	const payload = JSON.stringify({
+		caseId: "WH-SIGNED-01",
+		title: "Signed Webhook Case",
+		sourceType: "webhook",
+		wire: {
+			wireId: "W-SIGNED-01",
+			transactionRef: "TXN-SIGNED-01",
+			valueDate: "2026-11-24",
+			settledAmount: { amountMinor: 150000, currency: "USD" },
+			chargeBearer: "SHA",
+			receiverCharges: [],
+			sourceRefs: [],
+		},
+	})
+
+	const unsignedRes = await inboundWebhookRoute(
+		new Request("http://127.0.0.1/api/webhooks/inbound", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: payload,
+		}),
+	)
+	assert.equal(unsignedRes.status, 401)
+
+	const secret = getCorridorDb().getRawWebhookSecret(DEFAULT_WORKSPACE_ID)
+	const sig = createHmac("sha256", secret).update(payload, "utf8").digest("hex")
+	const signedRes = await inboundWebhookRoute(
+		new Request("http://127.0.0.1/api/webhooks/inbound", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"x-corridor-signature": `sha256=${sig}`,
+			},
+			body: payload,
+		}),
+	)
+	assert.equal(signedRes.status, 202)
+
+	// 3. Signed Email Webhook
+	const emailBody = JSON.stringify({
+		from: "ap@vendor.test",
+		subject: "Invoice Payment",
+		textBody: ":20:TXN-MAIL-01\n:32A:261124EUR1200,00\n:71A:SHA",
+	})
+	const emailSig = createHmac("sha256", secret).update(emailBody, "utf8").digest("hex")
+	const emailRes = await emailWebhookRoute(
+		new Request("http://127.0.0.1/api/webhooks/email", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"x-corridor-signature": `sha256=${emailSig}`,
+			},
+			body: emailBody,
+		}),
+	)
+	assert.equal(emailRes.status, 202)
+
+	// Reset requireWebhookSignature back to false so other tests remain unaffected
+	await postWorkspaceRoute(
+		new Request("http://127.0.0.1/api/settings/workspace", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				action: "update_workspace",
+				requireWebhookSignature: false,
+			}),
+		}),
+	)
+})
+
+test.after(() => {
+	try {
+		getCorridorDb().close()
+		rmSync(TEST_DB_PATH, { force: true })
+		rmSync(`${TEST_DB_PATH}-wal`, { force: true })
+		rmSync(`${TEST_DB_PATH}-shm`, { force: true })
+	} catch {
+		// ignore cleanup errors
+	}
+	setImmediate(() => process.exit(0))
+})

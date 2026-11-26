@@ -744,7 +744,7 @@ export function CorridorWorkspace() {
 							onClick={() => setProviderModalOpen(true)}
 						>
 							<Settings className="h-3.5 w-3.5" />
-							AI Model / API Key
+							System Settings
 						</Button>
 						</>}
 						{leftCollapsed && <button type="button" onClick={() => setProviderModalOpen(true)} title={`Provider settings: ${provider.label}`} aria-label="Open provider settings" className="rounded-md p-2 text-[#81949a] hover:bg-[#101820] hover:text-[#e3edef]"><Settings className="h-4 w-4" /></button>}
@@ -1372,6 +1372,8 @@ export function CorridorWorkspace() {
 			<ProviderSettingsModal
 				open={providerModalOpen}
 				current={provider}
+				breakpointMode={breakpointMode}
+				onBreakpointModeChange={setBreakpointMode}
 				onSaved={(next) => setProvider(next)}
 				onClose={() => setProviderModalOpen(false)}
 			/>

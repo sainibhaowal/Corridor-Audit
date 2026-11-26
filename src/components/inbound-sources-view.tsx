@@ -5,6 +5,7 @@ import { useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { IntegrationsPanel } from "./integrations-panel"
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
 	const bytes = new Uint8Array(buffer)
@@ -59,15 +60,17 @@ export function InboundSourcesView({ onIngested }: InboundSourcesViewProps) {
 	}
 
 	return (
-		<div className="space-y-4">
+		<div className="space-y-6">
 			<div>
 				<h1 className="text-xl font-extrabold tracking-tight text-[#e3edef]">
-					Autonomous Inbound Channels &amp; Multi-Format Ingestion
+					Data Sources &amp; Live Integrations
 				</h1>
 				<p className="mt-1 text-xs text-[#81949a]">
-					Every incoming file, webhook payload, or pasted SWIFT wire triggers all 5 concurrent Mozaik agents automatically.
+					Connect B2C payout platforms, B2B accounting ERPs, Open Banking, or email forwarding — or drop one-off SWIFT MT103, ISO 20022 camt.053 XML, CSV, PDF, or JSON files below.
 				</p>
 			</div>
+
+			<IntegrationsPanel onCasesQueued={onIngested} />
 
 			{errorMsg && (
 				<div className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700">
@@ -146,14 +149,6 @@ export function InboundSourcesView({ onIngested }: InboundSourcesViewProps) {
 					</div>
 				</Card>
 			</div>
-
-			<Card className="flex flex-wrap items-center justify-between gap-3 p-4">
-				<div>
-					<div className="text-xs font-bold text-[#e3edef]">Live Inbound Webhook Endpoint</div>
-					<div className="mt-0.5 font-mono text-xs text-[#81949a]">POST /api/webhooks/inbound</div>
-				</div>
-				<div className="text-xs text-[#81949a]">Accepts JSON settlement payloads, MT103 text, or camt.053 XML</div>
-			</Card>
 		</div>
 	)
 }
