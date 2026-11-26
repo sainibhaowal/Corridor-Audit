@@ -1,0 +1,33 @@
+{
+  "source": "European Central Bank reference cache (Frankfurter / TARGET snapshot 2026-11-24)",
+  "defaultDate": "2026-11-24",
+  "baseRatesFromEUR": {
+    "EUR": 1.0,
+    "USD": 1.0963,
+    "GBP": 0.8342,
+    "CHF": 0.9315,
+    "JPY": 168.42,
+    "CAD": 1.5318,
+    "AUD": 1.6784,
+    "RSD": 117.05,
+    "INR": 92.64,
+    "KWD": 0.3368
+  },
+  "historical": {
+    "2026-11-24": {
+      "EUR_USD": 1.0963,
+      "USD_EUR": 0.91216,
+      "GBP_EUR": 1.19875,
+      "EUR_GBP": 0.8342,
+      "EUR_JPY": 168.42,
+      "USD_GBP": 0.76092,
+      "USD_INR": 84.5024
+    },
+    "2026-11-20": {
+      "EUR_USD": 1.0895,
+      "USD_EUR": 0.91785,
+      "GBP_EUR": 1.1965,
+      "EUR_GBP": 0.83577
+    }
+  }
+}
