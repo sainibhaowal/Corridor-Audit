@@ -586,45 +586,28 @@ export function SettingsView({
 										/>
 									</>
 								) : (
-									<div className="text-xs text-[#81949a]">
-										No live models fetched yet. Enter your API key above and click <strong>Discover Models</strong> to load available models from this provider, or type a Model ID below.
-									</div>
+									<>
+										<div className="text-xs text-[#81949a]">
+											No live models fetched yet. Enter your API key above and click <strong>Discover Models</strong> to load available models from this provider, or type a Model ID below.
+										</div>
+										<div>
+											<label className="mb-1 block text-[11px] font-semibold text-[#81949a]">
+												Model ID
+											</label>
+											<input
+												type="text"
+												value={modelName}
+												onChange={(e) => {
+													const nextId = e.target.value
+													setModelName(nextId)
+													setModelDisplayName(modelAliases[nextId] || formatModelDisplayName(nextId))
+												}}
+												placeholder="Enter Model ID or discover from API"
+												className="h-8 w-full rounded-lg border border-[#32454d] bg-[#0d141b] px-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
+											/>
+										</div>
+									</>
 								)}
-
-								<div className="grid gap-3 pt-1 sm:grid-cols-2">
-									<div>
-										<label className="mb-1 block text-[11px] font-semibold text-[#c7d3d6]">
-											Display Name (Editable Header Label)
-										</label>
-										<input
-											type="text"
-											value={modelDisplayName}
-											onChange={(e) => {
-												const val = e.target.value
-												setModelDisplayName(val)
-												setModelAliases((prev) => ({ ...prev, [modelName]: val }))
-											}}
-											placeholder="e.g. Nemotron 3.5 Super VL 120B A12B"
-											className="h-8 w-full rounded-lg border border-[#32454d] bg-[#0d141b] px-3 text-xs font-semibold text-[#e3edef] focus:border-emerald-600 focus:outline-none"
-										/>
-									</div>
-									<div>
-										<label className="mb-1 block text-[11px] font-semibold text-[#81949a]">
-											Real Model ID (Sent to Provider API)
-										</label>
-										<input
-											type="text"
-											value={modelName}
-											onChange={(e) => {
-												const nextId = e.target.value
-												setModelName(nextId)
-												setModelDisplayName(modelAliases[nextId] || formatModelDisplayName(nextId))
-											}}
-											placeholder="Enter Model ID or discover from API"
-											className="h-8 w-full rounded-lg border border-[#32454d] bg-[#0d141b] px-3 font-mono text-xs text-[#81949a] focus:border-emerald-600 focus:text-[#e3edef] focus:outline-none"
-										/>
-									</div>
-								</div>
 							</div>
 
 							{testStatus && (
