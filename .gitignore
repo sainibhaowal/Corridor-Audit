@@ -7,7 +7,6 @@ node_modules/
 dist/
 .next/
 next-env.d.ts
-tsconfig.tsbuildinfo
 
 # Secrets & local environment
 .env
