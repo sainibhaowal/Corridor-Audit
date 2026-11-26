@@ -258,6 +258,9 @@ export function CorridorWorkspace() {
 				for (const item of data.cases || []) ids.add(item.caseId)
 				return [...ids]
 			})
+			if (data.cases?.length) {
+				setActiveCaseId((curr) => curr ?? data.cases[data.cases.length - 1].caseId)
+			}
 		} catch {
 			// ignore transient network glitches
 		}
@@ -1014,6 +1017,15 @@ export function CorridorWorkspace() {
 											<div><span className="block font-semibold text-[#c7d3d6]">02 · Verify</span>Integer-unit balance checks</div>
 											<div><span className="block font-semibold text-[#c7d3d6]">03 · Review</span>Human gate on risky cases</div>
 										</div>
+									</div>
+								) : visibleAgents.length === 0 ? (
+									<div className="flex min-h-[200px] flex-col items-center justify-center gap-2 py-8 text-center">
+										<div className="text-sm font-bold text-[#e3edef]">
+											{activeEntry.caseId} · {activeEntry.title}
+										</div>
+										<p className="max-w-md text-xs text-[#81949a]">
+											Case is registered in the workspace. Agent steps will appear here as specialists execute, or re-parse from Raw Data Vault if a previous run was interrupted before an LLM key was configured.
+										</p>
 									</div>
 								) : (
 									<div className="relative space-y-4 pl-6 before:absolute before:top-2 before:bottom-2 before:left-[8.5px] before:w-[1.5px] before:bg-[#62e1c3]">
