@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./src/server/public/banner.svg" alt="CorridorAudit — Cross-Border Settlement &amp; Hidden-Fee Forensics" width="100%" />
+  <img src="./public/banner.svg" alt="CorridorAudit — Cross-Border Settlement &amp; Hidden-Fee Forensics" width="100%" />
 </p>
 
 <p align="center">
@@ -83,12 +83,14 @@ Add **any one** API key inside `.env` (or configure directly inside the Web UI v
 
 ### 2. Run
 ```bash
-npm start          # Boots unified server & Web Dashboard at http://127.0.0.1:3000
+npm start          # Auto-builds if needed & boots Next.js Dashboard at http://127.0.0.1:3000
+npm run dev        # Or launch Next.js hot-reload dev server directly
 ```
-Or run headless terminal mode & unit tests:
+Or run headless terminal mode, production build & verification tests:
 ```bash
+npm run build      # Builds optimized Next.js production bundle
 npm run cli        # Runs all 6 synthetic Black Friday cases end-to-end in CLI
-npm test           # Runs unit + HTTP/SSE end-to-end tests
+npm test           # Runs unit + Next.js App Router API end-to-end tests
 npm run typecheck  # Runs TypeScript compiler check
 ```
 
