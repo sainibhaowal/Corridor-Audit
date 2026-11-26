@@ -41,11 +41,26 @@ function startHotFolderWatcher(orchestrator: CorridorOrchestrator): void {
 				try {
 					const ext = extname(filename).toLowerCase()
 					const buf = readFileSync(fullPath)
+					const isPdf = ext === ".pdf"
+					const rec = getCorridorDb().saveRawIngestion({
+						sourceChannel: "hot_folder",
+						sourceProvider: "inbox_watcher",
+						filename,
+						format: ext.replace(/^\./, "") || "auto",
+						rawContent: isPdf ? buf.toString("base64") : buf.toString("utf8"),
+						isBase64: isPdf,
+						metadata: { fullPath },
+					})
 					const cases = normalizeInboundPayloadToCases(
-						ext === ".pdf"
+						isPdf
 							? { filename, base64: buf.toString("base64"), format: "pdf" }
 							: { filename, content: buf.toString("utf8"), format: "auto" },
 					)
+					getCorridorDb().updateRawIngestionOutcome({
+						id: rec.id,
+						parseStatus: "parsed",
+						caseIds: cases.map((c) => c.caseId),
+					})
 					void orchestrator.enqueueBatch(cases)
 				} catch {
 					// ignore transient partial write errors

@@ -8,6 +8,9 @@ import test from "node:test"
 const TEST_DB_PATH = resolve(tmpdir(), `corridor-test-${process.pid}-${Date.now()}.db`)
 process.env.CORRIDOR_DB_PATH = TEST_DB_PATH
 
+import { GET as listIngestionsRoute } from "../src/app/api/ingestions/route"
+import { GET as getIngestionRoute } from "../src/app/api/ingestions/[id]/route"
+import { POST as reprocessIngestionRoute } from "../src/app/api/ingestions/[id]/reprocess/route"
 import { GET as listIntegrationsRoute } from "../src/app/api/integrations/route"
 import { POST as connectIntegrationRoute } from "../src/app/api/integrations/[provider]/connect/route"
 import { POST as disconnectIntegrationRoute } from "../src/app/api/integrations/[provider]/disconnect/route"
@@ -258,6 +261,44 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 			}),
 		}),
 	)
+})
+
+test("Raw Data Vault persists raw payloads and supports inspect, download, and reprocess", async () => {
+	const listRes = await listIngestionsRoute(new Request("http://127.0.0.1/api/ingestions"))
+	assert.equal(listRes.status, 200)
+	const listJson = (await listRes.json()) as {
+		ok: boolean
+		stats: { total: number; webhook: number; email: number }
+		ingestions: Array<{ id: string; sha256: string; caseIds: string[] }>
+	}
+	assert.equal(listJson.ok, true)
+	assert.ok(listJson.stats.total >= 2)
+	assert.ok(listJson.stats.webhook >= 1)
+	assert.ok(listJson.stats.email >= 1)
+
+	const targetId = listJson.ingestions[0]!.id
+	const detailRes = await getIngestionRoute(
+		new Request(`http://127.0.0.1/api/ingestions/${targetId}`),
+		{ params: Promise.resolve({ id: targetId }) },
+	)
+	assert.equal(detailRes.status, 200)
+	const detailJson = (await detailRes.json()) as { ok: boolean; ingestion: { rawContent: string; sha256: string } }
+	assert.equal(detailJson.ok, true)
+	assert.ok(detailJson.ingestion.rawContent.length > 0)
+	assert.equal(detailJson.ingestion.sha256.length, 64)
+
+	const dlRes = await getIngestionRoute(
+		new Request(`http://127.0.0.1/api/ingestions/${targetId}?download=1`),
+		{ params: Promise.resolve({ id: targetId }) },
+	)
+	assert.equal(dlRes.status, 200)
+	assert.ok(dlRes.headers.get("content-disposition")?.includes("attachment"))
+
+	const reprocessRes = await reprocessIngestionRoute(
+		new Request(`http://127.0.0.1/api/ingestions/${targetId}/reprocess`, { method: "POST" }),
+		{ params: Promise.resolve({ id: targetId }) },
+	)
+	assert.equal(reprocessRes.status, 202)
 })
 
 test.after(() => {

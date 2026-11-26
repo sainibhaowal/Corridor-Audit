@@ -7,6 +7,7 @@ import {
 	Check,
 	ChevronDown,
 	ChevronRight,
+	Database,
 	Download,
 	FileUp,
 	PauseCircle,
@@ -46,10 +47,11 @@ import {
 	verdictBadgeVariant,
 } from "./corridor-types"
 import { InboundSourcesView } from "./inbound-sources-view"
+import { RawVaultView } from "./raw-vault-view"
 import { SettingsView } from "./settings-view"
 import { type RuntimeConsoleEvent, WorkbenchTerminal } from "./workbench-terminal"
 
-type WorkspaceView = "stream" | "inbound" | "summary" | "settings"
+type WorkspaceView = "stream" | "inbound" | "vault" | "summary" | "settings"
 type RightTab = "cases" | "artifacts" | "ledger"
 type ModalTab = "ledger" | "technical" | "letter"
 type ColorTheme = "dark" | "light"
@@ -698,6 +700,7 @@ export function CorridorWorkspace() {
 						{[
 							{ id: "stream" as const, label: "Live Agent Stream", icon: Activity },
 							{ id: "inbound" as const, label: "Data Sources", icon: FileUp },
+							{ id: "vault" as const, label: "Raw Data Vault", icon: Database },
 							{ id: "summary" as const, label: "Corridor Summary", icon: BarChart3 },
 						].map((item) => {
 							const Icon = item.icon
@@ -784,9 +787,10 @@ export function CorridorWorkspace() {
 							{[
 								{ id: "stream" as const, label: "Run" },
 								{ id: "inbound" as const, label: "Sources" },
+								{ id: "vault" as const, label: "Vault" },
 								{ id: "summary" as const, label: "Summary" },
 								{ id: "settings" as const, label: "Settings" },
-							].map((item) => <button key={item.id} type="button" onClick={() => setView(item.id)} className={cn("shrink-0 rounded px-2.5 py-1.5 text-xs font-semibold", view === item.id ? "bg-[#121c24] text-white" : "text-[#81949a] hover:bg-[#101820]")}>{item.label}</button>)}
+							].map((item) => <button key={item.id} type="button" onClick={() => setView(item.id)} className={cn("shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold", view === item.id ? "bg-[#121c24] text-white" : "text-[#81949a] hover:bg-[#101820]")}>{item.label}</button>)}
 						</nav>
 						<button type="button" aria-label="Open case inspector" onClick={() => { setRightCollapsed(false); setRightDrawerOpen(true) }} className="shrink-0 rounded border border-[#1c2a33] px-2.5 py-1.5 text-xs font-semibold text-[#c7d3d6]">Cases {verdicts.length}</button>
 					</div>
@@ -1186,6 +1190,15 @@ export function CorridorWorkspace() {
 					{view === "inbound" && (
 						<InboundSourcesView
 							onIngested={() => setView("stream")}
+						/>
+					)}
+
+					{view === "vault" && (
+						<RawVaultView
+							onOpenCase={(cid) => {
+								setActiveCaseId(cid)
+								setView("stream")
+							}}
 						/>
 					)}
 

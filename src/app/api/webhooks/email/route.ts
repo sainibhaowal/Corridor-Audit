@@ -8,9 +8,11 @@ export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function POST(request: Request) {
+	const db = getCorridorDb()
+	let ingestionId: string | undefined
+
 	try {
 		const raw = await request.text()
-		const db = getCorridorDb()
 		const workspace = db.getWorkspace(DEFAULT_WORKSPACE_ID)
 		const corridorSecret = db.getRawWebhookSecret(DEFAULT_WORKSPACE_ID)
 
@@ -28,22 +30,47 @@ export async function POST(request: Request) {
 		}
 
 		const payload = JSON.parse(raw) as InboundEmailPayload
+		const sender = payload.from || payload.From || "unknown-sender"
+		const subject = payload.subject || payload.Subject || "Inbound Email"
+		const rec = db.saveRawIngestion({
+			workspaceId: DEFAULT_WORKSPACE_ID,
+			sourceChannel: "email",
+			sourceProvider: "email_inbound",
+			filename: `${subject.slice(0, 48)}.eml.json`,
+			format: "json",
+			rawContent: raw,
+			metadata: { from: sender, subject },
+		})
+		ingestionId = rec.id
+
 		const cases = parseInboundEmailToCases(payload)
+		db.updateRawIngestionOutcome({
+			id: rec.id,
+			parseStatus: "parsed",
+			caseIds: cases.map((c) => c.caseId),
+		})
+
 		const orchestrator = initCorridorOrchestrator()
 		void orchestrator.enqueueBatch(cases)
 
 		return NextResponse.json(
 			{
 				ok: true,
+				ingestionId: rec.id,
 				queuedCount: cases.length,
 				caseIds: cases.map((c) => c.caseId),
 			},
 			{ status: 202 },
 		)
 	} catch (err) {
-		return NextResponse.json(
-			{ ok: false, error: err instanceof Error ? err.message : String(err) },
-			{ status: 400 },
-		)
+		const msg = err instanceof Error ? err.message : String(err)
+		if (ingestionId) {
+			db.updateRawIngestionOutcome({
+				id: ingestionId,
+				parseStatus: "failed",
+				parseError: msg,
+			})
+		}
+		return NextResponse.json({ ok: false, error: msg, ingestionId }, { status: 400 })
 	}
 }

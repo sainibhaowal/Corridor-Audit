@@ -3,6 +3,26 @@ export type IntegrationCategory = "payouts" | "accounting" | "banking" | "email"
 export type IntegrationAuthMode = "oauth2" | "api_token" | "open_banking" | "email_forward" | "sftp"
 export type IntegrationStatus = "connected" | "disconnected" | "syncing" | "error"
 export type TeamRole = "owner" | "controller" | "analyst" | "viewer"
+export type RawIngestionChannel = "manual_upload" | "webhook" | "email" | "platform_sync" | "hot_folder"
+export type RawIngestionParseStatus = "parsed" | "failed"
+
+export interface RawIngestionRecord {
+	id: string
+	workspaceId: string
+	sourceChannel: RawIngestionChannel
+	sourceProvider: string
+	filename: string
+	format: string
+	sha256: string
+	sizeBytes: number
+	rawContent?: string
+	isBase64: boolean
+	metadata: Record<string, string>
+	parseStatus: RawIngestionParseStatus
+	parseError?: string
+	caseIds: string[]
+	createdAt: string
+}
 
 export interface WorkspaceRecord {
 	id: string
@@ -148,5 +168,23 @@ CREATE TABLE IF NOT EXISTS audit_verdicts (
 	status TEXT NOT NULL,
 	verdict_json TEXT NOT NULL,
 	completed_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS raw_ingestions (
+	id TEXT PRIMARY KEY,
+	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+	source_channel TEXT NOT NULL,
+	source_provider TEXT NOT NULL,
+	filename TEXT NOT NULL,
+	format TEXT NOT NULL,
+	sha256 TEXT NOT NULL,
+	size_bytes INTEGER NOT NULL,
+	raw_content TEXT NOT NULL,
+	is_base64 INTEGER NOT NULL DEFAULT 0,
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	parse_status TEXT NOT NULL DEFAULT 'parsed',
+	parse_error TEXT,
+	case_ids_json TEXT NOT NULL DEFAULT '[]',
+	created_at TEXT NOT NULL
 );
 `

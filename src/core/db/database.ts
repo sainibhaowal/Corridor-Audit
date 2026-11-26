@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto"
+import { createHash, randomBytes, randomUUID } from "node:crypto"
 import { mkdirSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { DatabaseSync } from "node:sqlite"
@@ -12,6 +12,9 @@ import {
 	type IntegrationCredentials,
 	type IntegrationRecord,
 	type IntegrationStatus,
+	type RawIngestionChannel,
+	type RawIngestionParseStatus,
+	type RawIngestionRecord,
 	type SyncRunRecord,
 	type TeamMemberRecord,
 	type TeamRole,
@@ -462,6 +465,166 @@ export class CorridorDatabase {
 			.prepare("SELECT verdict_json FROM audit_verdicts WHERE workspace_id = ? ORDER BY completed_at ASC")
 			.all(workspaceId) as Array<{ verdict_json: string }>
 		return rows.map((r) => JSON.parse(r.verdict_json) as AuditVerdict)
+	}
+
+	private mapRawIngestionRow(row: Record<string, unknown>, includeContent: boolean): RawIngestionRecord {
+		return {
+			id: String(row.id),
+			workspaceId: String(row.workspace_id),
+			sourceChannel: String(row.source_channel) as RawIngestionChannel,
+			sourceProvider: String(row.source_provider),
+			filename: String(row.filename),
+			format: String(row.format),
+			sha256: String(row.sha256),
+			sizeBytes: Number(row.size_bytes),
+			rawContent: includeContent ? String(row.raw_content) : undefined,
+			isBase64: Boolean(row.is_base64),
+			metadata: JSON.parse(String(row.metadata_json || "{}")) as Record<string, string>,
+			parseStatus: String(row.parse_status) as RawIngestionParseStatus,
+			parseError: row.parse_error ? String(row.parse_error) : undefined,
+			caseIds: JSON.parse(String(row.case_ids_json || "[]")) as string[],
+			createdAt: String(row.created_at),
+		}
+	}
+
+	saveRawIngestion(params: {
+		workspaceId?: string
+		sourceChannel: RawIngestionChannel
+		sourceProvider: string
+		filename: string
+		format: string
+		rawContent: string
+		isBase64?: boolean
+		metadata?: Record<string, string>
+		parseStatus?: RawIngestionParseStatus
+		parseError?: string
+		caseIds?: string[]
+	}): RawIngestionRecord {
+		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
+		const id = `ing_${randomUUID().slice(0, 12)}`
+		const buf = params.isBase64
+			? Buffer.from(params.rawContent, "base64")
+			: Buffer.from(params.rawContent, "utf8")
+		const sha256 = createHash("sha256").update(buf).digest("hex")
+		const sizeBytes = buf.byteLength
+		const createdAt = new Date().toISOString()
+
+		this.db
+			.prepare(
+				`INSERT INTO raw_ingestions (
+					id, workspace_id, source_channel, source_provider, filename, format,
+					sha256, size_bytes, raw_content, is_base64, metadata_json,
+					parse_status, parse_error, case_ids_json, created_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				id,
+				workspaceId,
+				params.sourceChannel,
+				params.sourceProvider,
+				params.filename,
+				params.format,
+				sha256,
+				sizeBytes,
+				params.rawContent,
+				Number(Boolean(params.isBase64)),
+				JSON.stringify(params.metadata ?? {}),
+				params.parseStatus ?? "parsed",
+				params.parseError ?? null,
+				JSON.stringify(params.caseIds ?? []),
+				createdAt,
+			)
+
+		return this.getRawIngestion(id, true)!
+	}
+
+	updateRawIngestionOutcome(params: {
+		id: string
+		parseStatus: RawIngestionParseStatus
+		parseError?: string
+		caseIds?: string[]
+	}): void {
+		this.db
+			.prepare(
+				`UPDATE raw_ingestions
+				SET parse_status = ?, parse_error = ?, case_ids_json = ?
+				WHERE id = ?`,
+			)
+			.run(
+				params.parseStatus,
+				params.parseError ?? null,
+				JSON.stringify(params.caseIds ?? []),
+				params.id,
+			)
+	}
+
+	listRawIngestions(params?: {
+		workspaceId?: string
+		channel?: string
+		limit?: number
+	}): RawIngestionRecord[] {
+		const workspaceId = params?.workspaceId || DEFAULT_WORKSPACE_ID
+		const limit = Math.min(200, Math.max(1, params?.limit ?? 100))
+		const rows = params?.channel && params.channel !== "all"
+			? (this.db
+					.prepare(
+						`SELECT id, workspace_id, source_channel, source_provider, filename, format,
+							sha256, size_bytes, is_base64, metadata_json, parse_status, parse_error,
+							case_ids_json, created_at
+						FROM raw_ingestions
+						WHERE workspace_id = ? AND source_channel = ?
+						ORDER BY created_at DESC LIMIT ?`,
+					)
+					.all(workspaceId, params.channel, limit) as Array<Record<string, unknown>>)
+			: (this.db
+					.prepare(
+						`SELECT id, workspace_id, source_channel, source_provider, filename, format,
+							sha256, size_bytes, is_base64, metadata_json, parse_status, parse_error,
+							case_ids_json, created_at
+						FROM raw_ingestions
+						WHERE workspace_id = ?
+						ORDER BY created_at DESC LIMIT ?`,
+					)
+					.all(workspaceId, limit) as Array<Record<string, unknown>>)
+
+		return rows.map((r) => this.mapRawIngestionRow(r, false))
+	}
+
+	getRawIngestion(id: string, includeContent = true): RawIngestionRecord | null {
+		const row = this.db
+			.prepare("SELECT * FROM raw_ingestions WHERE id = ?")
+			.get(id) as Record<string, unknown> | undefined
+		return row ? this.mapRawIngestionRow(row, includeContent) : null
+	}
+
+	getRawIngestionStats(workspaceId = DEFAULT_WORKSPACE_ID): Record<string, number> {
+		const rows = this.db
+			.prepare(
+				`SELECT source_channel, parse_status, COUNT(*) as cnt
+				FROM raw_ingestions WHERE workspace_id = ?
+				GROUP BY source_channel, parse_status`,
+			)
+			.all(workspaceId) as Array<{ source_channel: string; parse_status: string; cnt: number }>
+
+		const stats: Record<string, number> = {
+			total: 0,
+			manual_upload: 0,
+			webhook: 0,
+			email: 0,
+			platform_sync: 0,
+			hot_folder: 0,
+			failed: 0,
+		}
+		for (const row of rows) {
+			stats.total += row.cnt
+			if (row.source_channel in stats) {
+				stats[row.source_channel] += row.cnt
+			}
+			if (row.parse_status === "failed") {
+				stats.failed += row.cnt
+			}
+		}
+		return stats
 	}
 
 	close(): void {
