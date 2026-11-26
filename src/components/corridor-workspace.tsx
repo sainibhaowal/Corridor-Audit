@@ -45,10 +45,10 @@ import {
 	verdictBadgeVariant,
 } from "./corridor-types"
 import { InboundSourcesView } from "./inbound-sources-view"
-import { ProviderSettingsModal } from "./provider-settings-modal"
+import { SettingsView } from "./settings-view"
 import { type RuntimeConsoleEvent, WorkbenchTerminal } from "./workbench-terminal"
 
-type WorkspaceView = "stream" | "inbound" | "summary"
+type WorkspaceView = "stream" | "inbound" | "summary" | "settings"
 type RightTab = "cases" | "artifacts" | "ledger"
 type ModalTab = "ledger" | "technical" | "letter"
 type ColorTheme = "dark" | "light"
@@ -629,9 +629,33 @@ export function CorridorWorkspace() {
 						<option value="step_tool">Gate: Step Every Tool</option>
 					</select>
 
+					{provider.mode === "live" && (provider.discoveredModels?.length ?? 0) > 0 && (
+						<select
+							value={provider.modelName}
+							onChange={async (e) => {
+								const nextModel = e.target.value
+								const res = await fetch("/api/settings/provider", {
+									method: "POST",
+									headers: { "Content-Type": "application/json" },
+									body: JSON.stringify({ provider: provider.provider, modelName: nextModel }),
+								})
+								const data = (await res.json()) as { provider?: ProviderStatus }
+								if (data.provider) setProvider(data.provider)
+							}}
+							title="Switch active connected model"
+							className="hidden h-8 max-w-[210px] cursor-pointer truncate rounded-md border border-[#225b51] bg-[#0d2725] px-2 font-mono text-[11px] font-semibold text-[#75e4c7] focus:border-emerald-500 focus:outline-none md:inline-block"
+						>
+							{(provider.discoveredModels ?? [provider.modelName]).map((m) => (
+								<option key={m} value={m}>
+									{m}
+								</option>
+							))}
+						</select>
+					)}
+
 					<button
 						type="button"
-						onClick={() => setProviderModalOpen(true)}
+						onClick={() => setView("settings")}
 						title={`${provider.label} (${provider.modelName})`}
 						className={cn(
 						"inline-flex h-8 w-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 truncate rounded-md border px-0 text-[11.5px] font-semibold whitespace-nowrap transition-colors sm:w-auto sm:px-2.5 xl:max-w-[230px] xl:justify-start",
@@ -672,8 +696,9 @@ export function CorridorWorkspace() {
 					<nav className={cn("w-full", leftCollapsed ? "space-y-1" : "space-y-1")} aria-label="Workspace navigation">
 						{[
 							{ id: "stream" as const, label: "Live Agent Stream", icon: Activity },
-							{ id: "inbound" as const, label: "Inbound Sources", icon: FileUp },
+							{ id: "inbound" as const, label: "Data Sources", icon: FileUp },
 							{ id: "summary" as const, label: "Corridor Summary", icon: BarChart3 },
+							{ id: "settings" as const, label: "System Settings", icon: Settings },
 						].map((item) => {
 							const Icon = item.icon
 							const active = view === item.id
@@ -741,13 +766,13 @@ export function CorridorWorkspace() {
 						<Button
 							variant="outline"
 							className="mt-3 w-full bg-[#080d12]"
-							onClick={() => setProviderModalOpen(true)}
+							onClick={() => setView("settings")}
 						>
 							<Settings className="h-3.5 w-3.5" />
 							System Settings
 						</Button>
 						</>}
-						{leftCollapsed && <button type="button" onClick={() => setProviderModalOpen(true)} title={`Provider settings: ${provider.label}`} aria-label="Open provider settings" className="rounded-md p-2 text-[#81949a] hover:bg-[#101820] hover:text-[#e3edef]"><Settings className="h-4 w-4" /></button>}
+						{leftCollapsed && <button type="button" onClick={() => setView("settings")} title={`System settings: ${provider.label}`} aria-label="Open system settings" className="rounded-md p-2 text-[#81949a] hover:bg-[#101820] hover:text-[#e3edef]"><Settings className="h-4 w-4" /></button>}
 					</div>
 				</aside>
 
@@ -759,6 +784,7 @@ export function CorridorWorkspace() {
 								{ id: "stream" as const, label: "Run" },
 								{ id: "inbound" as const, label: "Sources" },
 								{ id: "summary" as const, label: "Summary" },
+								{ id: "settings" as const, label: "Settings" },
 							].map((item) => <button key={item.id} type="button" onClick={() => setView(item.id)} className={cn("shrink-0 rounded px-2.5 py-1.5 text-xs font-semibold", view === item.id ? "bg-[#121c24] text-white" : "text-[#81949a] hover:bg-[#101820]")}>{item.label}</button>)}
 						</nav>
 						<button type="button" aria-label="Open case inspector" onClick={() => { setRightCollapsed(false); setRightDrawerOpen(true) }} className="shrink-0 rounded border border-[#1c2a33] px-2.5 py-1.5 text-xs font-semibold text-[#c7d3d6]">Cases {verdicts.length}</button>
@@ -974,7 +1000,7 @@ export function CorridorWorkspace() {
 										<p className="mt-2 max-w-xl text-sm leading-6 text-[#a4b4b8]">Follow each specialist as it checks invoice terms, FX, wire fees, and exceptions. Tool results and the final cent reconciliation appear here as the run progresses.</p>
 										<div className="mt-5 flex flex-wrap gap-2">
 											<Button className="h-9 px-3.5" onClick={() => setView("inbound")}><FileUp className="h-3.5 w-3.5" />Upload source</Button>
-											<Button variant="outline" className="h-9 px-3.5" onClick={() => setProviderModalOpen(true)}>Configure LLM Key</Button>
+											<Button variant="outline" className="h-9 px-3.5" onClick={() => setView("settings")}>Configure LLM Key</Button>
 										</div>
 										<div className="mt-7 grid grid-cols-1 gap-2 border-t border-[#1c2a33] pt-4 text-[11px] text-[#81949a] sm:grid-cols-3">
 											<div><span className="block font-semibold text-[#c7d3d6]">01 · Investigate</span>Terms, FX, and wire specialists</div>
@@ -1169,6 +1195,15 @@ export function CorridorWorkspace() {
 								setModalTab("ledger")
 								setModalCaseId(cid)
 							}}
+						/>
+					)}
+
+					{view === "settings" && (
+						<SettingsView
+							currentProvider={provider}
+							breakpointMode={breakpointMode}
+							onBreakpointModeChange={setBreakpointMode}
+							onProviderSaved={(next) => setProvider(next)}
 						/>
 					)}
 				</main>
@@ -1367,15 +1402,6 @@ export function CorridorWorkspace() {
 				activeTab={modalTab}
 				onTabChange={setModalTab}
 				onClose={() => setModalCaseId(null)}
-			/>
-
-			<ProviderSettingsModal
-				open={providerModalOpen}
-				current={provider}
-				breakpointMode={breakpointMode}
-				onBreakpointModeChange={setBreakpointMode}
-				onSaved={(next) => setProvider(next)}
-				onClose={() => setProviderModalOpen(false)}
 			/>
 		</div>
 	)

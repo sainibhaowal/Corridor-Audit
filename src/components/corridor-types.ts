@@ -13,8 +13,10 @@ export interface ProviderStatus {
 	provider: ProviderId
 	label: string
 	modelName: string
+	baseURL?: string
 	hasKey: boolean
 	mode: "live" | "unconfigured"
+	discoveredModels?: string[]
 }
 
 export interface QueueStats {
@@ -83,6 +85,16 @@ export const PROVIDER_DEFAULT_MODELS: Record<ProviderId, string> = {
 	openai: "gpt-5.4",
 	anthropic: "claude-haiku-4-5",
 	ollama: "llama3.2",
+}
+
+export const PROVIDER_DEFAULT_URLS: Record<ProviderId, string> = {
+	nvidia: "https://integrate.api.nvidia.com/v1",
+	gemini: "https://generativelanguage.googleapis.com/v1beta",
+	groq: "https://api.groq.com/openai/v1",
+	openrouter: "https://openrouter.ai/api/v1",
+	openai: "https://api.openai.com/v1",
+	anthropic: "https://api.anthropic.com/v1",
+	ollama: "http://localhost:11434/v1",
 }
 
 export const ORDERED_AGENTS = [

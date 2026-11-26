@@ -45,6 +45,7 @@ export const PROVIDER_DEFAULTS: Record<
 	gemini: {
 		label: "Google Gemini (AI Studio)",
 		defaultModel: "gemini-2.5-flash",
+		baseURL: "https://generativelanguage.googleapis.com/v1beta",
 		envVar: "GEMINI_API_KEY",
 	},
 	groq: {
@@ -62,11 +63,13 @@ export const PROVIDER_DEFAULTS: Record<
 	openai: {
 		label: "OpenAI",
 		defaultModel: "gpt-5.4",
+		baseURL: "https://api.openai.com/v1",
 		envVar: "OPENAI_API_KEY",
 	},
 	anthropic: {
 		label: "Anthropic Claude",
 		defaultModel: "claude-haiku-4-5",
+		baseURL: "https://api.anthropic.com/v1",
 		envVar: "ANTHROPIC_API_KEY",
 	},
 	ollama: {
@@ -171,33 +174,102 @@ function sleep(ms: number): Promise<void> {
 	return new Promise((r) => setTimeout(r, ms))
 }
 
+export async function discoverModelsForProvider(params: {
+	provider: ProviderId
+	apiKey?: string
+	baseURL?: string
+}): Promise<string[]> {
+	const defaults = PROVIDER_DEFAULTS[params.provider]
+	const baseUrl = (params.baseURL?.trim() || defaults.baseURL || "").replace(/\/+$/, "")
+	const apiKey = params.apiKey?.trim()
+
+	if (!apiKey && params.provider !== "ollama") {
+		throw new Error(`Enter an API key for ${defaults.label} to discover models.`)
+	}
+
+	if (params.provider === "gemini") {
+		const res = await fetch(`${baseUrl}/models?key=${encodeURIComponent(apiKey || "")}`)
+		if (!res.ok) {
+			throw new Error(`Gemini model discovery failed (${res.status}): ${(await res.text()).slice(0, 200)}`)
+		}
+		const json = (await res.json()) as {
+			models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>
+		}
+		return (json.models ?? [])
+			.filter((m) => !m.supportedGenerationMethods || m.supportedGenerationMethods.includes("generateContent"))
+			.map((m) => (m.name || "").replace(/^models\//, ""))
+			.filter(Boolean)
+			.sort()
+	}
+
+	if (params.provider === "anthropic") {
+		const res = await fetch(`${baseUrl}/models`, {
+			headers: {
+				"x-api-key": apiKey || "",
+				"anthropic-version": "2023-06-01",
+			},
+		})
+		if (!res.ok) {
+			throw new Error(`Anthropic model discovery failed (${res.status}): ${(await res.text()).slice(0, 200)}`)
+		}
+		const json = (await res.json()) as { data?: Array<{ id?: string }> }
+		return (json.data ?? []).map((m) => m.id || "").filter(Boolean).sort()
+	}
+
+	const headers: Record<string, string> = { Accept: "application/json" }
+	if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+	const res = await fetch(`${baseUrl}/models`, { headers })
+	if (!res.ok) {
+		throw new Error(`${defaults.label} model discovery failed (${res.status}): ${(await res.text()).slice(0, 200)}`)
+	}
+	const json = (await res.json()) as { data?: Array<{ id?: string }>; models?: Array<{ name?: string }> }
+	const ids = (json.data ?? []).map((m) => m.id || "").concat((json.models ?? []).map((m) => m.name || ""))
+	return [...new Set(ids.filter(Boolean))].sort()
+}
+
 export class DynamicEndpointRouter implements InferenceRunner {
 	private config: ActiveProviderConfig
 	private readonly semaphore: AsyncSemaphore
+	private discoveredModels: string[] = []
 
 	constructor(initialConfig: ActiveProviderConfig, maxConcurrent = 3) {
 		this.config = initialConfig
 		this.semaphore = new AsyncSemaphore(Math.max(1, maxConcurrent))
+		this.discoveredModels = [initialConfig.modelName]
 	}
 
 	getConfig(): ActiveProviderConfig {
 		return { ...this.config }
 	}
 
+	setDiscoveredModels(models: string[]): void {
+		const unique = [...new Set(models.filter(Boolean))]
+		if (unique.length > 0) {
+			this.discoveredModels = unique
+		}
+	}
+
 	getPublicStatus(): {
 		provider: ProviderId
 		label: string
 		modelName: string
+		baseURL?: string
 		hasKey: boolean
 		mode: "live" | "unconfigured"
+		discoveredModels: string[]
 	} {
 		const hasKey = Boolean(this.config.apiKey || this.config.provider === "ollama")
+		const models = this.discoveredModels.includes(this.config.modelName)
+			? this.discoveredModels
+			: [this.config.modelName, ...this.discoveredModels]
 		return {
 			provider: this.config.provider,
 			label: PROVIDER_DEFAULTS[this.config.provider].label,
 			modelName: this.config.modelName,
+			baseURL: this.config.baseURL || PROVIDER_DEFAULTS[this.config.provider].baseURL,
 			hasKey,
 			mode: hasKey ? "live" : "unconfigured",
+			discoveredModels: models,
 		}
 	}
 
