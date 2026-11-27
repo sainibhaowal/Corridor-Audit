@@ -1,4 +1,4 @@
-﻿# 07 · Security, Cryptography, Hashing & Sensitive Data Protection
+# 07 · Security, Cryptography, Hashing & Sensitive Data Protection
 
 > [!IMPORTANT]
 > As a financial forensics platform handling bank statements, OAuth tokens, API keys, and payment webhooks, **CorridorAudit** enforces a **5-layer defense-in-depth security model** across ingress, encryption at rest, cryptographic hashing, runtime sandboxing, and human-in-the-loop governance.

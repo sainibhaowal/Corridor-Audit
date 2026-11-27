@@ -33,6 +33,7 @@ Read the complete judge-ready technical & product Case Study in **[`docs/Case St
 | **[04 Â· Mozaik 4+1 Agent System](./docs/Case%20Study/04-mozaik-4-plus-1-agents.md)** | 4+1 concurrent agents, `CorridorState` slots, `DynamicEndpointRouter` & breakpoints |
 | **[05 Â· Financial Math & Algorithms](./docs/Case%20Study/05-algorithms-and-financial-math.md)** | Integer minor-unit math, Cent-Conservation Equation, FX bps & Mod-97 |
 | **[06 Â· Outputs, Disputes & ROI](./docs/Case%20Study/06-outputs-disputes-and-roi.md)** | Worked `â‚¬5,000` EURâ†’USD example, dispute letters & B2C/B2B ROI |
+| **[07 · Security, Hashing & Data Protection](./docs/Case%20Study/07-security-hashing-and-data-protection.md)** | AES-256-GCM vault, HMAC-SHA256 webhooks, SHA-256 fingerprints & zero-leak policy |
 
 ![CorridorAudit Production Architecture Blueprint](./docs/Case%20Study/assets/architecture-blueprint.svg)
 
