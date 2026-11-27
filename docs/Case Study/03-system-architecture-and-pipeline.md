@@ -1,54 +1,50 @@
-# 03 · End-to-End System Architecture & Processing Pipeline
+# 03 · System architecture and processing flow
 
-## 1. Infographic Architecture Blueprint
-
-![CorridorAudit Production Architecture Blueprint](./assets/architecture-blueprint.svg)
-
----
-
-## 2. End-to-End Pipeline Sequence
+## Request and execution path
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    actor User as B2C User / B2B Employee / Platform
-    participant Ingest as Ingestion Route / Sync Worker
-    participant Vault as SQLite Raw Vault (raw_ingestions)
-    participant Norm as Multi-Format Normalizer
-    participant Mozaik as Mozaik Runtime (4+1 Agents)
-    participant Tools as 20 Deterministic TS Tools + ECB API
-    participant Gate as SettlementGateInterceptionHandler
-    participant UI as Live Workbench & Reports
+    actor Operator
+    participant API as Next.js route
+    participant DB as Local SQLite
+    participant Parser as Format normalizer
+    participant Runtime as Mozaik runtime
+    participant Agents as Specialists + auditor
+    participant UI as Workbench / reports
 
-    User->>Ingest: Upload file / Webhook / Email / Platform Sync
-    Ingest->>Vault: saveRawIngestion() + SHA-256 checksum
-    Ingest->>Norm: normalizeInboundPayloadToCases()
-    Norm-->>Vault: updateRawIngestionOutcome(caseIds, parsed)
-    Ingest->>Mozaik: enqueueBatch(cases) -> publishCorridorEvent("case.queued")
-
-    par 4 Parallel Specialists
-        Mozaik->>Tools: TermsAgent (IBAN Mod-97, WHT, OUR check)
-        Mozaik->>Tools: FxBenchmarkAgent (ECB rate, FX spread bps)
-        Mozaik->>Tools: WireDetectiveAgent (:71G: fees, orphan match)
-        Mozaik->>Tools: DuplicateAnomalyAgent (duplicate vs split, BEC)
-    end
-
-    Mozaik->>Mozaik: Reactive Barrier waits for all expected specialists
-    Mozaik->>Tools: AuditorAgent (Cent conservation + Optimal Rail Replay)
-    Tools-->>Gate: Risky finding? (OUR > 0, variance != 0, duplicate, BEC)
-    Gate-->>UI: Pause & emit breakpoint.paused (SSE)
-    User->>Gate: Approve / Reject & Steer / Stop
-    Gate-->>Mozaik: Resume & finalize_settlement_action()
-    Mozaik-->>Vault: saveAuditVerdict(verdict)
-    Mozaik-->>UI: Stream verdict_ready + Dispute Letter
+    Operator->>API: Upload, webhook, email-adapter, or sync request
+    API->>DB: Save raw-ingestion record and SHA-256 digest
+    API->>Parser: Normalize supported content to case records
+    Parser->>DB: Save case and parse outcome
+    API->>Runtime: Queue case
+    Runtime->>Agents: Run expected specialists concurrently
+    Agents->>Runtime: Publish findings and role-completion events
+    Runtime->>Agents: Start auditor after expected-role barrier
+    Agents->>UI: Stream trajectory and review state
+    Agents->>DB: Save completed verdict
+    Operator->>UI: Resolve a pending human-review breakpoint
+    UI->>Runtime: Approve, reject with note, or stop
+    UI->>API: Request report for a completed case
 ```
 
----
+The diagram shows the intended route flow; each input adapter has its own behavior and error handling. The raw-ingestion table stores payload content unencrypted. Agent activity and pending approvals are process-local, while case, verdict, and raw-ingestion records are stored in SQLite.
 
-## 3. Hybrid Design Principle: Why Deterministic Tools + Mozaik AI?
+## Agent execution
 
-| Responsibility | Handled By | Why? |
-| :--- | :--- | :--- |
-| **Currency math, FX spread bps, tax, IBAN Mod-97** | **Deterministic TypeScript (`src/core/money.ts`)** | LLMs must **never** do financial arithmetic; integer minor-unit math guarantees zero rounding drift. |
-| **Unstructured parsing, reasoning, steering, dispute letters** | **Mozaik AI Agents (`@mozaik-ai/core`)** | Handles messy PDFs, stripped `:70:` remittance hints, plain-English explanations, and human "Reject & Steer" overrides. |
-| **Live Model Routing & Auto-Discovery** | **`DynamicEndpointRouter`** | Supports NVIDIA NIM, Gemini, Groq, OpenRouter, OpenAI, Anthropic, and Ollama with live `/models` discovery. |
+For one case, the terms, FX, and wire specialists are expected; anomaly analysis is included when the case meets its trigger conditions. Those agents run concurrently. The auditor is activated after the expected specialists report completion and then calls deterministic audit tools. Cases from a batch are serialized by the orchestrator to limit contention on the configured model provider.
+
+The provider model remains responsible for agent reasoning and tool selection. The TypeScript tools own the calculations they implement. The system does not independently authenticate supplied documents, guarantee correct extraction, or prove a finding solely from a citation string.
+
+## Human review and outputs
+
+The breakpoint handler can pause a case on risk findings or when step-tool review is configured. The operator can approve, reject and provide a steering note, or stop the case. An approval records the operator decision; it does not transmit funds or submit a dispute to a bank.
+
+The UI streams events through `/api/events`, loads persisted history through `/api/history`, and serves available text/JSON report formats through `/api/report/[caseId]`.
+
+## External services and local limits
+
+- The FX tool queries Frankfurter's ECB reference-rate service and can use bundled fallback values.
+- LLM inference requires a configured and reachable provider.
+- The local timer, filesystem watcher, SQLite database, and in-memory agent runtime are designed for local evaluation. They are not a distributed production deployment.
+
+See the [implementation architecture](../ARCHITECTURE.md) for the current API, connectors, persistence boundaries, and deployment limits.
