@@ -45,6 +45,7 @@ const OAUTH_SPECS: Record<string, OAuthProviderSpec> = {
 		tokenUrl: "https://auth.truelayer.com/connect/token",
 		clientIdEnv: "TRUELAYER_CLIENT_ID",
 		clientSecretEnv: "TRUELAYER_CLIENT_SECRET",
+		pkce: true,
 		scope: "info accounts balance transactions offline_access",
 	},
 }

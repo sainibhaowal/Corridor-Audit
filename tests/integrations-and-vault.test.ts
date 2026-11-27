@@ -496,6 +496,29 @@ test("Xero OAuth uses S256 PKCE and exchanges the persisted verifier", async () 
 	}
 })
 
+test("TrueLayer OAuth uses S256 PKCE and persists its verifier for callback exchange", () => {
+	const previousClientId = process.env.TRUELAYER_CLIENT_ID
+	process.env.TRUELAYER_CLIENT_ID = "truelayer-public-client"
+	try {
+		const { url, state } = createOAuthAuthorizationUrl({
+			provider: "open_banking",
+			workspaceId: DEFAULT_WORKSPACE_ID,
+			origin: "http://127.0.0.1:3000",
+		})
+		const authorization = new URL(url)
+		assert.equal(authorization.searchParams.get("code_challenge_method"), "S256")
+		const { codeVerifier } = consumeOAuthState(state, "open_banking")
+		assert.ok(codeVerifier)
+		assert.equal(
+			authorization.searchParams.get("code_challenge"),
+			createHash("sha256").update(codeVerifier, "ascii").digest("base64url"),
+		)
+	} finally {
+		if (previousClientId === undefined) delete process.env.TRUELAYER_CLIENT_ID
+		else process.env.TRUELAYER_CLIENT_ID = previousClientId
+	}
+})
+
 test("QuickBooks token refresh is serialized and the rotated refresh token is persisted before sync", async () => {
 	const db = getCorridorDb()
 	const previousFetch = global.fetch

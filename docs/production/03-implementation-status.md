@@ -279,3 +279,9 @@ Update this section per milestone with the exact command, result, environment, a
 - Integration OAuth connect and callback now use `CORRIDOR_PUBLIC_BASE_URL` when configured, rather than trusting the incoming request host. Production requires a valid HTTPS origin without path, credentials, query, or fragment. Local development without the setting is restricted to loopback HTTP.
 - Added focused tests for spoofed request hosts, missing production configuration, non-HTTPS production origins, path rejection, and accepted local loopback origins. Provider console redirect URLs must match the configured public origin exactly. Production deployment is not configured here.
 - `npm run typecheck`: passed. `npm test`: 53 passed, 0 failed. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 TrueLayer OAuth PKCE
+
+- TrueLayer's optional PKCE flow is enabled with S256, matching its [official authorization link guidance](https://docs.truelayer.com/docs/generate-an-auth-link). The verifier is stored in the existing encrypted, one-use SQLite OAuth state record and supplied during token exchange.
+- Stripe, Wise, and QuickBooks remain without PKCE because their current integration paths have not been verified to accept it. Their OAuth flow configuration and provider registration still require provider-specific validation.
+- `npm run typecheck`: passed. `npm test`: 54 passed, 0 failed. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
