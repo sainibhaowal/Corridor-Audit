@@ -228,6 +228,11 @@ export function CorridorWorkspace() {
 			})
 			setView("stream")
 			void refreshHistory()
+			if (typeof BroadcastChannel !== "undefined") {
+				const ch = new BroadcastChannel("corridor-audit-sync")
+				ch.postMessage({ type: "sync" })
+				ch.close()
+			}
 			setTimeout(() => setTopToast(null), 6000)
 			setTimeout(() => setQuickUploadStage((s) => (s === "ingested" ? "idle" : s)), 8000)
 		} catch (err) {
@@ -408,9 +413,30 @@ export function CorridorWorkspace() {
 			await refreshHistory()
 		})()
 
+		let hasConnectedOnce = false
 		const es = new EventSource("/api/events")
-		es.onopen = () => setSseConnected(true)
+		es.onopen = () => {
+			setSseConnected(true)
+			if (hasConnectedOnce && !cancelled) void refreshHistory()
+			hasConnectedOnce = true
+		}
 		es.onerror = () => setSseConnected(false)
+
+		const syncIfVisible = () => {
+			if (!cancelled && document.visibilityState === "visible") {
+				void refreshHistory()
+			}
+		}
+		document.addEventListener("visibilitychange", syncIfVisible)
+		window.addEventListener("focus", syncIfVisible)
+
+		let syncChannel: BroadcastChannel | null = null
+		if (typeof BroadcastChannel !== "undefined") {
+			syncChannel = new BroadcastChannel("corridor-audit-sync")
+			syncChannel.onmessage = () => {
+				if (!cancelled) void refreshHistory()
+			}
+		}
 		es.onmessage = (msg) => {
 			try {
 				const parsed = JSON.parse(msg.data) as {
@@ -584,6 +610,9 @@ export function CorridorWorkspace() {
 
 		return () => {
 			cancelled = true
+			document.removeEventListener("visibilitychange", syncIfVisible)
+			window.removeEventListener("focus", syncIfVisible)
+			syncChannel?.close()
 			es.close()
 		}
 	}, [refreshHistory])
