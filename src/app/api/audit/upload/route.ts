@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
@@ -18,6 +19,7 @@ const UploadPayloadSchema = z
 		content: z.string().max(14 * 1024 * 1024).optional(),
 		base64: z.string().max(14 * 1024 * 1024).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/).optional(),
 		format: z.enum(["auto", "json", "mt103", "csv", "xml", "pdf", "text"]).optional(),
+		force: z.boolean().optional(),
 	})
 	.strict()
 	.refine((body) => Boolean(body.content) !== Boolean(body.base64), {
@@ -53,6 +55,23 @@ export async function POST(request: Request) {
 		const format = body.format || "auto"
 		const malwareScan = await scanFileBytes(Buffer.from(rawContent, isBase64 ? "base64" : "utf8"))
 
+		if (rawContent && !body.force) {
+			const contentSha256 = createHash("sha256").update(rawContent, "utf8").digest("hex")
+			const existing = db.findParsedIngestionBySha256(contentSha256, DEFAULT_WORKSPACE_ID)
+			if (existing) {
+				return NextResponse.json(
+					{
+						ok: true,
+						duplicate: true,
+						ingestionId: existing.id,
+						queuedCount: 0,
+						caseIds: existing.caseIds,
+					},
+					{ status: 200 },
+				)
+			}
+		}
+
 		if (rawContent) {
 			const rec = db.saveRawIngestion({
 				workspaceId: DEFAULT_WORKSPACE_ID,
@@ -68,7 +87,12 @@ export async function POST(request: Request) {
 		}
 
 		const orchestrator = initCorridorOrchestrator()
-		const cases = normalizeInboundPayloadToCases(body)
+		const cases = normalizeInboundPayloadToCases(body, {
+			nextCaseId: (prefix) => {
+				const [seq] = db.allocateCaseNumbers(1, DEFAULT_WORKSPACE_ID)
+				return `${prefix}-${String(seq).padStart(4, "0")}`
+			},
+		})
 		db.transaction(() => {
 			for (const settlementCase of cases) db.saveCase(settlementCase, DEFAULT_WORKSPACE_ID, session?.sub)
 			if (ingestionId) {

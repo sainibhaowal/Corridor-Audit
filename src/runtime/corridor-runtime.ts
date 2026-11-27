@@ -97,7 +97,10 @@ export class CorridorState extends RuntimeState {
 		return true
 	}
 
-	registerCase(settlementCase: SettlementCase): void {
+	registerCase(
+		settlementCase: SettlementCase,
+		checkpoints?: Partial<Record<"terms" | "fx" | "wire" | "anomaly", unknown>>,
+	): void {
 		this.casesById.set(settlementCase.caseId, settlementCase)
 		if (settlementCase.invoice && !this.rawInvoices.some((i) => i.invoiceId === settlementCase.invoice!.invoiceId)) {
 			this.rawInvoices.push(settlementCase.invoice)
@@ -128,6 +131,26 @@ export class CorridorState extends RuntimeState {
 		const roles = new Set<string>(["terms", "fx", "wire"])
 		if (hasAnomalyTrigger) roles.add("anomaly")
 		this.expectedRolesByCaseId.set(settlementCase.caseId, roles)
+
+		if (checkpoints) {
+			const done = this.findingsByRole.get(settlementCase.caseId)!
+			if (checkpoints.terms) {
+				this.termsByCaseId.set(settlementCase.caseId, checkpoints.terms as TermsAssessment)
+				done.add("terms")
+			}
+			if (checkpoints.fx) {
+				this.fxByCaseId.set(settlementCase.caseId, checkpoints.fx as FxAssessment)
+				done.add("fx")
+			}
+			if (checkpoints.wire) {
+				this.wireByCaseId.set(settlementCase.caseId, checkpoints.wire as WireAssessment)
+				done.add("wire")
+			}
+			if (checkpoints.anomaly && roles.has("anomaly")) {
+				this.anomalyByCaseId.set(settlementCase.caseId, checkpoints.anomaly as AnomalyAssessment)
+				done.add("anomaly")
+			}
+		}
 	}
 
 	resolveCaseWaiters(caseId: string, verdict: AuditVerdict): void {

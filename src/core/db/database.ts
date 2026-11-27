@@ -1933,6 +1933,86 @@ export class CorridorDatabase {
 		}
 	}
 
+	/** Allocates monotonic, never-repeating sequential case numbers persisted in SQLite. */
+	allocateCaseNumbers(count: number, workspaceId = DEFAULT_WORKSPACE_ID): number[] {
+		if (count <= 0) return []
+		this.db.exec("BEGIN IMMEDIATE")
+		try {
+			const row = this.db
+				.prepare(
+					`INSERT INTO case_sequences (workspace_id, last_number) VALUES (?, ?)
+					ON CONFLICT(workspace_id) DO UPDATE SET last_number = case_sequences.last_number + excluded.last_number
+					RETURNING last_number`,
+				)
+				.get(workspaceId, count) as { last_number: number }
+			this.db.exec("COMMIT")
+			const end = Number(row.last_number)
+			const start = end - count + 1
+			return Array.from({ length: count }, (_, i) => start + i)
+		} catch (error) {
+			this.db.exec("ROLLBACK")
+			throw error
+		}
+	}
+
+	/** Finds an existing parsed raw ingestion with the same SHA-256 hash to prevent duplicate processing. */
+	findParsedIngestionBySha256(sha256: string, workspaceId = DEFAULT_WORKSPACE_ID): RawIngestionRecord | null {
+		const row = this.db
+			.prepare(
+				`SELECT * FROM raw_ingestions
+				WHERE workspace_id = ? AND sha256 = ? AND parse_status = 'parsed'
+				ORDER BY created_at DESC LIMIT 1`,
+			)
+			.get(workspaceId, sha256) as Record<string, unknown> | undefined
+		return row ? this.mapRawIngestionRow(row, false) : null
+	}
+
+	/** Persists an encrypted specialist checkpoint so restarts or retries never repeat finished agent stages. */
+	saveCaseCheckpoint(params: {
+		caseId: string
+		role: "terms" | "fx" | "wire" | "anomaly"
+		payload: unknown
+		workspaceId?: string
+	}): void {
+		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
+		const caseRow = this.db
+			.prepare("SELECT workspace_id FROM cases WHERE case_id = ?")
+			.get(params.caseId) as { workspace_id: string } | undefined
+		if (!caseRow || caseRow.workspace_id !== workspaceId) return
+		const encrypted = encryptJson(params.payload)
+		this.db
+			.prepare(
+				`INSERT INTO case_checkpoints (case_id, role, workspace_id, checkpoint_json, checkpoint_json_encrypted, updated_at)
+				VALUES (?, ?, ?, ?, 1, ?)
+				ON CONFLICT(case_id, role) DO UPDATE SET
+					checkpoint_json = excluded.checkpoint_json,
+					checkpoint_json_encrypted = 1,
+					updated_at = excluded.updated_at`,
+			)
+			.run(params.caseId, params.role, workspaceId, encrypted, new Date().toISOString())
+	}
+
+	/** Loads all persisted specialist checkpoints for a case. */
+	loadCaseCheckpoints(caseId: string): Partial<Record<"terms" | "fx" | "wire" | "anomaly", unknown>> {
+		const rows = this.db
+			.prepare("SELECT role, checkpoint_json, checkpoint_json_encrypted FROM case_checkpoints WHERE case_id = ?")
+			.all(caseId) as Array<{ role: string; checkpoint_json: string; checkpoint_json_encrypted: number }>
+		const out: Partial<Record<"terms" | "fx" | "wire" | "anomaly", unknown>> = {}
+		for (const row of rows) {
+			if (row.role === "terms" || row.role === "fx" || row.role === "wire" || row.role === "anomaly") {
+				out[row.role] = Number(row.checkpoint_json_encrypted) === 1
+					? decryptJson(row.checkpoint_json)
+					: JSON.parse(row.checkpoint_json)
+			}
+		}
+		return out
+	}
+
+	/** Clears persisted specialist checkpoints when a case is explicitly reset/reprocessed. */
+	clearCaseCheckpoints(caseId: string): void {
+		this.db.prepare("DELETE FROM case_checkpoints WHERE case_id = ?").run(caseId)
+	}
+
 	close(): void {
 		this.db.close()
 	}

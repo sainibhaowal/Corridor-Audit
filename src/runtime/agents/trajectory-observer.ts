@@ -6,6 +6,7 @@ import {
 	SituationSpecification,
 } from "@mozaik-ai/core"
 import { computeRecoverableOurViolationMinor, formatMoney } from "../../core/money"
+import { getCorridorDb } from "../../core/db/database"
 import { publishCorridorEvent, resolveRuntime } from "../corridor-runtime"
 import { getActiveCaseForAgent, getAgentRoleMap } from "./corridor-agents"
 
@@ -169,6 +170,21 @@ export function createTrajectoryObserver(agents: Parameters<typeof getAgentRoleM
 				})
 
 				if (info.role !== "auditor") {
+					try {
+						const rolePayload =
+							info.role === "terms"
+								? state.termsByCaseId.get(caseId)
+								: info.role === "fx"
+									? state.fxByCaseId.get(caseId)
+									: info.role === "wire"
+										? state.wireByCaseId.get(caseId)
+										: state.anomalyByCaseId.get(caseId)
+						if (rolePayload !== undefined) {
+							getCorridorDb().saveCaseCheckpoint({ caseId, role: info.role, payload: rolePayload })
+						}
+					} catch {
+						// Best-effort checkpoint persistence; in-memory state continues cleanly.
+					}
 					const allDone = state.markRoleComplete(caseId, info.role)
 					const overlaps = buildOverlapSignals(caseId)
 					if (overlaps.length > 0) {

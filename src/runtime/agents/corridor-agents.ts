@@ -54,8 +54,10 @@ function createSpecialistAgent(params: {
 			isSatisfiedBy(ctx: SituationContext): boolean {
 				if (ctx.event.type !== "case.queued") return false
 				const { caseId } = ctx.event.payload as { caseId: string }
-				const expected = resolveRuntime().state.expectedRolesByCaseId.get(caseId)
-				return Boolean(expected?.has(params.role))
+				const state = resolveRuntime().state
+				const expected = state.expectedRolesByCaseId.get(caseId)
+				if (!expected?.has(params.role)) return false
+				return !state.findingsByRole.get(caseId)?.has(params.role)
 			}
 		})(),
 		processor: {

@@ -345,4 +345,19 @@ CREATE INDEX IF NOT EXISTS idx_workspace_audit_recent
 	ON workspace_audit_log(workspace_id, sequence DESC);
 
 CREATE INDEX IF NOT EXISTS idx_api_rate_limit_window ON api_rate_limit_buckets(window_start_ms);
+
+CREATE TABLE IF NOT EXISTS case_sequences (
+	workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+	last_number INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS case_checkpoints (
+	case_id TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+	role TEXT NOT NULL,
+	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+	checkpoint_json TEXT NOT NULL,
+	checkpoint_json_encrypted INTEGER NOT NULL DEFAULT 0,
+	updated_at TEXT NOT NULL,
+	PRIMARY KEY (case_id, role)
+);
 `

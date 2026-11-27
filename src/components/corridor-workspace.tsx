@@ -216,16 +216,27 @@ export function CorridorWorkspace() {
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(payload),
 			})
-			const json = (await res.json().catch(() => ({}))) as { error?: string; queuedCount?: number }
+			const json = (await res.json().catch(() => ({}))) as { error?: string; queuedCount?: number; duplicate?: boolean; caseIds?: string[] }
 			if (!res.ok) throw new Error(json.error || `Upload failed (HTTP ${res.status})`)
-			const count = json.queuedCount ?? 1
-			setQuickUploadStage("ingested")
-			setQuickUploadLabel(`Ingested (${count}) · Live agents running`)
-			setTopToast({
-				title: `Ingested ${file.name} into Raw Data Vault`,
-				subtitle: `Live agent stream is running now (${count} case${count === 1 ? "" : "s"}).`,
-				kind: "ok",
-			})
+			if (json.duplicate) {
+				const existingCount = json.caseIds?.length ?? 0
+				setQuickUploadStage("ingested")
+				setQuickUploadLabel(`Already ingested · ${existingCount} existing case${existingCount === 1 ? "" : "s"}`)
+				setTopToast({
+					title: `${file.name} already in Raw Data Vault`,
+					subtitle: `Skipped duplicate processing (${existingCount} existing case${existingCount === 1 ? "" : "s"}).`,
+					kind: "ok",
+				})
+			} else {
+				const count = json.queuedCount ?? 1
+				setQuickUploadStage("ingested")
+				setQuickUploadLabel(`Ingested (${count}) · Live agents running`)
+				setTopToast({
+					title: `Ingested ${file.name} into Raw Data Vault`,
+					subtitle: `Live agent stream is running now (${count} case${count === 1 ? "" : "s"}).`,
+					kind: "ok",
+				})
+			}
 			setView("stream")
 			void refreshHistory()
 			if (typeof BroadcastChannel !== "undefined") {

@@ -10,6 +10,11 @@ export interface UploadPayload {
 	content?: string
 	base64?: string
 	format?: "auto" | "json" | "mt103" | "csv" | "xml" | "pdf" | "text"
+	force?: boolean
+}
+
+export interface NormalizeOptions {
+	nextCaseId?: (prefix: string) => string
 }
 
 function markSuppliedWireEvidence(cases: SettlementCase[]): SettlementCase[] {
@@ -48,10 +53,16 @@ function markSuppliedWireEvidence(cases: SettlementCase[]): SettlementCase[] {
 	})
 }
 
-export function normalizeInboundPayloadToCases(input: UploadPayload): SettlementCase[] {
+export function normalizeInboundPayloadToCases(input: UploadPayload, options?: NormalizeOptions): SettlementCase[] {
 	const name = (input.filename || "").toLowerCase()
 	const fmt = input.format || "auto"
 	let text = input.content || ""
+	let localSeq = 0
+	const makeId = (prefix: string) => {
+		if (options?.nextCaseId) return options.nextCaseId(prefix)
+		localSeq += 1
+		return `${prefix}-${Date.now().toString().slice(-4)}-${String(localSeq).padStart(3, "0")}`
+	}
 
 	if ((fmt === "pdf" || name.endsWith(".pdf")) && input.base64) {
 		const buf = Buffer.from(input.base64, "base64")
@@ -80,7 +91,7 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 			return markSuppliedWireEvidence(parseJsonSettlementCases(obj))
 		}
 		if (obj.wire || obj.invoice) {
-			const id = String(obj.caseId || `WH-${Date.now().toString().slice(-5)}`)
+			const id = String(obj.caseId || makeId("WH"))
 			const settlementCase = {
 					caseId: id,
 					title: String(obj.title || `Inbound Webhook (${id})`),
@@ -105,8 +116,8 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 	// 2. ISO 20022 XML (camt.053 / pacs.008)
 	if (fmt === "xml" || name.endsWith(".xml") || (trimmed.startsWith("<") && /Ntry|CdtTrfTxInf|Amt/.test(trimmed))) {
 		const wires = parseCamt053Xml(trimmed)
-		return wires.map((w, idx) => {
-			const id = `XML-${Date.now().toString().slice(-4)}-${idx + 1}`
+		return wires.map((w) => {
+			const id = makeId("XML")
 			return {
 				caseId: id,
 				title: `ISO 20022 Entry (${w.transactionRef || w.wireId})`,
@@ -135,8 +146,8 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 	// 3. SWIFT MT103 blocks
 	if (fmt === "mt103" || trimmed.includes(":32A:") || trimmed.includes(":20:")) {
 		const wires = parseMt103Blocks(trimmed)
-		return wires.map((w, idx) => {
-			const id = `MT103-${Date.now().toString().slice(-4)}-${idx + 1}`
+		return wires.map((w) => {
+			const id = makeId("MT103")
 			const invRef = w.remittanceInfo?.replace(/^\/INV\//i, "").trim()
 			return {
 				caseId: id,
@@ -168,8 +179,8 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 		const header = trimmed.split(/\r?\n/)[0].toLowerCase()
 		if (header.includes("settled_amount") || header.includes("net_amount") || header.includes("platform")) {
 			const wires = parseWiresCsv(trimmed)
-			return wires.map((w, idx) => {
-				const id = `CSV-${Date.now().toString().slice(-4)}-${idx + 1}`
+			return wires.map((w) => {
+				const id = makeId("CSV")
 				return {
 					caseId: id,
 					title: `${w.platformName?.toUpperCase() || "CSV"} Payout (${w.wireId})`,
@@ -196,8 +207,8 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 		}
 
 		const invoices = parseInvoicesCsv(trimmed)
-		return invoices.map((inv, idx) => {
-			const id = `INVCASE-${Date.now().toString().slice(-4)}-${idx + 1}`
+		return invoices.map((inv) => {
+			const id = makeId("INVCASE")
 			return {
 				caseId: id,
 				title: `Uploaded Invoice (${inv.invoiceId})`,
@@ -222,7 +233,7 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 	}
 
 	// 5. Fallback: PDF extracted text or raw pasted email snippet
-	const id = `TEXT-${Date.now().toString().slice(-4)}`
+	const id = makeId(name.endsWith(".pdf") ? "PDF" : "TEXT")
 	const inv = parseInvoiceFromExtractedText(trimmed, id)
 	return [
 		{

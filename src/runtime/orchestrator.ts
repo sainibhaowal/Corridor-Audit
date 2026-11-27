@@ -174,7 +174,8 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 	const caseTasks = new Map<string, Promise<AuditVerdict>>()
 
 	const runSingleCase = async (settlementCase: SettlementCase, claimedBy: string): Promise<AuditVerdict> => {
-		state.registerCase(settlementCase)
+		const checkpoints = db.loadCaseCheckpoints(settlementCase.caseId)
+		state.registerCase(settlementCase, checkpoints)
 		state.queueStats.active += 1
 
 		state.emitTrajectory({
@@ -198,11 +199,22 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 			text: `Mozaik queued ${settlementCase.caseId}: launching ${[...(state.expectedRolesByCaseId.get(settlementCase.caseId) ?? [])].length} parallel agents...`,
 		})
 
-		publishCorridorEvent("case.queued", observer.getId(), {
-			caseId: settlementCase.caseId,
-			title: settlementCase.title,
-			model: ACTIVE_MODEL_SLOT,
-		})
+		const expected = state.expectedRolesByCaseId.get(settlementCase.caseId)
+		const done = state.findingsByRole.get(settlementCase.caseId)
+		const allSpecialistsCheckpointed =
+			Boolean(expected && done) && [...(expected ?? [])].every((role) => done?.has(role))
+
+		if (allSpecialistsCheckpointed) {
+			publishCorridorEvent("specialist.ready", observer.getId(), {
+				caseId: settlementCase.caseId,
+			})
+		} else {
+			publishCorridorEvent("case.queued", observer.getId(), {
+				caseId: settlementCase.caseId,
+				title: settlementCase.title,
+				model: ACTIVE_MODEL_SLOT,
+			})
+		}
 
 		try {
 			const verdict = await state.waitForCaseVerdict(
