@@ -8,6 +8,7 @@ interface OAuthProviderSpec {
 	tokenUrl: string
 	clientIdEnv: string
 	clientSecretEnv?: string
+	tokenClientAuth?: "body" | "basic"
 	scope: string
 	pkce?: boolean
 }
@@ -25,6 +26,7 @@ const OAUTH_SPECS: Record<string, OAuthProviderSpec> = {
 		tokenUrl: "https://api.transferwise.com/oauth/token",
 		clientIdEnv: "WISE_CLIENT_ID",
 		clientSecretEnv: "WISE_CLIENT_SECRET",
+		tokenClientAuth: "basic",
 		scope: "transfers.read balances.read",
 	},
 	quickbooks: {
@@ -32,6 +34,7 @@ const OAUTH_SPECS: Record<string, OAuthProviderSpec> = {
 		tokenUrl: "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
 		clientIdEnv: "QUICKBOOKS_CLIENT_ID",
 		clientSecretEnv: "QUICKBOOKS_CLIENT_SECRET",
+		tokenClientAuth: "basic",
 		scope: "com.intuit.quickbooks.accounting",
 	},
 	xero: {
@@ -121,15 +124,23 @@ export async function exchangeOAuthCode(params: {
 		grant_type: "authorization_code",
 		code: params.code,
 		redirect_uri: redirectUri,
-		client_id: clientId,
 	}
-	if (clientSecret) bodyParams.client_secret = clientSecret
+	const headers: Record<string, string> = {
+		"Content-Type": "application/x-www-form-urlencoded",
+		Accept: "application/json",
+	}
+	if (spec.tokenClientAuth === "basic") {
+		headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret ?? ""}`).toString("base64")}`
+	} else {
+		bodyParams.client_id = clientId
+		if (clientSecret) bodyParams.client_secret = clientSecret
+	}
 	if (params.codeVerifier) bodyParams.code_verifier = params.codeVerifier
 	const body = new URLSearchParams(bodyParams)
 
 	const res = await fetchProvider(spec.tokenUrl, {
 		method: "POST",
-		headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+		headers,
 		body: body.toString(),
 	})
 

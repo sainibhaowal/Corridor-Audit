@@ -797,6 +797,53 @@ test("Xero OAuth uses S256 PKCE and exchanges the persisted verifier", async () 
 	}
 })
 
+test("QuickBooks and Wise authorization exchanges authenticate with HTTP Basic", async () => {
+	const previousFetch = global.fetch
+	const previousQuickBooksId = process.env.QUICKBOOKS_CLIENT_ID
+	const previousQuickBooksSecret = process.env.QUICKBOOKS_CLIENT_SECRET
+	const previousWiseId = process.env.WISE_CLIENT_ID
+	const previousWiseSecret = process.env.WISE_CLIENT_SECRET
+	process.env.QUICKBOOKS_CLIENT_ID = "qbo-oauth-client"
+	process.env.QUICKBOOKS_CLIENT_SECRET = "qbo-oauth-secret"
+	process.env.WISE_CLIENT_ID = "wise-oauth-client"
+	process.env.WISE_CLIENT_SECRET = "wise-oauth-secret"
+	const requests: Array<{ url: string; body: string; authorization: string }> = []
+	global.fetch = (async (input, init) => {
+		requests.push({
+			url: String(input),
+			body: String(init?.body || ""),
+			authorization: new Headers(init?.headers).get("authorization") || "",
+		})
+		return new Response(JSON.stringify({ access_token: "provider-access", refresh_token: "provider-refresh", expires_in: 3600 }), { status: 200 })
+	}) as typeof fetch
+	try {
+		for (const [provider, clientId, clientSecret] of [
+			["quickbooks", "qbo-oauth-client", "qbo-oauth-secret"],
+			["wise", "wise-oauth-client", "wise-oauth-secret"],
+		] as const) {
+			const exchanged = await exchangeOAuthCode({ provider, code: "authorization-code", origin: "http://127.0.0.1:3000" })
+			assert.equal(exchanged.credentials.accessToken, "provider-access")
+			const request = requests.at(-1)!
+			assert.equal(request.authorization, `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`)
+			const body = new URLSearchParams(request.body)
+			assert.equal(body.get("grant_type"), "authorization_code")
+			assert.equal(body.get("code"), "authorization-code")
+			assert.equal(body.has("client_id"), false)
+			assert.equal(body.has("client_secret"), false)
+		}
+	} finally {
+		global.fetch = previousFetch
+		if (previousQuickBooksId === undefined) delete process.env.QUICKBOOKS_CLIENT_ID
+		else process.env.QUICKBOOKS_CLIENT_ID = previousQuickBooksId
+		if (previousQuickBooksSecret === undefined) delete process.env.QUICKBOOKS_CLIENT_SECRET
+		else process.env.QUICKBOOKS_CLIENT_SECRET = previousQuickBooksSecret
+		if (previousWiseId === undefined) delete process.env.WISE_CLIENT_ID
+		else process.env.WISE_CLIENT_ID = previousWiseId
+		if (previousWiseSecret === undefined) delete process.env.WISE_CLIENT_SECRET
+		else process.env.WISE_CLIENT_SECRET = previousWiseSecret
+	}
+})
+
 test("TrueLayer OAuth uses S256 PKCE and persists its verifier for callback exchange", () => {
 	const previousClientId = process.env.TRUELAYER_CLIENT_ID
 	process.env.TRUELAYER_CLIENT_ID = "truelayer-public-client"
