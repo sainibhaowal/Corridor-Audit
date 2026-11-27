@@ -61,6 +61,8 @@ export class CorridorDatabase {
 		this.db = new DatabaseSync(target)
 		this.db.exec(CORRIDOR_SCHEMA_SQL)
 		this.ensureCaseQueueColumns()
+		this.ensureSensitiveJsonEncryptionColumns()
+		this.encryptLegacySensitiveJson()
 		this.ensureRawContentEncryptionColumn()
 		this.encryptLegacyRawContent()
 		this.ensureDefaultWorkspace()
@@ -77,6 +79,36 @@ export class CorridorDatabase {
 		this.db.exec(`UPDATE cases SET status = 'dead_letter', last_error = COALESCE(last_error, 'Migrated terminal failure for operator review.')
 			WHERE status = 'failed'`)
 		this.db.exec("CREATE INDEX IF NOT EXISTS idx_cases_queue_due ON cases(workspace_id, status, next_attempt_at, created_at)")
+	}
+
+	private ensureSensitiveJsonEncryptionColumns(): void {
+		const migrations: Array<{ table: string; column: string; flag: string }> = [
+			{ table: "cases", column: "payload_json", flag: "payload_json_encrypted" },
+			{ table: "audit_verdicts", column: "verdict_json", flag: "verdict_json_encrypted" },
+			{ table: "review_approvals", column: "pending_json", flag: "pending_json_encrypted" },
+		]
+		for (const migration of migrations) {
+			const columns = this.db.prepare(`PRAGMA table_info(${migration.table})`).all() as Array<{ name: string }>
+			if (!columns.some((column) => column.name === migration.flag)) {
+				this.db.exec(`ALTER TABLE ${migration.table} ADD COLUMN ${migration.flag} INTEGER NOT NULL DEFAULT 0`)
+			}
+		}
+	}
+
+	private encryptLegacySensitiveJson(): void {
+		const fields = [
+			{ table: "cases", content: "payload_json", flag: "payload_json_encrypted" },
+			{ table: "audit_verdicts", content: "verdict_json", flag: "verdict_json_encrypted" },
+			{ table: "review_approvals", content: "pending_json", flag: "pending_json_encrypted" },
+		]
+		for (const field of fields) {
+			const rows = this.db.prepare(`SELECT rowid, ${field.content} AS content FROM ${field.table} WHERE ${field.flag} = 0`).all() as Array<{
+				rowid: number
+				content: string
+			}>
+			const update = this.db.prepare(`UPDATE ${field.table} SET ${field.content} = ?, ${field.flag} = 1 WHERE rowid = ?`)
+			for (const row of rows) update.run(encryptSecret(row.content), row.rowid)
+		}
 	}
 
 	private ensureWorkspaceTaxPolicies(): void {
@@ -141,9 +173,9 @@ export class CorridorDatabase {
 		const requestedAt = pending.createdAt || new Date().toISOString()
 		const argsSha256 = createHash("sha256").update(pending.argsJson, "utf8").digest("hex")
 		this.db.prepare(`INSERT INTO review_approvals
-			(id, workspace_id, case_id, tool_name, action_type, args_sha256, pending_json, requested_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-			.run(id, workspaceId, pending.caseId, pending.toolName, pending.actionType, argsSha256, JSON.stringify(pending), requestedAt)
+			(id, workspace_id, case_id, tool_name, action_type, args_sha256, pending_json, pending_json_encrypted, requested_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`)
+			.run(id, workspaceId, pending.caseId, pending.toolName, pending.actionType, argsSha256, encryptSecret(JSON.stringify(pending)), requestedAt)
 		return id
 	}
 
@@ -663,11 +695,12 @@ export class CorridorDatabase {
 		const now = new Date().toISOString()
 		this.db
 			.prepare(
-				`INSERT INTO cases (case_id, workspace_id, source_type, title, payload_json, status, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)
+				`INSERT INTO cases (case_id, workspace_id, source_type, title, payload_json, payload_json_encrypted, status, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, 1, 'queued', ?, ?)
 				ON CONFLICT(case_id) DO UPDATE SET
 					title = excluded.title,
 					payload_json = excluded.payload_json,
+					payload_json_encrypted = 1,
 					updated_at = excluded.updated_at`,
 			)
 			.run(
@@ -675,7 +708,7 @@ export class CorridorDatabase {
 				workspaceId,
 				settlementCase.channelLabel || settlementCase.wire.format || "inbound",
 				settlementCase.title,
-				JSON.stringify(settlementCase),
+				encryptSecret(JSON.stringify(settlementCase)),
 				now,
 				now,
 			)
@@ -684,14 +717,15 @@ export class CorridorDatabase {
 	saveAuditVerdict(verdict: AuditVerdict, workspaceId = DEFAULT_WORKSPACE_ID): void {
 		this.db
 			.prepare(
-				`INSERT INTO audit_verdicts (case_id, workspace_id, status, verdict_json, completed_at)
-				VALUES (?, ?, ?, ?, ?)
+				`INSERT INTO audit_verdicts (case_id, workspace_id, status, verdict_json, verdict_json_encrypted, completed_at)
+				VALUES (?, ?, ?, ?, 1, ?)
 				ON CONFLICT(case_id) DO UPDATE SET
 					status = excluded.status,
 					verdict_json = excluded.verdict_json,
+					verdict_json_encrypted = 1,
 					completed_at = excluded.completed_at`,
 			)
-			.run(verdict.caseId, workspaceId, verdict.status, JSON.stringify(verdict), verdict.completedAt)
+			.run(verdict.caseId, workspaceId, verdict.status, encryptSecret(JSON.stringify(verdict)), verdict.completedAt)
 		this.db
 			.prepare("UPDATE cases SET status = 'completed', next_attempt_at = NULL, last_error = NULL, updated_at = ? WHERE case_id = ?")
 			.run(new Date().toISOString(), verdict.caseId)
@@ -699,16 +733,16 @@ export class CorridorDatabase {
 
 	listPersistedCases(workspaceId = DEFAULT_WORKSPACE_ID): SettlementCase[] {
 		const rows = this.db
-			.prepare("SELECT payload_json FROM cases WHERE workspace_id = ? ORDER BY created_at ASC")
-			.all(workspaceId) as Array<{ payload_json: string }>
-		return rows.map((r) => JSON.parse(r.payload_json) as SettlementCase)
+			.prepare("SELECT payload_json, payload_json_encrypted FROM cases WHERE workspace_id = ? ORDER BY created_at ASC")
+			.all(workspaceId) as Array<{ payload_json: string; payload_json_encrypted: number }>
+		return rows.map((r) => JSON.parse(r.payload_json_encrypted ? decryptSecret(r.payload_json) : r.payload_json) as SettlementCase)
 	}
 
 	listQueuedCases(workspaceId = DEFAULT_WORKSPACE_ID, limit = 100): SettlementCase[] {
 		const rows = this.db
-			.prepare("SELECT payload_json FROM cases WHERE workspace_id = ? AND status = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= ?) ORDER BY created_at ASC LIMIT ?")
-			.all(workspaceId, new Date().toISOString(), limit) as Array<{ payload_json: string }>
-		return rows.map((r) => JSON.parse(r.payload_json) as SettlementCase)
+			.prepare("SELECT payload_json, payload_json_encrypted FROM cases WHERE workspace_id = ? AND status = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= ?) ORDER BY created_at ASC LIMIT ?")
+			.all(workspaceId, new Date().toISOString(), limit) as Array<{ payload_json: string; payload_json_encrypted: number }>
+		return rows.map((r) => JSON.parse(r.payload_json_encrypted ? decryptSecret(r.payload_json) : r.payload_json) as SettlementCase)
 	}
 
 	markCaseRunning(caseId: string, workspaceId = DEFAULT_WORKSPACE_ID): void {
@@ -741,13 +775,13 @@ export class CorridorDatabase {
 	}
 
 	listDeadLetterCases(workspaceId = DEFAULT_WORKSPACE_ID, limit = 100): DeadLetterCaseRecord[] {
-		const rows = this.db.prepare(`SELECT case_id, title, payload_json, attempt_count, last_error, updated_at
+		const rows = this.db.prepare(`SELECT case_id, title, payload_json, payload_json_encrypted, attempt_count, last_error, updated_at
 			FROM cases WHERE workspace_id = ? AND status = 'dead_letter' ORDER BY updated_at DESC LIMIT ?`)
 			.all(workspaceId, limit) as Array<Record<string, unknown>>
 		return rows.map((row) => ({
 			caseId: String(row.case_id),
 			title: String(row.title),
-			settlementCase: JSON.parse(String(row.payload_json)) as SettlementCase,
+			settlementCase: JSON.parse(Number(row.payload_json_encrypted) ? decryptSecret(String(row.payload_json)) : String(row.payload_json)) as SettlementCase,
 			attemptCount: Number(row.attempt_count),
 			lastError: String(row.last_error || "No error detail recorded."),
 			updatedAt: String(row.updated_at),
@@ -760,9 +794,9 @@ export class CorridorDatabase {
 			next_attempt_at = NULL, last_error = NULL, updated_at = ?
 			WHERE case_id = ? AND workspace_id = ? AND status = 'dead_letter'`).run(now, caseId, workspaceId)
 		if (Number(update.changes) !== 1) return null
-		const row = this.db.prepare("SELECT payload_json FROM cases WHERE case_id = ? AND workspace_id = ?")
-			.get(caseId, workspaceId) as { payload_json: string } | undefined
-		return row ? JSON.parse(row.payload_json) as SettlementCase : null
+		const row = this.db.prepare("SELECT payload_json, payload_json_encrypted FROM cases WHERE case_id = ? AND workspace_id = ?")
+			.get(caseId, workspaceId) as { payload_json: string; payload_json_encrypted: number } | undefined
+		return row ? JSON.parse(row.payload_json_encrypted ? decryptSecret(row.payload_json) : row.payload_json) as SettlementCase : null
 	}
 
 	requeueInterruptedCases(workspaceId = DEFAULT_WORKSPACE_ID): void {
@@ -779,9 +813,9 @@ export class CorridorDatabase {
 
 	listPersistedVerdicts(workspaceId = DEFAULT_WORKSPACE_ID): AuditVerdict[] {
 		const rows = this.db
-			.prepare("SELECT verdict_json FROM audit_verdicts WHERE workspace_id = ? ORDER BY completed_at ASC")
-			.all(workspaceId) as Array<{ verdict_json: string }>
-		return rows.map((r) => JSON.parse(r.verdict_json) as AuditVerdict)
+			.prepare("SELECT verdict_json, verdict_json_encrypted FROM audit_verdicts WHERE workspace_id = ? ORDER BY completed_at ASC")
+			.all(workspaceId) as Array<{ verdict_json: string; verdict_json_encrypted: number }>
+		return rows.map((r) => JSON.parse(r.verdict_json_encrypted ? decryptSecret(r.verdict_json) : r.verdict_json) as AuditVerdict)
 	}
 
 	private mapRawIngestionRow(row: Record<string, unknown>, includeContent: boolean): RawIngestionRecord {

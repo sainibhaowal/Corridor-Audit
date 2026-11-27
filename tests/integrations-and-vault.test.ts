@@ -420,6 +420,105 @@ test("raw ingestion payloads are encrypted in SQLite and decrypt through the vau
 	rmSync(dbPath, { force: true })
 })
 
+test("normalized cases, verdicts, and approval payloads encrypt at rest and migrate legacy rows", () => {
+	const dbPath = resolve(tmpdir(), `corridor-encrypted-financial-records-${process.pid}-${Date.now()}.db`)
+	const db = new CorridorDatabase(dbPath)
+	const settlementCase = {
+		caseId: "CASE-PRIVATE-AT-REST",
+		title: "Private vendor settlement",
+		channelLabel: "test",
+		settlementEvidence: "incomplete" as const,
+		invoice: {
+			invoiceId: "PRIVATE-INVOICE-42",
+			vendorOrClient: "Private Vendor GmbH",
+			issueDate: "2026-11-27",
+			dueDate: "2026-12-27",
+			expectedAmount: { amountMinor: 125000, currency: "EUR" },
+			expectedSettlementCurrency: "EUR",
+			contractedChargeBearer: "SHA" as const,
+			sourceRefs: [],
+		},
+		wire: {
+			wireId: "PRIVATE-WIRE-42",
+			format: "bank_csv" as const,
+			valueDate: "2026-11-27",
+			settledAmount: { amountMinor: 125000, currency: "EUR" },
+			senderCharges: [],
+			receiverCharges: [],
+		},
+		createdAt: new Date().toISOString(),
+	}
+	const verdict = {
+		caseId: settlementCase.caseId,
+		invoiceId: "PRIVATE-INVOICE-42",
+		wireId: "PRIVATE-WIRE-42",
+		provenance: { appVersion: "test", sourceRevision: "test", workingTree: "clean" as const, auditRulesVersion: "test" },
+		status: "EVIDENCE_INCOMPLETE" as const,
+		plainEnglishSummary: "Private Vendor GmbH record",
+		numbers: {
+			invoicedMinor: 125000, invoicedCurrency: "EUR", midMarketEquivalentMinor: 125000, settledMinor: 125000,
+			settledCurrency: "EUR", fxSpreadLossMinor: 0, fxSpreadBps: 0, liftingAndRepairFeesMinor: 0,
+			platformFeeMinor: 0, withholdingTaxMinor: 0, recoverableFeeMinor: 0, unexplainedVarianceMinor: 0,
+		},
+		replay: { actualNetMinor: 125000, optimalTransparentNetMinor: 125000, totalLeakMinor: 0, totalLeakBps: 0 },
+		sourceRefs: [],
+		disclaimer: "Synthetic/public data demonstration only. Not financial or legal advice." as const,
+		completedAt: new Date().toISOString(),
+	}
+	const approval = {
+		caseId: settlementCase.caseId,
+		agentName: "AuditorAgent",
+		toolName: "finalize_settlement_action",
+		actionType: "FILE_OUR_FEE_DISPUTE",
+		question: "Review payment for Private Vendor GmbH",
+		proofLine: "Private settlement reference",
+		recoverableMinor: 250,
+		currency: "EUR",
+		argsJson: JSON.stringify({ caseId: settlementCase.caseId }),
+		riskLabel: "Medium Risk",
+		createdAt: new Date().toISOString(),
+	}
+	db.saveCase(settlementCase)
+	db.saveAuditVerdict(verdict)
+	db.createPendingApproval(approval)
+	db.close()
+
+	const inspection = new DatabaseSync(dbPath)
+	const storedCase = inspection.prepare("SELECT payload_json, payload_json_encrypted FROM cases WHERE case_id = ?")
+		.get(settlementCase.caseId) as { payload_json: string; payload_json_encrypted: number }
+	const storedVerdict = inspection.prepare("SELECT verdict_json, verdict_json_encrypted FROM audit_verdicts WHERE case_id = ?")
+		.get(settlementCase.caseId) as { verdict_json: string; verdict_json_encrypted: number }
+	const storedApproval = inspection.prepare("SELECT pending_json, pending_json_encrypted FROM review_approvals WHERE case_id = ?")
+		.get(settlementCase.caseId) as { pending_json: string; pending_json_encrypted: number }
+	assert.equal(storedCase.payload_json_encrypted, 1)
+	assert.ok(storedCase.payload_json.startsWith("v1:"))
+	assert.ok(!storedCase.payload_json.includes("Private Vendor GmbH"))
+	assert.equal(storedVerdict.verdict_json_encrypted, 1)
+	assert.ok(storedVerdict.verdict_json.startsWith("v1:"))
+	assert.ok(!storedVerdict.verdict_json.includes("Private Vendor GmbH"))
+	assert.equal(storedApproval.pending_json_encrypted, 1)
+	assert.ok(storedApproval.pending_json.startsWith("v1:"))
+	assert.ok(!storedApproval.pending_json.includes("Private Vendor GmbH"))
+	inspection.prepare("UPDATE cases SET payload_json = ?, payload_json_encrypted = 0 WHERE case_id = ?")
+		.run(JSON.stringify(settlementCase), settlementCase.caseId)
+	inspection.prepare("UPDATE audit_verdicts SET verdict_json = ?, verdict_json_encrypted = 0 WHERE case_id = ?")
+		.run(JSON.stringify(verdict), settlementCase.caseId)
+	inspection.prepare("UPDATE review_approvals SET pending_json = ?, pending_json_encrypted = 0 WHERE case_id = ?")
+		.run(JSON.stringify(approval), settlementCase.caseId)
+	inspection.close()
+
+	const reopened = new CorridorDatabase(dbPath)
+	assert.equal(reopened.listPersistedCases()[0]?.invoice?.vendorOrClient, "Private Vendor GmbH")
+	assert.equal(reopened.listPersistedVerdicts()[0]?.plainEnglishSummary, "Private Vendor GmbH record")
+	reopened.close()
+	const migrated = new DatabaseSync(dbPath)
+	assert.equal((migrated.prepare("SELECT payload_json_encrypted AS encrypted FROM cases WHERE case_id = ?").get(settlementCase.caseId) as { encrypted: number }).encrypted, 1)
+	assert.equal((migrated.prepare("SELECT verdict_json_encrypted AS encrypted FROM audit_verdicts WHERE case_id = ?").get(settlementCase.caseId) as { encrypted: number }).encrypted, 1)
+	assert.equal((migrated.prepare("SELECT pending_json_encrypted AS encrypted FROM review_approvals WHERE case_id = ?").get(settlementCase.caseId) as { encrypted: number }).encrypted, 1)
+	migrated.close()
+	rmSync(dbPath, { force: true })
+})
+
 test("review decisions persist against the exact breakpoint call and retain human override provenance", () => {
 	const db = new CorridorDatabase(":memory:")
 	const pending = {

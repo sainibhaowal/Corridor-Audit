@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS review_approvals (
 	action_type TEXT NOT NULL,
 	args_sha256 TEXT NOT NULL,
 	pending_json TEXT NOT NULL,
+	pending_json_encrypted INTEGER NOT NULL DEFAULT 0,
 	status TEXT NOT NULL DEFAULT 'pending',
 	decision TEXT,
 	reason TEXT,
@@ -218,6 +219,7 @@ CREATE TABLE IF NOT EXISTS cases (
 	source_type TEXT NOT NULL,
 	title TEXT NOT NULL,
 	payload_json TEXT NOT NULL,
+	payload_json_encrypted INTEGER NOT NULL DEFAULT 0,
 	status TEXT NOT NULL DEFAULT 'queued',
 	attempt_count INTEGER NOT NULL DEFAULT 0,
 	next_attempt_at TEXT,
@@ -231,6 +233,7 @@ CREATE TABLE IF NOT EXISTS audit_verdicts (
 	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
 	status TEXT NOT NULL,
 	verdict_json TEXT NOT NULL,
+	verdict_json_encrypted INTEGER NOT NULL DEFAULT 0,
 	completed_at TEXT NOT NULL
 );
 

@@ -11,7 +11,7 @@ This is the live delivery record for production-readiness engineering. A row is 
 | 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | Cognito role gates implemented but not configured; durable provider OAuth state and Xero PKCE implemented; workspace isolation, email invitations, and SSE revocation remain |
 | 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Versioned tax and review policies plus durable approval records implemented locally; approval UI and production workflow controls remain |
 | 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Local SQLite case retries, delayed recovery, dead-letter listing, and controller replay implemented; transactional outbox, distributed claims/leases, independent workers, and production queue remain open |
-| 5 | Raw evidence object storage, encryption/key lifecycle, retention, backup, restore, and deletion | Local SQLite raw-payload encryption complete; managed storage and lifecycle not started |
+| 5 | Raw evidence object storage, encryption/key lifecycle, retention, backup, restore, and deletion | Local SQLite encryption now covers raw payloads, normalized cases, verdicts, pending approval payloads, and integration credentials; managed storage, KMS, key rotation, retention, backups, restore, and deletion remain open |
 | 6 | Provider adapters with pagination, cursors, token refresh/revocation, event security, and reconciliation | Bounded pagination, raw-response retention, and local token refresh for Wise, QuickBooks, Xero, and TrueLayer implemented. Incremental cursors, cross-instance refresh locking, revocation, matching, and provider conformance remain open |
 | 7 | Monitoring, audit logs, deployment configuration, threat review, and operational runbooks | Not started |
 | 8 | Provider and security validation evidence, controlled pilot release gates | Not started |
@@ -106,6 +106,13 @@ Update this section per milestone with the exact command, result, environment, a
 - The retry path remains local and single-process. There is no cross-process job claim/lease, independent worker executable, transactional outbox, or provider-sync retry queue. The current SQLite worker cannot be treated as a distributed production queue.
 - Tests cover successful recovery after two transient failures, max-attempt dead letter creation, saved error context, replay, interrupted-running recovery, and delayed queue eligibility.
 - `npm run typecheck`: passed. `npm test`: passed, 40 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification is local on Windows.
+
+### 2026-11-27 normalized financial record encryption
+
+- Case payloads, audit verdicts, and pending approval JSON now use the local AES-256-GCM vault before SQLite writes. Read paths decrypt the payloads for existing runtime, case, and review behavior. New encrypted-state columns allow additive migration of existing databases.
+- On open, legacy plaintext case, verdict, and pending approval payloads are encrypted in place. Tests inspect raw SQLite values to confirm the vendor and settlement details are not visible, then verify decrypted readback and migration from plaintext fixtures.
+- This does not encrypt every SQLite column. Case IDs, titles, sync errors, selected ingestion metadata, event identifiers, and operational fields remain plaintext. The local vault key is not managed key custody and this does not replace database-level encryption, access control, or backup protection.
+- `npm run typecheck`: passed. `npm test`: passed, 41 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification is local on Windows.
 
 ### 2026-11-27 local webhook inbox deduplication
 
