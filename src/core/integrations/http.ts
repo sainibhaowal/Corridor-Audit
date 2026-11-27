@@ -1,7 +1,10 @@
 import { lookup as dnsLookup } from "node:dns/promises"
 import { isIP } from "node:net"
+import { request as httpRequest } from "node:http"
+import { request as httpsRequest } from "node:https"
 
 export const PROVIDER_HTTP_TIMEOUT_MS = 20_000
+export const MAX_GENERIC_PROVIDER_RESPONSE_BYTES = 10 * 1024 * 1024
 
 export function fetchProvider(input: string | URL, init?: RequestInit, timeoutMs = PROVIDER_HTTP_TIMEOUT_MS): Promise<Response> {
 	const timeoutSignal = AbortSignal.timeout(timeoutMs)
@@ -103,4 +106,81 @@ export async function assertProviderEndpointResolvesPublicly(
 	if (records.length === 0 || !addressesValid) {
 		throw new Error("Provider API endpoint must resolve only to public IP addresses.")
 	}
+}
+
+/** Resolve and validate a generic endpoint once, then connect directly to that IP. */
+export async function fetchValidatedProviderEndpoint(
+	url: URL,
+	options: {
+		headers?: HeadersInit
+		timeoutMs?: number
+		resolver?: (hostname: string) => Promise<Array<{ address: string; family: number }>>
+		production?: boolean
+	} = {},
+): Promise<Response> {
+	const production = options.production ?? process.env.NODE_ENV === "production"
+	const endpoint = validateProviderEndpointUrl(url.toString(), production)
+	assertProviderEndpointHostAllowed(endpoint, process.env.CORRIDOR_PROVIDER_ENDPOINT_HOSTS, production)
+	const host = endpoint.hostname.toLowerCase().replace(/^\[|\]$/g, "")
+	const localDevelopmentHost = !production && (host === "localhost" || host.endsWith(".localhost"))
+	const records = isIP(host)
+		? [{ address: host, family: isIP(host) }]
+		: await (options.resolver ?? ((hostname) => dnsLookup(hostname, { all: true, verbatim: true })))(host)
+	if (records.length === 0 || records.some((record) =>
+		localDevelopmentHost ? !isLoopbackAddress(record.address) : !isPublicAddress(record.address))) {
+		throw new Error("Provider API endpoint must resolve only to public IP addresses.")
+	}
+
+	const address = records[0]!.address
+	const transport = endpoint.protocol === "https:" ? httpsRequest : httpRequest
+	const headers: Record<string, string> = {}
+	new Headers(options.headers).forEach((value, key) => { headers[key] = value })
+	headers.host = endpoint.host
+	headers["accept-encoding"] = "identity"
+	const timeoutMs = options.timeoutMs ?? PROVIDER_HTTP_TIMEOUT_MS
+
+	return new Promise<Response>((resolve, reject) => {
+		let settled = false
+		const req = transport({
+			protocol: endpoint.protocol,
+			hostname: address,
+			port: endpoint.port || (endpoint.protocol === "https:" ? 443 : 80),
+			method: "GET",
+			path: `${endpoint.pathname}${endpoint.search}`,
+			headers,
+			agent: false,
+			...(endpoint.protocol === "https:" && !isIP(host) ? { servername: host } : {}),
+		}, (incoming) => {
+			const chunks: Buffer[] = []
+			let bytes = 0
+			incoming.on("data", (chunk: Buffer | string) => {
+				const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+				bytes += buffer.byteLength
+				if (bytes > MAX_GENERIC_PROVIDER_RESPONSE_BYTES) {
+					incoming.destroy(new Error(`Provider response exceeds ${MAX_GENERIC_PROVIDER_RESPONSE_BYTES} bytes.`))
+					return
+				}
+				chunks.push(buffer)
+			})
+			incoming.on("error", (error) => {
+				if (!settled) { settled = true; clearTimeout(timer); reject(error) }
+			})
+			incoming.on("end", () => {
+				if (settled) return
+				settled = true
+				clearTimeout(timer)
+				const responseHeaders = new Headers()
+				const contentType = incoming.headers["content-type"]
+				if (typeof contentType === "string") responseHeaders.set("content-type", contentType)
+				const status = incoming.statusCode && incoming.statusCode >= 200 ? incoming.statusCode : 502
+				const body = status === 204 || status === 304 ? null : Buffer.concat(chunks)
+				resolve(new Response(body, { status, headers: responseHeaders }))
+			})
+		})
+		const timer = setTimeout(() => req.destroy(new Error(`Provider endpoint request timed out after ${timeoutMs} ms.`)), timeoutMs)
+		req.on("error", (error) => {
+			if (!settled) { settled = true; clearTimeout(timer); reject(error) }
+		})
+		req.end()
+	})
 }

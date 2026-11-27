@@ -4,7 +4,7 @@ import type { IntegrationCredentials, IntegrationRecord } from "../db/schema"
 import { normalizeInboundPayloadToCases } from "../ingest/normalize-upload"
 import type { AccountingPaymentApplication, SettlementCase, SourceRef } from "../types"
 import { parseDecimalStringToMinor } from "../money"
-import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublicly, fetchProvider, validateProviderEndpointUrl } from "./http"
+import { assertProviderEndpointHostAllowed, fetchProvider, fetchValidatedProviderEndpoint, validateProviderEndpointUrl } from "./http"
 import { getWiseEnvironmentConfig } from "./wise-environment"
 
 export interface ConnectorFetchResult {
@@ -652,10 +652,8 @@ async function fetchGenericEndpointCases(
 	}
 	const endpoint = validateProviderEndpointUrl(baseUrl)
 	assertProviderEndpointHostAllowed(endpoint)
-	await assertProviderEndpointResolvesPublicly(endpoint)
-	const res = await fetchProvider(endpoint, {
+	const res = await fetchValidatedProviderEndpoint(endpoint, {
 		headers: { Authorization: authHeader(credentials), Accept: "application/json" },
-		redirect: "error",
 	})
 	if (!res.ok) {
 		throw new Error(`${provider} API error (${res.status}): ${(await res.text()).slice(0, 200)}`)

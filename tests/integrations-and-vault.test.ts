@@ -4,6 +4,7 @@ import { rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
 import { DatabaseSync } from "node:sqlite"
+import { createServer } from "node:http"
 import test from "node:test"
 
 const TEST_DB_PATH = resolve(tmpdir(), `corridor-test-${process.pid}-${Date.now()}.db`)
@@ -24,7 +25,7 @@ import { parseInboundEmailToCases } from "../src/core/integrations/email-parser"
 import { getWiseEnvironmentConfig } from "../src/core/integrations/wise-environment"
 import { deriveWebhookEventId } from "../src/core/security/webhook-event-id"
 import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
-import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublicly, fetchProvider, validateProviderEndpointUrl } from "../src/core/integrations/http"
+import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublicly, fetchProvider, fetchValidatedProviderEndpoint, MAX_GENERIC_PROVIDER_RESPONSE_BYTES, validateProviderEndpointUrl } from "../src/core/integrations/http"
 import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode, refreshOAuthCredentials } from "../src/core/integrations/oauth"
 import { runIntegrationSync, shouldRunFullProviderReconciliation } from "../src/runtime/workers/sync-worker"
 import { runWithDurableCaseRetries } from "../src/runtime/workers/durable-case-queue"
@@ -751,6 +752,60 @@ test("generic provider endpoints reject insecure schemes and private DNS targets
 		assertProviderEndpointResolvesPublicly(publicEndpoint, async () => [{ address: "169.254.169.254", family: 4 }]),
 		/private IP addresses|public IP addresses/,
 	)
+})
+
+test("generic provider requests connect to the public address that passed validation", async () => {
+	let port = 0
+	let observedRemoteAddress = ""
+	let observedHost = ""
+	const server = createServer((request, response) => {
+		observedRemoteAddress = request.socket.remoteAddress || ""
+		observedHost = request.headers.host || ""
+		if (request.url === "/slow") {
+			const interval = setInterval(() => response.write("x"), 5)
+			response.on("close", () => clearInterval(interval))
+			return
+		}
+		response.setHeader("content-type", "application/json")
+		response.end(request.url === "/large" ? Buffer.alloc(MAX_GENERIC_PROVIDER_RESPONSE_BYTES + 1) : JSON.stringify([{ id: "provider-record" }]))
+	})
+	await new Promise<void>((resolve, reject) => {
+		server.once("error", reject)
+		server.listen(0, "127.0.0.1", () => {
+			const address = server.address()
+			if (!address || typeof address === "string") return reject(new Error("Test server did not bind to a TCP port."))
+			port = address.port
+			resolve()
+		})
+	})
+	try {
+		let resolutions = 0
+		const response = await fetchValidatedProviderEndpoint(new URL(`http://provider.localhost:${port}/records?since=1`), {
+			resolver: async (hostname) => {
+				resolutions += 1
+				assert.equal(hostname, "provider.localhost")
+				return [{ address: "127.0.0.1", family: 4 }]
+			},
+		})
+		assert.equal(response.status, 200)
+		assert.deepEqual(await response.json(), [{ id: "provider-record" }])
+		assert.equal(resolutions, 1, "the connection reuses the exact resolution that was validated")
+		assert.match(observedRemoteAddress, /127\.0\.0\.1|::ffff:127\.0\.0\.1/)
+		assert.equal(observedHost, `provider.localhost:${port}`)
+		await assert.rejects(fetchValidatedProviderEndpoint(new URL(`http://provider.localhost:${port}/large`), {
+			resolver: async () => [{ address: "127.0.0.1", family: 4 }],
+		}), /exceeds 10485760 bytes/)
+		await assert.rejects(fetchValidatedProviderEndpoint(new URL(`http://provider.localhost:${port}/slow`), {
+			timeoutMs: 40,
+			resolver: async () => [{ address: "127.0.0.1", family: 4 }],
+		}), /timed out after 40 ms/)
+
+		await assert.rejects(fetchValidatedProviderEndpoint(new URL("https://api.example.test/records"), {
+			resolver: async () => [{ address: "169.254.169.254", family: 4 }],
+		}), /public IP addresses/)
+	} finally {
+		await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+	}
 })
 
 test("Xero OAuth uses S256 PKCE and exchanges the persisted verifier", async () => {

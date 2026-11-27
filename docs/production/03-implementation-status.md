@@ -548,8 +548,15 @@ Update this section per milestone with the exact command, result, environment, a
 - Integration listing and connect/disconnect, workspace settings, audit-log reads, raw-ingestion reads, and dead-letter listing use the workspace established by request authorization. Workspace context lookup throws if authorization did not establish a context, instead of silently selecting the default workspace.
 - Routes that still use the default workspace or process-global runtime state reject non-default workspace sessions with HTTP 503. Login still provisions against `ws-default`; the UI cannot create or switch workspaces. This milestone is partial API isolation and does not represent end-to-end tenant isolation.
 - Verification on the local Windows environment: `node --import tsx --test tests/auth.test.ts` passed (11 tests); `npm test` passed (85 tests); `npm run typecheck` passed; `npm run build` passed. The authorization test creates a second workspace and verifies scoped integration data plus denial from an unmigrated history route. No production identity provider or external service was contacted.
+
 ### 2026-11-27 team invitation record validation
 
 - Team member creation now normalizes and validates email addresses, validates names and roles at the database boundary, and checks for an existing address within the workspace inside a `BEGIN IMMEDIATE` transaction. Duplicate API requests return HTTP 409; invalid records return HTTP 400. This protects against concurrent duplicate invitations without modifying existing member rows.
 - Invitations remain database records only. No message is sent, and Cognito enrollment or another identity enrollment path must still be arranged by the workspace owner.
 - Verification: `npm test` passed (86 tests), including duplicate and malformed address checks at the database layer and duplicate HTTP conflict behavior. `npm run typecheck` passed. No email service or identity provider was contacted.
+
+### 2026-11-27 generic provider endpoint DNS pinning
+
+- Generic provider sync now resolves the configured host at request time, rejects private or reserved answers, and connects to the same validated IP while retaining the original HTTP host and TLS server name. It does not follow redirects and caps response bodies at 10 MiB. The timeout remains 20 seconds.
+- This closes the DNS rebinding gap between validation and socket connection for generic JSON sync. Production still requires the exact hostname allowlist and should use network egress controls as defense in depth. Endpoint creation continues to validate DNS before saving as an early configuration check.
+- Verification: the focused integration suite passed (43 tests), including a local server assertion that the socket connects to the validated loopback address, rejection of a private DNS answer, rejection of an oversized response, and enforcement of the total request timeout. Full `npm test` passed (87 tests), `npm run build` passed, and `npm run typecheck` passed serially after the build. No external endpoint was contacted.
