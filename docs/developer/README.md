@@ -48,7 +48,7 @@ flowchart TB
 | **[Database Schema & Vault](./database-schema.md)** | All 19 SQLite tables (including `case_sequences` & `case_checkpoints`), columns, foreign keys, leases, WAL backup, and AES-256-GCM encryption boundaries |
 | **[Codebase Module Map](./module-map.md)** | Complete file-by-file map of `src/core/`, `src/runtime/`, `src/components/`, `src/operations/`, and `tests/` |
 | **[Environment & Security Config](./env-and-security.md)** | Every `.env` variable, Cognito/local RBAC, SSRF DNS pinning, webhook signatures, and ClamAV scanning |
-| **[Bug Fixes — 2026-11-27](./bug-fixes-2026-11-27.md)** | Root-cause analysis, code diffs, and verification for six production-affecting UI/runtime/export bugs fixed for hackathon submission |
+| **[Bug Fixes — 2026-11-27](./bug-fixes/README.md)** | Index of six production-affecting UI/runtime/export bug fixes with root-cause analysis, code diffs, and verification |
 
 ---
 
