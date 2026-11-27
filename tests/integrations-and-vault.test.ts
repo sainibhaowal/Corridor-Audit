@@ -63,7 +63,7 @@ test("production vault refuses to generate an unconfigured local key", () => {
 	}
 })
 
-test("HMAC-SHA256 webhook signature verification supports Stripe, Wise, and Corridor signatures", () => {
+test("webhook signature verification follows Stripe, Wise RSA, and Corridor schemes", () => {
 	const body = JSON.stringify({ event: "payout.paid", amount: 5000 })
 	const secret = "whsec_test_secret_123"
 	const ts = Math.floor(Date.now() / 1000)
@@ -72,9 +72,11 @@ test("HMAC-SHA256 webhook signature verification supports Stripe, Wise, and Corr
 	assert.equal(verifyStripeSignature(body, `t=${ts},v1=${stripeSig}`, secret).valid, true)
 	assert.equal(verifyStripeSignature(body, `t=${ts},v1=deadbeef`, secret).valid, false)
 
-	const wiseSig = createHmac("sha256", secret).update(body, "utf8").digest("base64")
-	assert.equal(verifyWiseSignature(body, wiseSig, secret).valid, true)
-	assert.equal(verifyWiseSignature(body, "invalid", secret).valid, false)
+	const wiseBody = '{"data":{"resource":{"id":49983981,"profile_id":16055450,"account_id":14124090,"type":"transfer"},"current_state":"incoming_payment_waiting","previous_state":null,"occurred_at":"2021-08-23T10:12:50Z"},"subscription_id":"90aa8e14-4ef1-4a56-861c-f3c9cde097ea","event_type":"transfers#state-change","schema_version":"2.0.0","sent_at":"2021-08-23T10:12:50Z"}'
+	const wiseSignature = "wKcKCYXAzxNgiu7xmoDm943NUni7Rz33QN8JkEA9dWSGebgndonabgSj18Y4C08OrwVmueGsED2s00M7DtJVcYKOS1i3G4TMVx+mgM3aL9djMBkQtiYNBFUd6wrPI7ZUNHv/TrlKSjTMc+6JFvUvJ7owY3z85e3I4jLRLJowMFvO8kvCJ60+1pY9wDwZvtZ//WS93LrwGjk9Dvwzpmu0w+P4J75tETT5qC3Uv0y5G2yO8SEoO3yNP/tg/BOli02niHb53vEOUWUb9bly6thnfMoXoiV/osoGxgF20R58RlvkAmezyyl1Sv542TfS2DpiwVnmjjjkCyXeSUcKookYLQ=="
+	assert.equal(verifyWiseSignature(wiseBody, wiseSignature).valid, true)
+	assert.equal(verifyWiseSignature(`${wiseBody} `, wiseSignature).valid, false)
+	assert.equal(verifyWiseSignature(body, "invalid").valid, false)
 
 	const corridorSig = createHmac("sha256", secret).update(body, "utf8").digest("hex")
 	assert.equal(verifyCorridorSignature(body, `sha256=${corridorSig}`, secret).valid, true)

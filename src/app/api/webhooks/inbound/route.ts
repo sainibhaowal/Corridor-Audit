@@ -20,7 +20,6 @@ export async function POST(request: Request) {
 		const workspace = db.getWorkspace(DEFAULT_WORKSPACE_ID)
 		const corridorSecret = db.getRawWebhookSecret(DEFAULT_WORKSPACE_ID)
 		const stripeSecret = db.getDecryptedCredentials(DEFAULT_WORKSPACE_ID, "stripe")?.webhookSecret
-		const wiseSecret = db.getDecryptedCredentials(DEFAULT_WORKSPACE_ID, "wise")?.webhookSecret
 
 		const sigCheck = verifyInboundWebhookRequest({
 			rawBody: raw,
@@ -28,7 +27,6 @@ export async function POST(request: Request) {
 			secrets: {
 				corridor: corridorSecret,
 				stripe: stripeSecret,
-				wise: wiseSecret,
 			},
 			requireSignature: workspace.requireWebhookSignature || process.env.NODE_ENV === "production",
 			requireTimestampedCorridorSignature: process.env.NODE_ENV === "production",
