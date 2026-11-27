@@ -324,10 +324,10 @@ export const evaluateFeeClauseTool: Tool = {
 
 		assessment.clauseBreachDetected = breachDetected
 		assessment.clauseSummary = breachDetected
-			? `BREACH: Contract specifies ${invoiceBearer}, wire carries ${wireBearer}, yet ${receiverCount} receiver deduction(s) occurred.`
-			: bearerMismatch
-				? `BEARER DRIFT: Invoice specifies ${invoiceBearer}, wire used ${wireBearer}.`
-				: `Clause compliant (${invoiceBearer}).`
+			? `POTENTIAL DISCREPANCY: Submitted invoice terms specify ${invoiceBearer}, submitted wire records ${wireBearer}, and ${receiverCount} receiver deduction(s). Confirm against the original contract and bank statement.`
+				: bearerMismatch
+					? `POTENTIAL BEARER MISMATCH: Submitted invoice terms specify ${invoiceBearer}; submitted wire records ${wireBearer}. Confirm against the original contract and bank statement.`
+					: `No fee-bearer discrepancy calculated from submitted records (${invoiceBearer}). Confirm against the original contract and bank statement.`
 
 		state.termsByCaseId.set(caseId, assessment)
 

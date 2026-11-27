@@ -58,7 +58,7 @@ export function CaseInspectorModal({
 					{[
 						{ id: "ledger" as const, label: "Summary & Cent Ledger" },
 						{ id: "technical" as const, label: "All Technical Fields (JSON)" },
-						{ id: "letter" as const, label: "Dispute Letter (.txt)" },
+						{ id: "letter" as const, label: "Review Request Draft (.txt)" },
 					].map((tab) => (
 						<button
 							key={tab.id}
@@ -93,7 +93,7 @@ export function CaseInspectorModal({
 											<tr className="border-b border-[#1c2a33] bg-[#080d12] text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
 												<th className="px-4 py-2.5 text-left">Reconciliation Line Item</th>
 												<th className="px-4 py-2.5 text-right">Amount</th>
-												<th className="px-4 py-2.5 text-left">Verified SourceRef</th>
+											<th className="px-4 py-2.5 text-left">Source Reference</th>
 											</tr>
 										</thead>
 										<tbody className="divide-y divide-[#1c2a33]">
@@ -178,20 +178,20 @@ export function CaseInspectorModal({
 								<Card className="flex flex-col justify-between p-4">
 									<div>
 										<div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
-											Corridor Leak Replay &amp; Exports
+											Calculated Reference Comparison &amp; Exports
 										</div>
 										<p className="mb-3 text-xs text-[#c7d3d6]">
-											Actual landed:{" "}
+											Submitted settlement:{" "}
 											<strong className="font-mono text-[#e3edef]">
 												{fmtClientMoney(v.replay.actualNetMinor, ccy)}
 											</strong>{" "}
-											vs. Transparent ECB route:{" "}
+											vs. Calculated ECB mid-market reference:{" "}
 											<strong className="font-mono text-[#75e4c7]">
 												{fmtClientMoney(v.replay.optimalTransparentNetMinor, ccy)}
 											</strong>
 										</p>
 										<Badge variant="ok" className="mb-4 font-mono">
-											Preventable + Recoverable Leak: {fmtClientMoney(v.replay.totalLeakMinor, ccy)} (
+											Estimated difference: {fmtClientMoney(v.replay.totalLeakMinor, ccy)} (
 											{(v.replay.totalLeakBps / 100).toFixed(2)}%)
 										</Badge>
 									</div>
@@ -203,7 +203,7 @@ export function CaseInspectorModal({
 											className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#121c24] px-3 text-xs font-semibold text-white hover:bg-[#17232b]"
 										>
 											<Download className="h-3.5 w-3.5" />
-											Dispute Letter (.txt)
+											Review Request Draft (.txt)
 										</a>
 										<a
 											href={`/api/report/${encodeURIComponent(v.caseId)}?format=json`}
@@ -211,7 +211,7 @@ export function CaseInspectorModal({
 											className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#32454d] bg-[#0d141b] px-3 text-xs font-semibold text-[#c7d3d6] hover:bg-[#080d12]"
 										>
 											<FileText className="h-3.5 w-3.5" />
-											Full Audit (.json)
+											Case Result (.json)
 										</a>
 									</div>
 								</Card>
@@ -229,7 +229,7 @@ export function CaseInspectorModal({
 						<div className="space-y-3">
 							<pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[#1c2a33] bg-[#080d12] p-4 font-mono text-xs text-[#c7d3d6]">
 								{v.disputeNotice ||
-									"No recoverable OUR fee breach on this case - clean audit certificate available in JSON export."}
+									"No potential OUR fee discrepancy was calculated from the supplied values. This is not an independent bank confirmation or audit certificate."}
 							</pre>
 							<a
 								href={`/api/report/${encodeURIComponent(v.caseId)}?format=txt`}

@@ -3,7 +3,7 @@
 import type { AuditVerdict } from "@/core/types"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { fmtClientMoney, verdictBadgeVariant } from "./corridor-types"
+import { fmtClientMoney, verdictBadgeVariant, verdictStatusLabel } from "./corridor-types"
 
 function formatBreakdown(verdicts: AuditVerdict[], pick: (v: AuditVerdict) => number): string {
 	const totals = new Map<string, number>()
@@ -34,7 +34,7 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 		<div className="space-y-4">
 			<div>
 				<h1 className="text-xl font-extrabold tracking-tight text-[#e3edef]">
-					Cross-Border Corridor Leak Summary
+					Cross-Border Settlement Summary
 				</h1>
 				<p className="mt-1 text-xs text-[#81949a]">
 					Calculated from saved case verdicts. Estimates without payment evidence are excluded from fee and FX totals.
@@ -56,7 +56,7 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 
 				<Card className="flex min-h-[100px] flex-col justify-between p-4">
 					<div className="text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
-						Potential OUR Fee Claims
+						Potential OUR Fee Flags
 					</div>
 					<div className="tabular text-2xl font-extrabold tracking-tight text-[#62e1c3]">
 						{recoverLabel}
@@ -98,8 +98,8 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 							<tr className="border-b border-[#1c2a33] bg-[#080d12] text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
 								<th className="px-4 py-3 text-left">Case</th>
 								<th className="px-4 py-3 text-left">Wire / Channel</th>
-								<th className="px-4 py-3 text-right">FX Spread Leak</th>
-								<th className="px-4 py-3 text-right">Fees / Recoverable</th>
+								<th className="px-4 py-3 text-right">Estimated FX Spread</th>
+								<th className="px-4 py-3 text-right">Fees / Potential Flag</th>
 								<th className="px-4 py-3 text-right">Variance</th>
 								<th className="px-4 py-3 text-left">Verdict</th>
 							</tr>
@@ -142,7 +142,7 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 											</td>
 											<td className="px-4 py-3">
 												<Badge variant={verdictBadgeVariant(v.status)}>
-													{v.status.replace(/_/g, " ")}
+												{verdictStatusLabel(v.status)}
 												</Badge>
 											</td>
 										</tr>

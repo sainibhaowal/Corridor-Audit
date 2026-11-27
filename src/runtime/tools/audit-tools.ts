@@ -51,7 +51,7 @@ function buildDisputeLetter(params: {
 	auditRulesVersion: string
 }): string {
 	return [
-		`SUBJECT: Formal Fee Recovery Request - ${params.invoiceId} / Wire Ref ${params.transactionRef}`,
+		`SUBJECT: Request to Review Potential Fee Discrepancy - ${params.invoiceId} / Wire Ref ${params.transactionRef}`,
 		`DATE: ${new Date().toISOString().slice(0, 10)}`,
 		``,
 		`To: Correspondent & Operations Fee Investigations Desk (${params.senderName})`,
@@ -60,8 +60,8 @@ function buildDisputeLetter(params: {
 		``,
 		`EVIDENCE SUMMARY:`,
 		`- Underlying Invoice: ${params.invoiceId}`,
-		`- SWIFT Field :71A: / Contract Charge Clause recorded by CorridorAudit: ${params.contractBearer}.`,
-		`- Charges identified for review: ${params.recoverableFormatted}`,
+		`- Submitted invoice or contract terms recorded for review: ${params.contractBearer}.`,
+		`- Potential discrepancy calculated from the submitted records: ${params.recoverableFormatted}`,
 		``,
 		`Please review the attached transaction records and advise whether an adjustment is due. If confirmed, please credit ${params.recoverableFormatted} to the beneficiary account and provide the adjustment reference.`,
 		``,
@@ -187,7 +187,7 @@ export const verifySettlementBalanceTool: Tool = {
 			ibanValid: terms.ibanValid ?? true,
 			isOrphanMatched: wire.isOrphan && Boolean(wire.matchedInvoiceId),
 			recommendedAction,
-			summary: `Cent-proof balance verified in ${targetCcy}: ECB ${formatMoney(fx.midMarketExpectedMinor, targetCcy)} - FX ${formatMoney(fx.fxSpreadLossMinor, targetCcy)} - Fees ${formatMoney(deductedFeesMinor, targetCcy)}${taxSegment} - Net ${formatMoney(c.wire.settledAmount.amountMinor, targetCcy)} => Variance ${formatMoney(varianceMinor, targetCcy)}.`,
+			summary: `Arithmetic using submitted values in ${targetCcy}: ECB reference ${formatMoney(fx.midMarketExpectedMinor, targetCcy)} - FX estimate ${formatMoney(fx.fxSpreadLossMinor, targetCcy)} - recorded fees ${formatMoney(deductedFeesMinor, targetCcy)}${taxSegment} - stated settlement ${formatMoney(c.wire.settledAmount.amountMinor, targetCcy)} => calculated variance ${formatMoney(varianceMinor, targetCcy)}. This is not independent bank confirmation.`,
 		}
 	},
 }
@@ -263,7 +263,7 @@ export const simulateCorridorReplayTool: Tool = {
 			totalLeakMinor,
 			totalLeakFormatted: formatMoney(totalLeakMinor, to),
 			totalLeakBps,
-			summary: `Corridor Replay: Actual ${formatMoney(actualNetMinor, to)} vs Transparent ${formatMoney(optimalTransparentNetMinor, to)} -> preventable/recoverable leak ${formatMoney(totalLeakMinor, to)} (${(totalLeakBps / 100).toFixed(2)}%).`,
+			summary: `Reference comparison: submitted settlement ${formatMoney(actualNetMinor, to)} vs calculated ECB mid-market route ${formatMoney(optimalTransparentNetMinor, to)} -> estimated difference ${formatMoney(totalLeakMinor, to)} (${(totalLeakBps / 100).toFixed(2)}%). This difference is not a confirmed loss or recovery.`,
 		}
 	},
 }
@@ -271,7 +271,7 @@ export const simulateCorridorReplayTool: Tool = {
 export const finalizeSettlementActionTool: Tool = {
 	type: "function",
 	name: "finalize_settlement_action",
-	description: "Persist final verified AuditVerdict & dispute claim draft to CorridorState. Guarded by Mozaik SettlementGateInterceptionHandler!",
+	description: "Persist the calculated audit result and bank review request draft to CorridorState. Findings are based on supplied records and are not independent bank confirmation. Guarded by Mozaik SettlementGateInterceptionHandler.",
 	parameters: {
 		type: "object",
 		properties: {
@@ -360,7 +360,7 @@ export const finalizeSettlementActionTool: Tool = {
 					parts.push(`Bank FX spread cost ${formatMoney(fx.fxSpreadLossMinor, to)} (${(fx.fxSpreadBps / 100).toFixed(2)}%) vs ECB ${fx.rateRecord.midMarketRate}.`)
 				}
 				if (recoverableFeeMinor > 0) {
-					parts.push(`Wrongful :71A:OUR deduction of ${formatMoney(recoverableFeeMinor, to)} is recoverable.`)
+					parts.push(`Potential OUR fee discrepancy calculated from the submitted contract and wire records: ${formatMoney(recoverableFeeMinor, to)}. Confirm the original terms and bank statement before making a claim.`)
 				}
 				if (varianceMinor !== 0 && !evidenceIncomplete) {
 					parts.push(`Unexplained short-pay variance: ${formatMoney(varianceMinor, to)}.`)
@@ -432,7 +432,7 @@ export const finalizeSettlementActionTool: Tool = {
 			caseId: args.caseId,
 			kind: "ledger.entry",
 			status: status === "CLEAN" || status === "ORPHAN_MATCHED" ? "ok" : status === "VARIANCE_DETECTED" ? "bad" : "warn",
-			text: `${args.caseId} finalized as ${status} (Recoverable: ${formatMoney(recoverableFeeMinor, to)}, Variance: ${formatMoney(varianceMinor, to)})`,
+			text: `${args.caseId} finalized as ${status} (Potential OUR fee flag: ${formatMoney(recoverableFeeMinor, to)}, Calculated variance: ${formatMoney(varianceMinor, to)})`,
 		})
 		state.emitTrajectory({
 			caseId: args.caseId,

@@ -47,6 +47,7 @@ import {
 	type ProviderStatus,
 	type QueueStats,
 	verdictBadgeVariant,
+	verdictStatusLabel,
 } from "./corridor-types"
 import { InboundSourcesView } from "./inbound-sources-view"
 import { RawVaultView } from "./raw-vault-view"
@@ -846,7 +847,7 @@ export function CorridorWorkspace() {
 											{activeEntry.pending
 												? "⏸ Paused at Human Gate"
 												: activeEntry.verdict
-													? activeEntry.verdict.status.replace(/_/g, " ")
+									? verdictStatusLabel(activeEntry.verdict.status)
 													: activeEntry.phase}
 										</Badge>
 									)}
@@ -1326,7 +1327,7 @@ export function CorridorWorkspace() {
 									const ccy = v.numbers.settledCurrency
 									const delta =
 										v.numbers.recoverableFeeMinor > 0
-											? `Recover: ${fmtClientMoney(v.numbers.recoverableFeeMinor, ccy)} · FX: ${fmtClientMoney(-v.numbers.fxSpreadLossMinor, ccy)}`
+											? `Potential fee flag: ${fmtClientMoney(v.numbers.recoverableFeeMinor, ccy)} · FX estimate: ${fmtClientMoney(-v.numbers.fxSpreadLossMinor, ccy)}`
 											: v.numbers.unexplainedVarianceMinor !== 0
 												? `Variance: ${fmtClientMoney(v.numbers.unexplainedVarianceMinor, ccy)}`
 												: `Variance: ${fmtClientMoney(0, ccy)} · FX: ${fmtClientMoney(v.numbers.fxSpreadLossMinor, ccy)}`
@@ -1348,7 +1349,7 @@ export function CorridorWorkspace() {
 													{v.caseId} · {v.invoiceId}
 												</strong>
 												<Badge variant={verdictBadgeVariant(v.status)}>
-													{v.status.replace(/_/g, " ")}
+									{verdictStatusLabel(v.status)}
 												</Badge>
 											</div>
 											<div className="font-mono text-[11.5px] text-[#a4b4b8]">{delta}</div>
@@ -1373,7 +1374,7 @@ export function CorridorWorkspace() {
 															setModalCaseId(v.caseId)
 														}}
 													>
-														Dispute.txt
+														Review request.txt
 													</Button>
 												)}
 												<a
@@ -1403,7 +1404,7 @@ export function CorridorWorkspace() {
 												className="inline-flex h-7 items-center gap-1 rounded border border-[#32454d] bg-[#0d141b] px-2.5 text-[11.5px] font-semibold text-[#c7d3d6] hover:bg-[#080d12]"
 											>
 												<Download className="h-3 w-3" />
-												Dispute / Cert (.txt)
+												Review Request Draft (.txt)
 											</a>
 											<a
 												href={`/api/report/${encodeURIComponent(v.caseId)}?format=json`}

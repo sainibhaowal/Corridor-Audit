@@ -44,7 +44,7 @@ async function main() {
 	}
 	const verdicts = await orchestrator.enqueueBatch(cases)
 
-	console.log("\n=================== FINAL CENT-PROOF LEDGER ===================")
+	console.log("\n=================== CALCULATED SETTLEMENT RESULTS ===================")
 	for (const v of verdicts) {
 		const ccy = v.numbers.settledCurrency
 		console.log(
@@ -55,7 +55,7 @@ async function main() {
 			`  Accounting: ECB ${formatMoney(v.numbers.midMarketEquivalentMinor, ccy)} - FX ${formatMoney(v.numbers.fxSpreadLossMinor, ccy)} - Fees ${formatMoney(v.numbers.liftingAndRepairFeesMinor + v.numbers.platformFeeMinor, ccy)} = Landed ${formatMoney(v.numbers.settledMinor, ccy)} | Variance: ${formatMoney(v.numbers.unexplainedVarianceMinor, ccy)}`,
 		)
 		console.log(
-			`  Recoverable OUR Fee: ${formatMoney(v.numbers.recoverableFeeMinor, ccy)} | Corridor Leak Replay: ${formatMoney(v.replay.totalLeakMinor, ccy)} (${(v.replay.totalLeakBps / 100).toFixed(2)}%)`,
+			`  Potential OUR Fee Flag: ${formatMoney(v.numbers.recoverableFeeMinor, ccy)} | Estimated Difference vs ECB Reference: ${formatMoney(v.replay.totalLeakMinor, ccy)} (${(v.replay.totalLeakBps / 100).toFixed(2)}%)`,
 		)
 		console.log(
 			`  Sources (${v.sourceRefs.length}): ${v.sourceRefs.map((r) => `[${r.sourceType}:${r.recordId}:${r.field}]`).join(" ")}`,

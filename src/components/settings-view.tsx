@@ -650,7 +650,7 @@ export function SettingsView({
 										{
 											id: "risk_only",
 											title: "Auto-Risk Gate",
-											desc: "Pause only on recoverable OUR violations, duplicates, BEC bank changes, or unexplained variance.",
+							desc: "Pause on potential OUR fee discrepancies, duplicate signals, BEC changes, or unexplained variance calculated from submitted records.",
 										},
 										{
 											id: "step_tool",

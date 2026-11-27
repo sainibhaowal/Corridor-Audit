@@ -103,9 +103,9 @@ export class SettlementGateInterceptionHandler implements InterceptionHandler {
 
 		if (call.name === "finalize_settlement_action") {
 			if (recoverableMinor > 0) {
-				riskLabel = `Medium Risk · OUR Fee Breach`
-				question = `The contract says the sender pays all fees, but the bank still took a ${formatMoney(recoverableMinor, currency)} fee. Should we generate a bank refund claim?`
-				proofLine = `Invoice: ${terms?.invoiceId ?? caseId} (${terms?.contractedChargeBearer ?? "OUR"}) vs Wire deduction ${formatMoney(recoverableMinor, currency)} · Ref: ${c?.wire.transactionRef ?? c?.wire.wireId ?? caseId}`
+				riskLabel = `Medium Risk · Potential OUR Fee Discrepancy`
+				question = `The submitted terms say the sender bears the fees, while the submitted wire records ${formatMoney(recoverableMinor, currency)} in receiver charges. Would you like to draft a bank review request? Confirm the original contract and statement before making a claim.`
+				proofLine = `Submitted terms (${terms?.invoiceId ?? caseId}: ${terms?.contractedChargeBearer ?? "OUR"}) vs submitted wire deduction ${formatMoney(recoverableMinor, currency)} · Ref: ${c?.wire.transactionRef ?? c?.wire.wireId ?? caseId}`
 			} else if (anomaly?.classification === "TRUE_DUPLICATE") {
 				riskLabel = `High Risk · Duplicate Wire`
 				question = `Two identical wires (${anomaly.duplicateWireIds.join(", ")}) matched ${terms?.invoiceId}. Hold settlement and flag duplicate alert?`

@@ -31,7 +31,7 @@ export async function GET(
 		return new Response(text, {
 			headers: {
 				"Content-Type": "text/plain; charset=utf-8",
-				"Content-Disposition": `attachment; filename="${caseId.toLowerCase()}-dispute-letter.txt"`,
+				"Content-Disposition": `attachment; filename="${caseId.toLowerCase()}-review-request-draft.txt"`,
 			},
 		})
 	}

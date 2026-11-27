@@ -146,3 +146,8 @@ export function verdictBadgeVariant(status: string): "ok" | "violet" | "bad" | "
 	if (status === "VARIANCE_DETECTED" || status === "ABORTED_BY_OPERATOR") return "bad"
 	return "warn"
 }
+
+export function verdictStatusLabel(status: string): string {
+	if (status === "RECOVERABLE_FEE_VIOLATION") return "Potential Fee Discrepancy"
+	return status.replace(/_/g, " ")
+}

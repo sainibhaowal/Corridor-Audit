@@ -449,4 +449,11 @@ Update this section per milestone with the exact command, result, environment, a
 ### 2026-11-27 hot-folder parse failure evidence
 
 - If local hot-folder content has been saved and normalization then fails, the ingestion now records `failed` with the error text in the encrypted parse-error field. Failures during scanning or before raw-record creation remain visible in the local runtime log only.
-- Verification pending for this milestone.
+- Verification in the local Windows environment: `npm run typecheck`, `npm test` (77 passed, 0 failed), and `npm run build` passed.
+
+### 2026-11-27 calculated-result wording and report labels
+
+- Updated the workspace summary, case inspector, review gate, CLI, agent instructions, and exported review-request label to describe fee and FX results as calculated flags or estimates from submitted records. The interface no longer presents them as confirmed recoveries, confirmed losses, or independent bank verification.
+- Fee-clause assessments now state that a potential discrepancy or mismatch is calculated from submitted invoice and wire records and should be checked against the original contract and bank statement. Existing internal status and amount fields remain stable for compatibility.
+- The downloadable text artifact remains a draft asking the bank to review the submitted records. It does not send a claim or establish that an adjustment is owed.
+- Verification in the local Windows environment: `npm run typecheck`, `npm test` (77 passed, 0 failed), and `npm run build` passed. No provider or cloud service was contacted.
