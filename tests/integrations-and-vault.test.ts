@@ -23,6 +23,7 @@ import { parseInboundEmailToCases } from "../src/core/integrations/email-parser"
 import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
 import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode, refreshOAuthCredentials } from "../src/core/integrations/oauth"
 import { runIntegrationSync } from "../src/runtime/workers/sync-worker"
+import { runWithDurableCaseRetries } from "../src/runtime/workers/durable-case-queue"
 import { decryptJson, decryptSecret, encryptJson, encryptSecret, maskSecret } from "../src/core/security/vault"
 import {
 	verifyCorridorSignature,
@@ -160,11 +161,93 @@ test("local case queue survives restart and recovers work interrupted while runn
 	db.saveCase(queuedCase)
 	assert.deepEqual(db.listQueuedCases().map((item) => item.caseId), [queuedCase.caseId])
 	db.markCaseRunning(queuedCase.caseId)
-	assert.equal(db.listQueuedCases().length, 1, "running work is visible for restart recovery")
+	assert.equal(db.listQueuedCases().length, 0, "running work is not also offered as queued work")
 	db.requeueInterruptedCases()
 	assert.deepEqual(db.listQueuedCases().map((item) => item.caseId), [queuedCase.caseId])
 	db.markCaseFailed(queuedCase.caseId)
 	assert.equal(db.listQueuedCases().length, 0, "failed work is not silently auto retried")
+	assert.equal(db.listDeadLetterCases()[0]?.caseId, queuedCase.caseId)
+	db.close()
+})
+
+test("durable case retries use bounded backoff and expose exhausted jobs for operator replay", async () => {
+	const db = new CorridorDatabase(":memory:")
+	const settlementCase = {
+		caseId: "CASE-RETRY-01",
+		title: "Retry and dead letter test",
+		channelLabel: "test",
+		settlementEvidence: "incomplete" as const,
+		wire: {
+			wireId: "WIRE-RETRY-01",
+			format: "bank_csv" as const,
+			valueDate: "2026-11-27",
+			settledAmount: { amountMinor: 1000, currency: "USD" },
+			senderCharges: [],
+			receiverCharges: [],
+		},
+		createdAt: new Date().toISOString(),
+	}
+	const verdict = {
+		caseId: settlementCase.caseId,
+		invoiceId: "INV-RETRY-01",
+		wireId: settlementCase.wire.wireId,
+		provenance: { appVersion: "test", sourceRevision: "test", workingTree: "clean" as const, auditRulesVersion: "test" },
+		status: "EVIDENCE_INCOMPLETE" as const,
+		plainEnglishSummary: "Retry queue test verdict",
+		numbers: {
+			invoicedMinor: 0, invoicedCurrency: "USD", midMarketEquivalentMinor: 0, settledMinor: 1000,
+			settledCurrency: "USD", fxSpreadLossMinor: 0, fxSpreadBps: 0, liftingAndRepairFeesMinor: 0,
+			platformFeeMinor: 0, withholdingTaxMinor: 0, recoverableFeeMinor: 0, unexplainedVarianceMinor: 0,
+		},
+		replay: { actualNetMinor: 1000, optimalTransparentNetMinor: 1000, totalLeakMinor: 0, totalLeakBps: 0 },
+		sourceRefs: [],
+		disclaimer: "Synthetic/public data demonstration only. Not financial or legal advice." as const,
+		completedAt: new Date().toISOString(),
+	}
+	db.saveCase(settlementCase)
+	let attempts = 0
+	const retryDelays: number[] = []
+	const actual = await runWithDurableCaseRetries({
+		db,
+		caseId: settlementCase.caseId,
+		runAttempt: async () => {
+			attempts += 1
+			if (attempts < 3) throw new Error(`temporary model gateway failure ${attempts}`)
+			db.saveAuditVerdict(verdict)
+			return verdict
+		},
+		onRetryScheduled: (_retryAt, delayMs) => retryDelays.push(delayMs),
+	})
+	assert.equal(actual.caseId, settlementCase.caseId)
+	assert.equal(attempts, 3)
+	assert.deepEqual(retryDelays, [1000, 5000])
+	assert.equal(db.getCaseAttemptCount(settlementCase.caseId), 3)
+	assert.equal(db.listQueuedCases().length, 0)
+
+	const deadLetterCase = { ...settlementCase, caseId: "CASE-DEAD-LETTER-01", title: "Exhausted retry test" }
+	db.saveCase(deadLetterCase)
+	await assert.rejects(runWithDurableCaseRetries({
+		db,
+		caseId: deadLetterCase.caseId,
+		runAttempt: async () => { throw new Error("permanent provider failure") },
+	}))
+	assert.equal(db.listDeadLetterCases()[0]?.caseId, deadLetterCase.caseId)
+	assert.equal(db.listDeadLetterCases()[0]?.attemptCount, 3)
+	assert.match(db.listDeadLetterCases()[0]?.lastError || "", /permanent provider failure/)
+	assert.equal(db.retryDeadLetterCase(deadLetterCase.caseId)?.caseId, deadLetterCase.caseId)
+	assert.equal(db.getCaseAttemptCount(deadLetterCase.caseId), 0)
+	assert.ok(db.listQueuedCases().some((item) => item.caseId === deadLetterCase.caseId))
+	const timeoutCase = { ...settlementCase, caseId: "CASE-TIMEOUT-01", title: "Do not overlap a timed out agent run" }
+	db.saveCase(timeoutCase)
+	await assert.rejects(runWithDurableCaseRetries({
+		db,
+		caseId: timeoutCase.caseId,
+		runAttempt: async () => { throw new Error("Timed out waiting for audit verdict") },
+		shouldRetry: (error) => !(error instanceof Error && error.message.startsWith("Timed out waiting for")),
+		sleep: async () => undefined,
+	}))
+	assert.equal(db.getCaseAttemptCount(timeoutCase.caseId), 1)
+	assert.equal(db.listDeadLetterCases()[0]?.caseId, timeoutCase.caseId)
 	db.close()
 })
 

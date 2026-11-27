@@ -10,7 +10,7 @@ This is the live delivery record for production-readiness engineering. A row is 
 | 1 | Canonical evidence completeness, provider mapping correctness, upload validation, and accurate states | In progress |
 | 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | Cognito role gates implemented but not configured; durable provider OAuth state and Xero PKCE implemented; workspace isolation, email invitations, and SSE revocation remain |
 | 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Versioned tax and review policies plus durable approval records implemented locally; approval UI and production workflow controls remain |
-| 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Local SQLite queue recovery and webhook deduplication slices complete; production queue not started |
+| 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Local SQLite case retries, delayed recovery, dead-letter listing, and controller replay implemented; transactional outbox, distributed claims/leases, independent workers, and production queue remain open |
 | 5 | Raw evidence object storage, encryption/key lifecycle, retention, backup, restore, and deletion | Local SQLite raw-payload encryption complete; managed storage and lifecycle not started |
 | 6 | Provider adapters with pagination, cursors, token refresh/revocation, event security, and reconciliation | Bounded pagination, raw-response retention, and local token refresh for Wise, QuickBooks, Xero, and TrueLayer implemented. Incremental cursors, cross-instance refresh locking, revocation, matching, and provider conformance remain open |
 | 7 | Monitoring, audit logs, deployment configuration, threat review, and operational runbooks | Not started |
@@ -98,6 +98,14 @@ Update this section per milestone with the exact command, result, environment, a
 - Added a database test for queued work and interrupted running work recovery.
 - `npm run typecheck`: passed. `npm test`: passed, 29 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. These ran locally on Windows.
 - Cloud queue, independent workers, retry policy, idempotent webhook receipts, and durable approvals remain release blockers.
+
+### 2026-11-27 local durable case retries and dead letters
+
+- SQLite case rows now persist attempt count, next retry time, and the latest bounded error detail. Existing databases receive these columns through an additive migration; existing terminal `failed` rows move to the dead-letter state for operator review.
+- Eligible agent execution failures retry up to three attempts, with one second and five second backoff intervals. Verdict timeouts go directly to dead letter so a late agent run cannot overlap a retry. The app poller resumes delayed retries after restarts. Exhausted or repeatedly interrupted cases enter dead letter handling instead of being lost. A controller-only API lists dead letters and requeues one case with its attempt counter reset.
+- The retry path remains local and single-process. There is no cross-process job claim/lease, independent worker executable, transactional outbox, or provider-sync retry queue. The current SQLite worker cannot be treated as a distributed production queue.
+- Tests cover successful recovery after two transient failures, max-attempt dead letter creation, saved error context, replay, interrupted-running recovery, and delayed queue eligibility.
+- `npm run typecheck`: passed. `npm test`: passed, 40 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification is local on Windows.
 
 ### 2026-11-27 local webhook inbox deduplication
 

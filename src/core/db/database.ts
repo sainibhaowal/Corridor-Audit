@@ -39,6 +39,17 @@ export interface StoredReviewDecision {
 	approvalId: string
 }
 
+export interface DeadLetterCaseRecord {
+	caseId: string
+	title: string
+	attemptCount: number
+	lastError: string
+	updatedAt: string
+	settlementCase: SettlementCase
+}
+
+export const MAX_CASE_ATTEMPTS = 3
+
 export class CorridorDatabase {
 	private readonly db: DatabaseSync
 
@@ -49,11 +60,23 @@ export class CorridorDatabase {
 		}
 		this.db = new DatabaseSync(target)
 		this.db.exec(CORRIDOR_SCHEMA_SQL)
+		this.ensureCaseQueueColumns()
 		this.ensureRawContentEncryptionColumn()
 		this.encryptLegacyRawContent()
 		this.ensureDefaultWorkspace()
 		this.ensureWorkspaceTaxPolicies()
 		this.ensureWorkspaceReviewPolicies()
+	}
+
+	private ensureCaseQueueColumns(): void {
+		const columns = this.db.prepare("PRAGMA table_info(cases)").all() as Array<{ name: string }>
+		const existing = new Set(columns.map((column) => column.name))
+		if (!existing.has("attempt_count")) this.db.exec("ALTER TABLE cases ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0")
+		if (!existing.has("next_attempt_at")) this.db.exec("ALTER TABLE cases ADD COLUMN next_attempt_at TEXT")
+		if (!existing.has("last_error")) this.db.exec("ALTER TABLE cases ADD COLUMN last_error TEXT")
+		this.db.exec(`UPDATE cases SET status = 'dead_letter', last_error = COALESCE(last_error, 'Migrated terminal failure for operator review.')
+			WHERE status = 'failed'`)
+		this.db.exec("CREATE INDEX IF NOT EXISTS idx_cases_queue_due ON cases(workspace_id, status, next_attempt_at, created_at)")
 	}
 
 	private ensureWorkspaceTaxPolicies(): void {
@@ -670,7 +693,7 @@ export class CorridorDatabase {
 			)
 			.run(verdict.caseId, workspaceId, verdict.status, JSON.stringify(verdict), verdict.completedAt)
 		this.db
-			.prepare("UPDATE cases SET status = 'completed', updated_at = ? WHERE case_id = ?")
+			.prepare("UPDATE cases SET status = 'completed', next_attempt_at = NULL, last_error = NULL, updated_at = ? WHERE case_id = ?")
 			.run(new Date().toISOString(), verdict.caseId)
 	}
 
@@ -681,26 +704,77 @@ export class CorridorDatabase {
 		return rows.map((r) => JSON.parse(r.payload_json) as SettlementCase)
 	}
 
-	listQueuedCases(workspaceId = DEFAULT_WORKSPACE_ID): SettlementCase[] {
+	listQueuedCases(workspaceId = DEFAULT_WORKSPACE_ID, limit = 100): SettlementCase[] {
 		const rows = this.db
-			.prepare("SELECT payload_json FROM cases WHERE workspace_id = ? AND status IN ('queued', 'running') ORDER BY created_at ASC")
-			.all(workspaceId) as Array<{ payload_json: string }>
+			.prepare("SELECT payload_json FROM cases WHERE workspace_id = ? AND status = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= ?) ORDER BY created_at ASC LIMIT ?")
+			.all(workspaceId, new Date().toISOString(), limit) as Array<{ payload_json: string }>
 		return rows.map((r) => JSON.parse(r.payload_json) as SettlementCase)
 	}
 
 	markCaseRunning(caseId: string, workspaceId = DEFAULT_WORKSPACE_ID): void {
-		this.db.prepare("UPDATE cases SET status = 'running', updated_at = ? WHERE case_id = ? AND workspace_id = ?")
-			.run(new Date().toISOString(), caseId, workspaceId)
+		this.db.prepare(`UPDATE cases SET status = 'running', attempt_count = attempt_count + 1,
+			next_attempt_at = NULL, last_error = NULL, updated_at = ?
+			WHERE case_id = ? AND workspace_id = ? AND status = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`)
+			.run(new Date().toISOString(), caseId, workspaceId, new Date().toISOString())
+	}
+
+	markCaseRetry(caseId: string, error: string, retryAt: string, workspaceId = DEFAULT_WORKSPACE_ID): void {
+		this.db.prepare(`UPDATE cases SET status = 'queued', last_error = ?, next_attempt_at = ?, updated_at = ?
+			WHERE case_id = ? AND workspace_id = ? AND status = 'running'`)
+			.run(error.slice(0, 2000), retryAt, new Date().toISOString(), caseId, workspaceId)
+	}
+
+	markCaseDeadLetter(caseId: string, error: string, workspaceId = DEFAULT_WORKSPACE_ID): void {
+		this.db.prepare(`UPDATE cases SET status = 'dead_letter', last_error = ?, next_attempt_at = NULL, updated_at = ?
+			WHERE case_id = ? AND workspace_id = ?`)
+			.run(error.slice(0, 2000), new Date().toISOString(), caseId, workspaceId)
 	}
 
 	markCaseFailed(caseId: string, workspaceId = DEFAULT_WORKSPACE_ID): void {
-		this.db.prepare("UPDATE cases SET status = 'failed', updated_at = ? WHERE case_id = ? AND workspace_id = ?")
-			.run(new Date().toISOString(), caseId, workspaceId)
+		this.markCaseDeadLetter(caseId, "Case processing failed and was moved to dead letter handling.", workspaceId)
+	}
+
+	getCaseAttemptCount(caseId: string, workspaceId = DEFAULT_WORKSPACE_ID): number {
+		const row = this.db.prepare("SELECT attempt_count FROM cases WHERE case_id = ? AND workspace_id = ?")
+			.get(caseId, workspaceId) as { attempt_count: number } | undefined
+		return Number(row?.attempt_count || 0)
+	}
+
+	listDeadLetterCases(workspaceId = DEFAULT_WORKSPACE_ID, limit = 100): DeadLetterCaseRecord[] {
+		const rows = this.db.prepare(`SELECT case_id, title, payload_json, attempt_count, last_error, updated_at
+			FROM cases WHERE workspace_id = ? AND status = 'dead_letter' ORDER BY updated_at DESC LIMIT ?`)
+			.all(workspaceId, limit) as Array<Record<string, unknown>>
+		return rows.map((row) => ({
+			caseId: String(row.case_id),
+			title: String(row.title),
+			settlementCase: JSON.parse(String(row.payload_json)) as SettlementCase,
+			attemptCount: Number(row.attempt_count),
+			lastError: String(row.last_error || "No error detail recorded."),
+			updatedAt: String(row.updated_at),
+		}))
+	}
+
+	retryDeadLetterCase(caseId: string, workspaceId = DEFAULT_WORKSPACE_ID): SettlementCase | null {
+		const now = new Date().toISOString()
+		const update = this.db.prepare(`UPDATE cases SET status = 'queued', attempt_count = 0,
+			next_attempt_at = NULL, last_error = NULL, updated_at = ?
+			WHERE case_id = ? AND workspace_id = ? AND status = 'dead_letter'`).run(now, caseId, workspaceId)
+		if (Number(update.changes) !== 1) return null
+		const row = this.db.prepare("SELECT payload_json FROM cases WHERE case_id = ? AND workspace_id = ?")
+			.get(caseId, workspaceId) as { payload_json: string } | undefined
+		return row ? JSON.parse(row.payload_json) as SettlementCase : null
 	}
 
 	requeueInterruptedCases(workspaceId = DEFAULT_WORKSPACE_ID): void {
-		this.db.prepare("UPDATE cases SET status = 'queued', updated_at = ? WHERE workspace_id = ? AND status = 'running'")
-			.run(new Date().toISOString(), workspaceId)
+		const now = new Date().toISOString()
+		this.db.prepare(`UPDATE cases SET status = 'queued', next_attempt_at = NULL,
+			last_error = 'Processing was interrupted by an application restart.', updated_at = ?
+			WHERE workspace_id = ? AND status = 'running' AND attempt_count < ?`)
+			.run(now, workspaceId, MAX_CASE_ATTEMPTS)
+		this.db.prepare(`UPDATE cases SET status = 'dead_letter', next_attempt_at = NULL,
+			last_error = 'Processing was interrupted after the maximum attempt count.', updated_at = ?
+			WHERE workspace_id = ? AND status = 'running' AND attempt_count >= ?`)
+			.run(now, workspaceId, MAX_CASE_ATTEMPTS)
 	}
 
 	listPersistedVerdicts(workspaceId = DEFAULT_WORKSPACE_ID): AuditVerdict[] {

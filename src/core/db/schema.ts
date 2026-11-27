@@ -219,6 +219,9 @@ CREATE TABLE IF NOT EXISTS cases (
 	title TEXT NOT NULL,
 	payload_json TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'queued',
+	attempt_count INTEGER NOT NULL DEFAULT 0,
+	next_attempt_at TEXT,
+	last_error TEXT,
 	created_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL
 );

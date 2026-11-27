@@ -9,6 +9,7 @@ import { createCorridorAgents } from "./agents/corridor-agents"
 import { createTrajectoryObserver } from "./agents/trajectory-observer"
 import { CorridorState, initializeRuntime, join, publishCorridorEvent } from "./corridor-runtime"
 import { startBackgroundSyncWorker } from "./workers/sync-worker"
+import { runWithDurableCaseRetries } from "./workers/durable-case-queue"
 
 export interface CorridorOrchestrator {
 	state: CorridorState
@@ -22,6 +23,20 @@ export interface CorridorOrchestrator {
 const globalStore = globalThis as typeof globalThis & {
 	__corridorOrchestrator?: CorridorOrchestrator
 	__corridorInboxWatcherStarted?: boolean
+	__corridorCaseQueueWorkerStarted?: boolean
+}
+
+function startCaseQueueWorker(orchestrator: CorridorOrchestrator): void {
+	if (globalStore.__corridorCaseQueueWorkerStarted) return
+	globalStore.__corridorCaseQueueWorkerStarted = true
+	const timer = setInterval(() => {
+		for (const queuedCase of getCorridorDb().listQueuedCases()) {
+			void orchestrator.runCase(queuedCase).catch((err) => {
+				console.error(`[CaseQueue] Processing failed for ${queuedCase.caseId}:`, err)
+			})
+		}
+	}, 1000)
+	timer.unref?.()
 }
 
 function startHotFolderWatcher(orchestrator: CorridorOrchestrator): void {
@@ -125,9 +140,7 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 
 	const runSingleCase = async (settlementCase: SettlementCase): Promise<AuditVerdict> => {
 		state.registerCase(settlementCase)
-		getCorridorDb().markCaseRunning(settlementCase.caseId)
 		state.queueStats.active += 1
-		if (state.queueStats.waiting > 0) state.queueStats.waiting -= 1
 
 		state.emitTrajectory({
 			caseId: settlementCase.caseId,
@@ -162,8 +175,6 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 			state.queueStats.done += 1
 			return verdict
 		} catch (err) {
-			getCorridorDb().markCaseFailed(settlementCase.caseId)
-			state.queueStats.failed += 1
 			state.emitTrajectory({
 				caseId: settlementCase.caseId,
 				kind: "error",
@@ -183,7 +194,17 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 		// Persist before scheduling so accepted local work survives a process restart.
 		getCorridorDb().saveCase(settlementCase)
 		state.queueStats.waiting += 1
-		const task = batchChain.then(() => runSingleCase(settlementCase))
+		const task = batchChain.then(() => runWithDurableCaseRetries({
+			db: getCorridorDb(),
+			caseId: settlementCase.caseId,
+			runAttempt: () => runSingleCase(settlementCase),
+			shouldRetry: (error) => !(error instanceof Error && error.message.startsWith("Timed out waiting for")),
+			onAttemptStart: () => {
+				if (state.queueStats.waiting > 0) state.queueStats.waiting -= 1
+			},
+			onRetryScheduled: () => { state.queueStats.waiting += 1 },
+			onDeadLetter: () => { state.queueStats.failed += 1 },
+		}))
 		const tracked = task.finally(() => {
 			if (caseTasks.get(settlementCase.caseId) === tracked) caseTasks.delete(settlementCase.caseId)
 		})
@@ -212,6 +233,7 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 
 	globalStore.__corridorOrchestrator = orchestrator
 	startHotFolderWatcher(orchestrator)
+	startCaseQueueWorker(orchestrator)
 	startBackgroundSyncWorker(orchestrator)
 	for (const queuedCase of db.listQueuedCases()) {
 		void runCase(queuedCase).catch((err) => {
