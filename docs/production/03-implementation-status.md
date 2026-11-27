@@ -384,3 +384,11 @@ Update this section per milestone with the exact command, result, environment, a
 - The provider sync request still returns after fetch and queue acceptance; audit execution remains asynchronous. This milestone does not add a distributed queue or make the local process a production deployment.
 - Verification on the local Windows environment: `npm run typecheck` passed; `node --import tsx --test tests/integrations-and-vault.test.ts` passed, 27 tests and 0 failures; `npm run build` passed; `git diff --check` passed.
 - No external provider was contacted. Wise transfer sync still uses offset pagination because no verified incremental cursor was available.
+
+### 2026-11-27 local provider sync lease
+
+- Provider syncs now acquire a SQLite lease keyed by workspace and provider. Competing local processes wait for the current run, and the manual sync route returns HTTP 409 if the lease remains held past its wait window. Lease renewal runs during provider fetches, and writes are stopped if ownership is lost.
+- When a new worker acquires a lease, any prior sync run left in `running` is marked failed as interrupted and recorded in the workspace audit trail. Scheduled polling skips a provider that is still busy and continues with other providers.
+- This coordinates processes sharing the same local SQLite file only. The timer remains process-local, there is no durable scheduled retry queue, and provider calls still need consistent network timeouts before long-running production use.
+- Verification on the local Windows environment: `npm run typecheck` passed; `npm test` passed, 70 tests and 0 failures; `npm run build` passed. Coverage includes two independent SQLite connections competing for the same sync lease and the existing concurrent QuickBooks sync flow.
+- No external provider was contacted. No AWS, identity, or mail service was configured.

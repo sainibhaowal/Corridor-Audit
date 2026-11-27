@@ -12,6 +12,30 @@ const globalWorkerStore = globalThis as typeof globalThis & {
 	__corridorSyncIntervalMs?: number
 }
 
+const SYNC_LEASE_MS = 60_000
+const SYNC_LEASE_RENEW_MS = 15_000
+
+export class IntegrationSyncBusyError extends Error {
+	constructor(provider: string) {
+		super(`A ${provider} sync is already running. Wait for it to finish before retrying.`)
+		this.name = "IntegrationSyncBusyError"
+	}
+}
+
+async function acquireIntegrationSyncLease(params: {
+	db: ReturnType<typeof getCorridorDb>
+	workspaceId: string
+	provider: string
+	ownerId: string
+}): Promise<void> {
+	const deadline = Date.now() + 30_000
+	while (Date.now() < deadline) {
+		if (params.db.claimIntegrationSyncLease({ ...params, leaseMs: SYNC_LEASE_MS })) return
+		await new Promise((resolve) => setTimeout(resolve, 100))
+	}
+	throw new IntegrationSyncBusyError(params.provider)
+}
+
 function caseSnapshot(settlementCase: SettlementCase): string {
 	const { createdAt: _createdAt, ...stable } = settlementCase
 	return JSON.stringify(stable)
@@ -98,24 +122,42 @@ export async function runIntegrationSync(params: {
 		throw new Error(`Integration "${params.provider}" is not connected.`)
 	}
 
-	const run = db.createSyncRun({
-		integrationId: integration.id,
-		workspaceId,
-		provider: integration.provider,
-		trigger: params.trigger ?? "manual",
-	})
-
-	db.markIntegrationSyncState({
-		integrationId: integration.id,
-		status: "syncing",
-		lastError: null,
-	})
-
+	const leaseOwnerId = `sync-${randomUUID()}`
+	await acquireIntegrationSyncLease({ db, workspaceId, provider: integration.provider, ownerId: leaseOwnerId })
+	let leaseLost = false
+	const leaseTimer = setInterval(() => {
+		if (!db.renewIntegrationSyncLease({ workspaceId, provider: integration.provider, ownerId: leaseOwnerId, leaseMs: SYNC_LEASE_MS })) {
+			leaseLost = true
+		}
+	}, SYNC_LEASE_RENEW_MS)
+	leaseTimer.unref?.()
+	const assertLease = () => {
+		if (leaseLost || !db.renewIntegrationSyncLease({ workspaceId, provider: integration.provider, ownerId: leaseOwnerId, leaseMs: SYNC_LEASE_MS })) {
+			leaseLost = true
+			throw new Error(`Sync lease was lost for ${integration.provider}; fetched data was not committed.`)
+		}
+	}
+	let run: SyncRunRecord | undefined
 	try {
+		db.failInterruptedIntegrationSyncRuns(workspaceId, integration.provider)
+		run = db.createSyncRun({
+			integrationId: integration.id,
+			workspaceId,
+			provider: integration.provider,
+			trigger: params.trigger ?? "manual",
+		})
+		db.markIntegrationSyncState({
+			integrationId: integration.id,
+			status: "syncing",
+			lastError: null,
+		})
 		const credentials = await credentialsForSync({ db, workspaceId, provider: integration.provider })
+		assertLease()
 		const fetched = await fetchCasesFromIntegration({ integration, credentials, lastSuccessfulSyncAt: integration.lastSyncedAt })
+		assertLease()
 
 		const freshCases = prepareChangedCases(fetched.cases, db, workspaceId)
+		assertLease()
 		if (fetched.rawPayload !== undefined) {
 			db.saveRawIngestion({
 				workspaceId,
@@ -153,6 +195,7 @@ export async function runIntegrationSync(params: {
 			})
 		}
 
+		assertLease()
 		const now = new Date().toISOString()
 		db.finishSyncRun({
 			id: run.id,
@@ -179,6 +222,10 @@ export async function runIntegrationSync(params: {
 		}
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err)
+		if (!run) throw err
+		if (leaseLost) {
+			return { ...run, status: "failed", auditStatus: "unknown", error: msg, finishedAt: new Date().toISOString() }
+		}
 		const now = new Date().toISOString()
 		db.finishSyncRun({
 			id: run.id,
@@ -201,6 +248,9 @@ export async function runIntegrationSync(params: {
 			error: msg,
 			finishedAt: now,
 		}
+	} finally {
+		clearInterval(leaseTimer)
+		db.releaseIntegrationSyncLease({ workspaceId, provider: integration.provider, ownerId: leaseOwnerId })
 	}
 }
 
@@ -211,18 +261,21 @@ export async function runAllConnectedSyncs(
 	const db = getCorridorDb()
 	const connected = db
 		.listIntegrations(workspaceId)
-		.filter((i) => i.status === "connected" && i.provider !== "email_inbound")
+		.filter((i) => (i.status === "connected" || i.status === "syncing") && i.provider !== "email_inbound")
 
 	const results: SyncRunRecord[] = []
 	for (const item of connected) {
-		results.push(
-			await runIntegrationSync({
+		try {
+			results.push(await runIntegrationSync({
 				provider: item.provider,
 				trigger: "cron",
 				workspaceId,
 				orchestrator,
-			}),
-		)
+			}))
+		} catch (error) {
+			if (error instanceof IntegrationSyncBusyError) continue
+			throw error
+		}
 	}
 	return results
 }

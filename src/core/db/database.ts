@@ -875,6 +875,61 @@ export class CorridorDatabase {
 			.run(params.workspaceId, params.provider, params.ownerId)
 	}
 
+	claimIntegrationSyncLease(params: { workspaceId: string; provider: string; ownerId: string; leaseMs: number }): boolean {
+		const now = new Date()
+		const nowIso = now.toISOString()
+		const expiresAt = new Date(now.getTime() + Math.max(1_000, params.leaseMs)).toISOString()
+		const row = this.db.prepare(`INSERT INTO integration_sync_leases
+			(workspace_id, provider, owner_id, lease_expires_at, created_at)
+			VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT (workspace_id, provider) DO UPDATE SET
+				owner_id = excluded.owner_id,
+				lease_expires_at = excluded.lease_expires_at,
+				created_at = excluded.created_at
+			WHERE integration_sync_leases.lease_expires_at <= ?
+			RETURNING owner_id`).get(params.workspaceId, params.provider, params.ownerId, expiresAt, nowIso, nowIso) as { owner_id: string } | undefined
+		return row?.owner_id === params.ownerId
+	}
+
+	renewIntegrationSyncLease(params: { workspaceId: string; provider: string; ownerId: string; leaseMs: number }): boolean {
+		const now = new Date()
+		const nowIso = now.toISOString()
+		const expiresAt = new Date(now.getTime() + Math.max(1_000, params.leaseMs)).toISOString()
+		const result = this.db.prepare(`UPDATE integration_sync_leases SET lease_expires_at = ?
+			WHERE workspace_id = ? AND provider = ? AND owner_id = ? AND lease_expires_at > ?`)
+			.run(expiresAt, params.workspaceId, params.provider, params.ownerId, nowIso)
+		return Number(result.changes) === 1
+	}
+
+	releaseIntegrationSyncLease(params: { workspaceId: string; provider: string; ownerId: string }): void {
+		this.db.prepare("DELETE FROM integration_sync_leases WHERE workspace_id = ? AND provider = ? AND owner_id = ?")
+			.run(params.workspaceId, params.provider, params.ownerId)
+	}
+
+	failInterruptedIntegrationSyncRuns(workspaceId: string, provider: string): number {
+		const now = new Date().toISOString()
+		this.db.exec("BEGIN IMMEDIATE")
+		try {
+			const interrupted = this.db.prepare(`UPDATE sync_runs SET status = 'failed', error = ?, finished_at = ?
+				WHERE workspace_id = ? AND provider = ? AND status = 'running' RETURNING id`)
+				.all("Previous sync worker stopped before reporting completion.", now, workspaceId, provider) as Array<{ id: string }>
+			for (const run of interrupted) this.appendWorkspaceAuditEvent({
+				workspaceId,
+				actorType: "system",
+				action: "integration.sync.interrupted",
+				targetType: "integration",
+				targetId: provider,
+				outcome: "failure",
+				metadata: { syncRunId: run.id, reason: "lease_expired" },
+			})
+			this.db.exec("COMMIT")
+			return interrupted.length
+		} catch (error) {
+			this.db.exec("ROLLBACK")
+			throw error
+		}
+	}
+
 	storeOAuthAuthorizationState(params: {
 		state: string
 		provider: string

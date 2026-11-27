@@ -220,6 +220,15 @@ CREATE TABLE IF NOT EXISTS integration_refresh_leases (
 	PRIMARY KEY (workspace_id, provider)
 );
 
+CREATE TABLE IF NOT EXISTS integration_sync_leases (
+	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+	provider TEXT NOT NULL,
+	owner_id TEXT NOT NULL,
+	lease_expires_at TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	PRIMARY KEY (workspace_id, provider)
+);
+
 CREATE TABLE IF NOT EXISTS sync_runs (
 	id TEXT PRIMARY KEY,
 	integration_id TEXT NOT NULL REFERENCES integrations(id) ON DELETE CASCADE,

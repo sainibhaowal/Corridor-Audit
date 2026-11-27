@@ -175,6 +175,16 @@ test("CorridorDatabase persists workspaces, team members, encrypted integrations
 	db.markCaseDeadLetter("sync-audit-status-case", "test failure")
 	assert.equal(db.listRecentSyncRuns(DEFAULT_WORKSPACE_ID, 5)[0]?.auditStatus, "failed")
 
+	const interruptedRun = db.createSyncRun({ integrationId: integration.id, workspaceId: DEFAULT_WORKSPACE_ID, provider: "wise", trigger: "cron" })
+	assert.equal(db.claimIntegrationSyncLease({ workspaceId: DEFAULT_WORKSPACE_ID, provider: "wise", ownerId: "sync-owner-a", leaseMs: 60_000 }), true)
+	assert.equal(db.claimIntegrationSyncLease({ workspaceId: DEFAULT_WORKSPACE_ID, provider: "wise", ownerId: "sync-owner-b", leaseMs: 60_000 }), false)
+	assert.equal(db.renewIntegrationSyncLease({ workspaceId: DEFAULT_WORKSPACE_ID, provider: "wise", ownerId: "sync-owner-a", leaseMs: 60_000 }), true)
+	db.releaseIntegrationSyncLease({ workspaceId: DEFAULT_WORKSPACE_ID, provider: "wise", ownerId: "sync-owner-a" })
+	assert.equal(db.claimIntegrationSyncLease({ workspaceId: DEFAULT_WORKSPACE_ID, provider: "wise", ownerId: "sync-owner-b", leaseMs: 60_000 }), true)
+	assert.equal(db.failInterruptedIntegrationSyncRuns(DEFAULT_WORKSPACE_ID, "wise"), 1)
+	assert.equal(db.listRecentSyncRuns(DEFAULT_WORKSPACE_ID, 5).find((item) => item.id === interruptedRun.id)?.status, "failed")
+	db.releaseIntegrationSyncLease({ workspaceId: DEFAULT_WORKSPACE_ID, provider: "wise", ownerId: "sync-owner-b" })
+
 	db.disconnectIntegration(DEFAULT_WORKSPACE_ID, "wise")
 	assert.equal(db.getIntegration(DEFAULT_WORKSPACE_ID, "wise")?.status, "disconnected")
 	assert.equal(db.getDecryptedCredentials(DEFAULT_WORKSPACE_ID, "wise"), null)
@@ -509,6 +519,26 @@ test("integration token refresh leases coordinate separate SQLite connections an
 		assert.equal(first.claimIntegrationRefreshLease({ ...claim, ownerId: "worker-c" }), false)
 		await new Promise((resolve) => setTimeout(resolve, 1_100))
 		assert.equal(first.claimIntegrationRefreshLease({ ...claim, ownerId: "worker-c" }), true)
+	} finally {
+		first.close()
+		second.close()
+		rmSync(dbPath, { force: true })
+	}
+})
+
+test("provider sync leases serialize separate SQLite connections and are owner-released", async () => {
+	const dbPath = resolve(tmpdir(), `corridor-sync-lease-${process.pid}-${Date.now()}.db`)
+	const first = new CorridorDatabase(dbPath)
+	const second = new CorridorDatabase(dbPath)
+	const claim = { workspaceId: DEFAULT_WORKSPACE_ID, provider: "wise", ownerId: "sync-a", leaseMs: 1_000 }
+	try {
+		assert.equal(first.claimIntegrationSyncLease(claim), true)
+		assert.equal(second.claimIntegrationSyncLease({ ...claim, ownerId: "sync-b" }), false)
+		assert.equal(first.renewIntegrationSyncLease(claim), true)
+		second.releaseIntegrationSyncLease({ workspaceId: claim.workspaceId, provider: claim.provider, ownerId: "sync-b" })
+		assert.equal(second.claimIntegrationSyncLease({ ...claim, ownerId: "sync-b" }), false, "a different owner must not release the active lease")
+		first.releaseIntegrationSyncLease(claim)
+		assert.equal(second.claimIntegrationSyncLease({ ...claim, ownerId: "sync-b" }), true)
 	} finally {
 		first.close()
 		second.close()
