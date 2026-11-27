@@ -2,14 +2,17 @@ import { NextResponse } from "next/server"
 import { DEFAULT_WORKSPACE_ID } from "@/core/db/database"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 import { runIntegrationSync } from "@/runtime/workers/sync-worker"
+import { authorizeCorridorRequest } from "@/core/security/authorization"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function POST(
-	_request: Request,
+	request: Request,
 	context: { params: Promise<{ provider: string }> },
 ) {
+	const denied = await authorizeCorridorRequest(request, "analyst")
+	if (denied) return denied
 	try {
 		const { provider } = await context.params
 		const orchestrator = initCorridorOrchestrator()

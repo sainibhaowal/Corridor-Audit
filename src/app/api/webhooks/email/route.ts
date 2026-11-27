@@ -22,7 +22,7 @@ export async function POST(request: Request) {
 			rawBody: raw,
 			headers: request.headers,
 			secrets: { corridor: corridorSecret },
-			requireSignature: workspace.requireWebhookSignature,
+			requireSignature: workspace.requireWebhookSignature || process.env.NODE_ENV === "production",
 		})
 		if (!sigCheck.valid) {
 			return NextResponse.json(

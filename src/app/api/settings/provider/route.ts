@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server"
 import type { ProviderId } from "@/core/llm/providers"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
+import { authorizeCorridorRequest } from "@/core/security/authorization"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function POST(request: Request) {
+	const denied = await authorizeCorridorRequest(request, "owner")
+	if (denied) return denied
 	try {
 		const body = (await request.json()) as {
 			provider?: ProviderId

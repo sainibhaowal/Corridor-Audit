@@ -199,6 +199,36 @@ export class CorridorDatabase {
 		}
 	}
 
+	activateVerifiedTeamMember(params: {
+		workspaceId?: string
+		email: string
+		name: string
+		bootstrapOwner?: boolean
+	}): TeamMemberRecord | null {
+		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
+		const email = params.email.trim().toLowerCase()
+		if (params.bootstrapOwner) {
+			const existing = this.db
+				.prepare("SELECT id FROM team_members WHERE workspace_id = ? AND lower(email) = ? ORDER BY created_at ASC LIMIT 1")
+				.get(workspaceId, email) as { id: string } | undefined
+			if (existing) {
+				this.db
+					.prepare("UPDATE team_members SET role = 'owner', status = 'active' WHERE id = ? AND workspace_id = ?")
+					.run(existing.id, workspaceId)
+			} else {
+				const id = `tm_${randomUUID().slice(0, 8)}`
+				this.db
+					.prepare(`INSERT INTO team_members (id, workspace_id, email, name, role, status, created_at)
+						VALUES (?, ?, ?, ?, 'owner', 'active', ?)`)
+					.run(id, workspaceId, email, params.name.trim() || email, new Date().toISOString())
+			}
+		}
+		this.db
+			.prepare("UPDATE team_members SET status = 'active' WHERE workspace_id = ? AND lower(email) = ? AND status = 'invited'")
+			.run(workspaceId, email)
+		return this.listTeamMembers(workspaceId).find((member) => member.email === email && member.status === "active") ?? null
+	}
+
 	removeTeamMember(workspaceId: string, memberId: string): void {
 		this.db.prepare("DELETE FROM team_members WHERE id = ? AND workspace_id = ?").run(memberId, workspaceId)
 	}

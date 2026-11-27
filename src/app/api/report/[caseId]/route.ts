@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
+import { authorizeCorridorRequest } from "@/core/security/authorization"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -8,6 +9,8 @@ export async function GET(
 	request: Request,
 	context: { params: Promise<{ caseId: string }> },
 ) {
+	const denied = await authorizeCorridorRequest(request, "viewer")
+	if (denied) return denied
 	const { caseId: rawId } = await context.params
 	const caseId = decodeURIComponent(rawId)
 	const orchestrator = initCorridorOrchestrator()

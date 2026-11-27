@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getCorridorDb } from "@/core/db/database"
+import { authorizeCorridorRequest } from "@/core/security/authorization"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -8,6 +9,8 @@ export async function GET(
 	request: Request,
 	context: { params: Promise<{ id: string }> },
 ) {
+	const denied = await authorizeCorridorRequest(request, "viewer")
+	if (denied) return denied
 	const { id } = await context.params
 	const url = new URL(request.url)
 	const download = url.searchParams.get("download") === "1"

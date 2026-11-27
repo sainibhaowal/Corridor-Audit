@@ -163,7 +163,7 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 	)
 	assert.equal(connectRes.status, 200)
 
-	const listRes = await listIntegrationsRoute()
+	const listRes = await listIntegrationsRoute(new Request("http://127.0.0.1/api/integrations"))
 	const listJson = (await listRes.json()) as {
 		ok: boolean
 		integrations: Array<{ provider: string; connection: { status: string } }>
@@ -178,7 +178,7 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 	assert.equal(disconnectRes.status, 200)
 
 	// 2. Workspace settings & webhook signature enforcement
-	const wsGet = await getWorkspaceRoute()
+	const wsGet = await getWorkspaceRoute(new Request("http://127.0.0.1/api/settings/workspace"))
 	assert.equal(wsGet.status, 200)
 
 	const wsPost = await postWorkspaceRoute(

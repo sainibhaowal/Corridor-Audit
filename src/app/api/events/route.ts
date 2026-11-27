@@ -1,10 +1,13 @@
 import type { TrajectoryEvent } from "@/core/types"
+import { authorizeCorridorRequest } from "@/core/security/authorization"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function GET(request: Request) {
+	const denied = await authorizeCorridorRequest(request, "viewer")
+	if (denied) return denied
 	const orchestrator = initCorridorOrchestrator()
 	const encoder = new TextEncoder()
 

@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
 import { INTEGRATION_CATALOG, isOAuthConfiguredForProvider } from "@/core/integrations/catalog"
+import { authorizeCorridorRequest } from "@/core/security/authorization"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-export async function GET() {
+export async function GET(request: Request) {
+	const denied = await authorizeCorridorRequest(request, "viewer")
+	if (denied) return denied
 	const db = getCorridorDb()
 	const workspace = db.getWorkspace(DEFAULT_WORKSPACE_ID)
 	const connected = db.listIntegrations(DEFAULT_WORKSPACE_ID)

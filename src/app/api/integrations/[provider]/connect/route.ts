@@ -3,6 +3,7 @@ import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
 import type { IntegrationAuthMode } from "@/core/db/schema"
 import { getCatalogItem } from "@/core/integrations/catalog"
 import { createOAuthAuthorizationUrl } from "@/core/integrations/oauth"
+import { authorizeCorridorRequest } from "@/core/security/authorization"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -11,6 +12,8 @@ export async function GET(
 	request: Request,
 	context: { params: Promise<{ provider: string }> },
 ) {
+	const denied = await authorizeCorridorRequest(request, "controller")
+	if (denied) return denied
 	try {
 		const { provider } = await context.params
 		const origin = new URL(request.url).origin
@@ -32,6 +35,8 @@ export async function POST(
 	request: Request,
 	context: { params: Promise<{ provider: string }> },
 ) {
+	const denied = await authorizeCorridorRequest(request, "controller")
+	if (denied) return denied
 	try {
 		const { provider } = await context.params
 		const spec = getCatalogItem(provider)

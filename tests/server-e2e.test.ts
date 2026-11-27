@@ -92,7 +92,7 @@ test("Next.js App Router API routes serve health, terminal, upload ingestion, we
 	)
 	assert.equal(whRes.status, 202)
 
-	const histRes = await historyRoute()
+	const histRes = await historyRoute(new Request("http://127.0.0.1/api/history"))
 	assert.equal(histRes.status, 200)
 	const histJson = (await histRes.json()) as { cases?: Array<{ caseId: string }> }
 	assert.ok(Array.isArray(histJson.cases))

@@ -44,7 +44,7 @@ Every adapter maps its vendor response into a versioned canonical schema while r
 
 ## Identity, workspaces, and roles
 
-- Use an established OpenID Connect identity provider. The production recommendation for eventual AWS hosting is Amazon Cognito. Keep issuer, audience, client, redirect URI, and key-cache settings in environment configuration. Run the current local app without external credentials only in an explicitly marked development mode.
+- Use an established OpenID Connect identity provider. The production recommendation for eventual AWS hosting is Amazon Cognito. Keep issuer, audience, client, redirect URI, and key-cache settings in environment configuration. The code uses Cognito Authorization Code with PKCE, state and nonce checks; see [Cognito authorization flow](https://docs.aws.amazon.com/cognito/latest/developerguide/using-pkce-in-authorization-code.html). Run the current local app without external credentials only in an explicitly marked development mode.
 - Use Authorization Code with PKCE, secure HTTP-only cookies, CSRF protection on state-changing browser requests, session expiry and revocation, and server-side role checks. OAuth state must be transaction-bound and work across application instances. Follow [IETF RFC 9700](https://www.rfc-editor.org/rfc/rfc9700.html).
 - Derive workspace identity from the verified session, never from a user-submitted workspace ID. Apply tenant scope in every database query, raw object lookup, queue job, SSE subscription, report, integration, and approval action.
 - Enforce `owner`, `controller`, `analyst`, and `viewer` permissions server-side. Persist the acting user, workspace, role, decision, time, and case evidence version for approvals and policy changes.

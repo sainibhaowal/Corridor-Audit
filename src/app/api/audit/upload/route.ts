@@ -3,6 +3,7 @@ import { z } from "zod"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
 import { normalizeInboundPayloadToCases, type UploadPayload } from "@/core/ingest/normalize-upload"
 import { readRequestTextLimited, RequestBodyTooLargeError } from "@/core/security/request-body"
+import { authorizeCorridorRequest } from "@/core/security/authorization"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 
 export const runtime = "nodejs"
@@ -21,6 +22,8 @@ const UploadPayloadSchema = z
 	})
 
 export async function POST(request: Request) {
+	const denied = await authorizeCorridorRequest(request, "analyst")
+	if (denied) return denied
 	const db = getCorridorDb()
 	let ingestionId: string | undefined
 

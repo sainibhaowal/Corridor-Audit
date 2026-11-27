@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
+import { authorizeCorridorRequest } from "@/core/security/authorization"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function GET(request: Request) {
+	const denied = await authorizeCorridorRequest(request, "viewer")
+	if (denied) return denied
 	const url = new URL(request.url)
 	const channel = url.searchParams.get("channel") || "all"
 	const limit = Number(url.searchParams.get("limit") || "100") || 100

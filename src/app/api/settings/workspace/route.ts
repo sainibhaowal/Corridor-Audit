@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
+import { authEnabled, requestCorridorSession } from "@/core/security/auth"
+import { authorizeCorridorRequest } from "@/core/security/authorization"
 import type { AccountMode, TeamRole } from "@/core/db/schema"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-export async function GET() {
+export async function GET(request: Request) {
+	const denied = await authorizeCorridorRequest(request, "viewer")
+	if (denied) return denied
 	const db = getCorridorDb()
 	const workspace = db.getWorkspace(DEFAULT_WORKSPACE_ID)
 	const teamMembers = db.listTeamMembers(DEFAULT_WORKSPACE_ID)
@@ -13,6 +17,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+	const denied = await authorizeCorridorRequest(request, "controller")
+	if (denied) return denied
 	try {
 		const body = (await request.json()) as {
 			action?: "update_workspace" | "rotate_webhook_secret" | "add_member" | "remove_member"
@@ -30,8 +36,15 @@ export async function POST(request: Request) {
 		}
 
 		const db = getCorridorDb()
+		const session = authEnabled() ? await requestCorridorSession(request) : null
+		if (authEnabled() && !session) {
+			return NextResponse.json({ ok: false, error: "Authentication required." }, { status: 401 })
+		}
 
 		if (body.action === "rotate_webhook_secret") {
+			if (session && session.role !== "owner") {
+				return NextResponse.json({ ok: false, error: "Only workspace owners can rotate webhook secrets." }, { status: 403 })
+			}
 			const rotatedSecret = db.rotateWebhookSecret(DEFAULT_WORKSPACE_ID)
 			return NextResponse.json({
 				ok: true,
@@ -42,6 +55,9 @@ export async function POST(request: Request) {
 		}
 
 		if (body.action === "add_member") {
+			if (session && session.role !== "owner") {
+				return NextResponse.json({ ok: false, error: "Only workspace owners can manage team membership." }, { status: 403 })
+			}
 			if (!body.memberEmail?.trim() || !body.memberName?.trim()) {
 				return NextResponse.json({ ok: false, error: "Member name and email are required." }, { status: 400 })
 			}
@@ -59,6 +75,9 @@ export async function POST(request: Request) {
 		}
 
 		if (body.action === "remove_member" && body.memberId) {
+			if (session && session.role !== "owner") {
+				return NextResponse.json({ ok: false, error: "Only workspace owners can manage team membership." }, { status: 403 })
+			}
 			db.removeTeamMember(DEFAULT_WORKSPACE_ID, body.memberId)
 			return NextResponse.json({
 				ok: true,

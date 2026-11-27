@@ -3,14 +3,17 @@ import { getCorridorDb } from "@/core/db/database"
 import { normalizeInboundPayloadToCases } from "@/core/ingest/normalize-upload"
 import { parseInboundEmailToCases, type InboundEmailPayload } from "@/core/integrations/email-parser"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
+import { authorizeCorridorRequest } from "@/core/security/authorization"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function POST(
-	_request: Request,
+	request: Request,
 	context: { params: Promise<{ id: string }> },
 ) {
+	const denied = await authorizeCorridorRequest(request, "analyst")
+	if (denied) return denied
 	const { id } = await context.params
 	const db = getCorridorDb()
 	const ingestion = db.getRawIngestion(id, true)

@@ -28,7 +28,7 @@ export async function POST(request: Request) {
 				stripe: stripeSecret,
 				wise: wiseSecret,
 			},
-			requireSignature: workspace.requireWebhookSignature,
+			requireSignature: workspace.requireWebhookSignature || process.env.NODE_ENV === "production",
 		})
 
 		if (!sigCheck.valid) {

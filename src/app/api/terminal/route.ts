@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { BUILD_PROVENANCE } from "@/core/build-info"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
+import { authorizeCorridorRequest } from "@/core/security/authorization"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -20,6 +21,8 @@ function text(value: unknown): string {
 }
 
 export async function POST(request: Request) {
+	const denied = await authorizeCorridorRequest(request, "analyst")
+	if (denied) return denied
 	try {
 		const body = (await request.json()) as { command?: unknown }
 		const command = text(body.command)

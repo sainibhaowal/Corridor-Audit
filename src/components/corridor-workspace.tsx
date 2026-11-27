@@ -29,6 +29,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { SelectBox } from "@/components/ui/select-box"
+import { AuthLogout } from "@/components/auth-logout"
 import type { AuditVerdict, PendingBreakpointDecision, TrajectoryEvent } from "@/core/types"
 import { BUILD_PROVENANCE, formatBuildLabel } from "@/core/build-info"
 import { cn } from "@/lib/utils"
@@ -683,6 +684,7 @@ export function CorridorWorkspace() {
 							<span className="hidden truncate xl:inline">{providerBadgeText}</span>
 						</button>
 					)}
+					<AuthLogout />
 				</div>
 			</header>
 

@@ -8,7 +8,7 @@ This is the live delivery record for production-readiness engineering. A row is 
 | --- | --- | --- |
 | 0 | Baseline and code-backed production record | Complete |
 | 1 | Canonical evidence completeness, provider mapping correctness, upload validation, and accurate states | In progress |
-| 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | Not started |
+| 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | In progress |
 | 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Not started |
 | 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Not started |
 | 5 | Raw evidence object storage, encryption/key lifecycle, retention, backup, restore, and deletion | Not started |
@@ -58,3 +58,13 @@ Update this section per milestone with the exact command, result, environment, a
 - Upload request envelopes now reject unknown fields, invalid formats, missing or simultaneous content fields, oversized requests, and base64 files above 10 MiB. Upload and webhook request bodies are read through bounded streaming readers; the upload endpoint allows a 14 MiB envelope, inbound JSON webhooks 1 MiB, and email webhooks 10 MiB.
 - Remaining Phase 1 work: strict validation of nested settlement cases and all provider/webhook payloads, plus source-specific tests for live connector mappings. No external provider was contacted or certified in this milestone.
 - Follow-up local verification: `npm run typecheck` passed; `npm test` passed, 20 tests, 0 failures; `git diff --check` reported no whitespace errors. These checks ran locally on Windows.
+
+### 2026-11-27 identity milestone, local code only
+
+- Added a Cognito hosted sign-in flow using authorization code, PKCE, state, nonce, HTTPS issuer checks, verified-email validation, and short-lived HTTP-only session cookies. The flow follows [Amazon Cognito's PKCE guidance](https://docs.aws.amazon.com/cognito/latest/developerguide/using-pkce-in-authorization-code.html).
+- Protected workbench pages and APIs fail closed when production mode is active. API handlers recheck the current active team row and role, so removing or changing a member rejects their next API request. Role thresholds distinguish analyst, controller, and owner actions. Cross-origin mutation requests are rejected.
+- Verified invited team emails activate on first Cognito sign-in. `CORRIDOR_BOOTSTRAP_OWNER_EMAIL` creates the initial owner after that identity is verified. The workbench shows a sign-out control when Cognito mode is built.
+- Webhook signature verification is mandatory in production even if the local setting is off.
+- `npm run typecheck`: passed. `npm test`: passed, 24 tests, 0 failures, including session integrity, role gate, invite activation, owner bootstrap, and active membership revocation checks.
+- `npm run build`: passed. `npm audit --omit=dev`: zero vulnerabilities after pinning PostCSS to a fixed compatible release through npm overrides.
+- This is not an activated identity deployment. Cognito pool, hosted domain, client, callback URL, session secret, and bootstrap owner email are not configured locally. Team invitations still do not send email, OAuth connector state is still process-local, workspace data remains one fixed workspace, and an already-open SSE stream is not immediately closed when membership is removed. Phase 2 stays in progress.
