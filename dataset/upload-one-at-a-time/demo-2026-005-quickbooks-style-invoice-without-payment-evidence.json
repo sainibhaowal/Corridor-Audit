@@ -1,0 +1,61 @@
+{
+    "caseId":  "DEMO-2026-005",
+    "title":  "QuickBooks-style invoice without payment evidence",
+    "channelLabel":  "Accounting invoice-only record",
+    "settlementEvidence":  "incomplete",
+    "evidenceGap":  "The accounting invoice is present, but no bank statement or provider payment record was supplied. The zero-value wire is a structural placeholder, not payment evidence.",
+    "createdAt":  "2026-11-25T09:22:00.000Z",
+    "invoice":  {
+                    "invoiceId":  "QBO-DEMO-INV-81005",
+                    "vendorOrClient":  "Blue Fern Office Systems (synthetic)",
+                    "issueDate":  "2026-11-09",
+                    "dueDate":  "2026-11-26",
+                    "expectedAmount":  {
+                                           "amountMinor":  780000,
+                                           "currency":  "USD"
+                                       },
+                    "expectedSettlementCurrency":  "USD",
+                    "contractedChargeBearer":  "SHA",
+                    "remittanceHint":  "QBO-DEMO-INV-81005",
+                    "sourceRefs":  [
+                                       {
+                                           "sourceType":  "invoice",
+                                           "recordId":  "QBO-DEMO-INV-81005",
+                                           "field":  "accounting_invoice",
+                                           "rawExcerpt":  "Synthetic QuickBooks-style invoice QBO-DEMO-INV-81005; total USD 7,800.00; status open; no payment application or settlement included."
+                                       }
+                                   ]
+                },
+    "wire":  {
+                 "wireId":  "NO-SETTLEMENT-QBO-DEMO-81005",
+                 "transactionRef":  "NO-SETTLEMENT-QBO-DEMO-81005",
+                 "format":  "bank_csv",
+                 "platformName":  "direct_bank",
+                 "valueDate":  "2026-11-26",
+                 "instructedAmount":  {
+                                          "amountMinor":  780000,
+                                          "currency":  "USD"
+                                      },
+                 "settledAmount":  {
+                                       "amountMinor":  0,
+                                       "currency":  "USD"
+                                   },
+                 "chargeBearer":  "SHA",
+                 "senderCharges":  [
+
+                                   ],
+                 "receiverCharges":  [
+
+                                     ],
+                 "remittanceInfo":  "QBO-DEMO-INV-81005",
+                 "senderName":  "Blue Fern Office Systems (synthetic)",
+                 "sourceRefs":  [
+                                    {
+                                        "sourceType":  "bank_csv",
+                                        "recordId":  "NO-SETTLEMENT-QBO-DEMO-81005",
+                                        "field":  "evidence_gap",
+                                        "rawExcerpt":  "Synthetic fixture marker only: no matching statement entry or payment record was supplied. This marker does not indicate a transfer occurred."
+                                    }
+                                ]
+             }
+}

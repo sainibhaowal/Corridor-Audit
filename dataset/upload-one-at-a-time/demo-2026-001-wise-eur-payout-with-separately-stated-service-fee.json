@@ -1,0 +1,78 @@
+{
+    "caseId":  "DEMO-2026-001",
+    "title":  "Wise EUR payout with separately stated service fee",
+    "channelLabel":  "Wise transfer export + invoice record",
+    "settlementEvidence":  "observed",
+    "createdAt":  "2026-11-25T09:14:00.000Z",
+    "invoice":  {
+                    "invoiceId":  "INV-DEMO-26001",
+                    "vendorOrClient":  "Northstar Design Studio (synthetic)",
+                    "issueDate":  "2026-11-03",
+                    "dueDate":  "2026-11-24",
+                    "expectedAmount":  {
+                                           "amountMinor":  420000,
+                                           "currency":  "EUR"
+                                       },
+                    "expectedSettlementCurrency":  "EUR",
+                    "contractedChargeBearer":  "SHA",
+                    "lineItems":  [
+                                      {
+                                          "description":  "Interface design milestone",
+                                          "quantity":  3,
+                                          "unitPriceMinor":  100000,
+                                          "lineTotalMinor":  300000
+                                      },
+                                      {
+                                          "description":  "Accessibility review",
+                                          "quantity":  2,
+                                          "unitPriceMinor":  60000,
+                                          "lineTotalMinor":  120000
+                                      }
+                                  ],
+                    "remittanceHint":  "INV-DEMO-26001",
+                    "sourceRefs":  [
+                                       {
+                                           "sourceType":  "invoice",
+                                           "recordId":  "INV-DEMO-26001",
+                                           "field":  "invoice_totals",
+                                           "rawExcerpt":  "Synthetic invoice INV-DEMO-26001; total EUR 4,200.00; due 2026-11-24; reference INV-DEMO-26001."
+                                       }
+                                   ]
+                },
+    "wire":  {
+                 "wireId":  "WISE-DEMO-TR-81001",
+                 "transactionRef":  "WISE-DEMO-TR-81001",
+                 "format":  "platform_payout",
+                 "platformName":  "wise",
+                 "valueDate":  "2026-11-24",
+                 "instructedAmount":  {
+                                          "amountMinor":  420000,
+                                          "currency":  "EUR"
+                                      },
+                 "settledAmount":  {
+                                       "amountMinor":  419000,
+                                       "currency":  "EUR"
+                                   },
+                 "chargeBearer":  "SHA",
+                 "platformFee":  {
+                                     "amountMinor":  1000,
+                                     "currency":  "EUR"
+                                 },
+                 "senderCharges":  [
+
+                                   ],
+                 "receiverCharges":  [
+
+                                     ],
+                 "remittanceInfo":  "INV-DEMO-26001",
+                 "senderName":  "Fable Works GmbH (synthetic)",
+                 "sourceRefs":  [
+                                    {
+                                        "sourceType":  "platform_csv",
+                                        "recordId":  "WISE-DEMO-TR-81001",
+                                        "field":  "transfer_export",
+                                        "rawExcerpt":  "Synthetic Wise-style record: instructed EUR 4,200.00; fee EUR 10.00; recipient amount EUR 4,190.00; reference INV-DEMO-26001; value date 2026-11-24."
+                                    }
+                                ]
+             }
+}

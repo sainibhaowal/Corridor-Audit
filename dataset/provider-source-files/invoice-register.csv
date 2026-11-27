@@ -1,0 +1,2 @@
+invoice_id,vendor,issue_date,due_date,amount,currency,settlement_currency,charge_bearer,reference
+INV-RAW-DEMO-001,Northstar Design Studio Synthetic,2026-11-03,2026-11-24,4200.00,EUR,EUR,SHA,INV-RAW-DEMO-001

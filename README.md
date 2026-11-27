@@ -79,21 +79,39 @@ flowchart LR
 
 ---
 
-## Quickstart (Runs in < 60 Seconds)
+## Quickstart
+
+These steps run the app locally on your computer. The local loopback mode does not require a sign-in or an `.env` file. You can open the app without an LLM configured, but you must configure a working LLM provider before a case can run through the agents. Add a provider key in **System Settings**, or use Ollama if it is installed and running locally. Do not expose this local demo server to a public network.
 
 ### Prerequisites
-- **Node.js 22.5 or later** (uses built-in `node:sqlite`)
-- **npm**
+- **Node.js 22.5 or later** (the app uses the built-in `node:sqlite` module)
+- **npm** (included with Node.js)
 
-### 1. Install & Configure Any LLM Provider
+### 1. Get the source and install dependencies
+
+Run these commands from a terminal. On Windows, use PowerShell; on macOS or Linux, use a shell.
+
 ```bash
 git clone https://github.com/sainibhaowal/Corridor-Audit.git
 cd Corridor-Audit
-npm install
+npm ci
+```
+
+No `.env` setup is needed to launch the local app. To configure a provider through environment variables instead, copy the template and set the provider's key. PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+macOS or Linux:
+
+```bash
 cp .env.example .env
 ```
 
-For PowerShell, copy the environment template with `Copy-Item .env.example .env`. Configure one supported model provider in `.env` (or use **System Settings** for provider configuration and server-side model discovery). Ollama uses a locally available endpoint and does not require a hosted API key:
+Alternatively, enter a provider key in **System Settings** after starting the app. A configured provider is required to complete the agent audit demo. Ollama can run locally if Ollama and a model are already installed and running.
+
+Supported providers:
 
 | Provider | `.env` Setting | Free Tier? |
 |---|---|---|
@@ -105,17 +123,36 @@ For PowerShell, copy the environment template with `Copy-Item .env.example .env`
 | **Anthropic** | `ANTHROPIC_API_KEY=...` *(auto-detected)* | Paid |
 | **Ollama (Local)** | `LLM_PROVIDER=ollama` + `OLLAMA_MODEL=llama3.2` | Free Local |
 
-### 2. Run
+### 2. Start the app
+
+For development, run:
+
 ```bash
-npm run dev        # Launch Next.js dev server at http://127.0.0.1:3000
-npm start -- --no-open   # Serve built app on http://127.0.0.1:3000
+npm run dev
 ```
-Or run build, CLI, and verification checks:
+
+Open <http://127.0.0.1:3000>. The development server binds to loopback, and local mode lets you use the app without signing in. Keep the terminal open while using the app; press **Ctrl+C** there to stop it.
+
+For a production build on your local machine, run `npm start`. The start script builds the app if no current production build exists, then serves it at <http://127.0.0.1:3000>. Use `npm start -- --no-open` to prevent it from opening a browser automatically.
+
+### 3. Upload the included demo data
+
+Drag and drop or upload from **Inbound Sources** / the left sidebar:
+
+- **All 5 cases at once:** `dataset/corridor-audit-demo-cases.json`
+- **One case at a time (paired JSON):** `dataset/upload-one-at-a-time/*.json` (each file contains a paired synthetic invoice + payout/bank record for an end-to-end case)
+- **Real-world raw formats (ready to drag-and-drop):** `dataset/real-world-formats/` (`swift-mt103-eur-our-violation.txt`, `wise-payouts-fx-spread.csv`, `iso20022-camt053-statement.xml`)
+- **Individual provider fixtures:** `dataset/provider-source-files/` (CSV, SWIFT MT103, CAMT.053)
+
+All demo data is synthetic and invented for demonstration. See [`dataset/README.md`](./dataset/README.md) for scenario details.
+
+### Useful project commands
+
 ```bash
 npm run typecheck  # Runs TypeScript compiler check
-npm test           # Runs unit + API tests
+npm test           # Runs unit and API tests
 npm run build      # Builds Next.js production bundle
-npm run cli -- <input-file>   # Runs CLI audit against a supplied input file
+npm run cli -- <input-file>   # Runs a CLI audit against a supplied input file
 ```
 
 ---

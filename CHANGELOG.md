@@ -2,7 +2,7 @@
 
 CorridorAudit release history. Versions follow the policy in [docs/VERSIONING.md](docs/VERSIONING.md). Each release entry records the application scope and verified behavior at that release; it is not limited to files changed in the release commit.
 
-## [Unreleased]
+## [0.3.0] - 2026-11-28
 
 ### Added
 - **Multi-Format Export & In-Built Preview:** Added zero-dependency PDF 1.4 (`?format=pdf`), RFC-4180 CSV with formula-injection neutralization (`?format=csv`), TXT, and JSON exports on `/api/report/[caseId]` and batch `/api/report`, plus `?preview=1` inline preview in the Case Inspector (live PDF `<iframe>`, parsed CSV table, TXT, JSON).
@@ -14,6 +14,47 @@ CorridorAudit release history. Versions follow the policy in [docs/VERSIONING.md
 - **Live Ready State & Execution Stream UI:** Added `> Waiting for Data` live status indicator with subtle bottom-edge aurora glow on the empty-state card (automatically hiding `Configure LLM Key` once a provider is live), plus a live Run-Activity header (agent/tool counts & elapsed timer), `Subagent` / `Lead Agent` badges, live `Thinking` elapsed timer, and expandable tool-call cards.
 - **Lead-LLM Dynamic Subagent Delegation & Execution Tree:** Added `delegate_subagents` (`onCaseQueuedPlan` Phase 0 planning) so `AuditorAgent` dynamically hires only needed subagents on `@mozaik-ai/core`, plus the collapsible nested `AgentTraceTree` UI with live barrier counters and `Expand all` / `Collapse all`.
 - **Documentation:** Added `docs/developer/` (`README.md`, `api-reference.md`, `database-schema.md`, `execution-layer.md`, `module-map.md`, `env-and-security.md`), `docs/DEMO-GUIDE.md`, and Case Study Module `07`.
+- **Judge demo fixtures:** Added five synthetic paired invoice and payout cases, separate CSV, SWIFT MT103, and CAMT.053 source examples, and upload guidance that explains which formats can be matched by the current app.
+- **Local demo onboarding:** Added a short sign-in walkthrough, improved sign-in screen colors and layout, and updated README setup instructions for a local run without an identity provider.
+- **Branding source assets:** Added SVG source files for the banner, favicon, logo, and icon sprite under `docs/assests/branding/`.
+
+Feature release for the expanded local audit workbench, judge demo data, and onboarding improvements. CorridorAudit remains a local preview; connector coverage and deployment safeguards are limited as described in the README and architecture documents.
+
+### Verification
+
+- `npm run typecheck` passed.
+- `npm run build` passed for application version `0.3.0`.
+- `npm start -- --no-open` started the built app; `/` and `/api/health` returned HTTP 200.
+
+## [0.2.1] - 2026-11-27
+
+Patch release fixing six production-affecting UI/runtime bugs discovered during hackathon submission preparation. All fixes are local-only with no external dependencies.
+
+### Fixed
+
+- **SSE status indicators** (`src/components/corridor-workspace.tsx`): Replaced malformed Tailwind class `bg-[#2c2111]0` with valid `bg-amber-600` for disconnected state at two locations (header status row and footer status bar). The invalid class produced no visible dot in production builds.
+
+- **Settings sidebar GitHub icon overlap** (`src/components/settings-view.tsx`): Added `pb-10` bottom padding to the settings `Card` so the absolute-positioned GitHub octocat icons (repo + issues links) no longer cover the last settings tile.
+
+- **Hot-folder watcher re-ingestion** (`src/runtime/orchestrator.ts`): Changed `seenFiles` from a `Set<string>` to a `Map<string, string>` keyed by filename with values of `${mtimeMs}:${size}`. The watcher now re-ingests a file when its modification time or size changes, skips directories and non-files, and avoids partial-write races by verifying the signature again after the 250 ms debounce.
+
+- **Stale production bundle** (`scripts/start.mjs`): Added `bundleIsStale()` that compares the newest mtime among tracked source directories (`src`, `public`, `next.config.mjs`, `package.json`, `tailwind.config.ts`, `postcss.config.mjs`, `tsconfig.json`) against the `.next/BUILD_ID` mtime. The start script now rebuilds when sources are newer instead of serving a stale bundle.
+
+- **Preview format race condition** (`src/components/case-inspector-modal.tsx`): Added a `useRef` run counter that clears `previewText`/`previewError` on format change and ignores stale fetch responses, preventing CSV/TXT previews from showing stale PDF content while the new fetch is in flight.
+
+- **CSV export negative amounts** (`src/core/reports/export-formats.ts`): Fixed `csvEscape()` to keep plain numbers (including negatives like `-35.00`) numeric in spreadsheets. Only values that start with `= + - @` and are **not** plain numbers receive the leading-apostrophe neutralization. Added regression test covering `-35.00` → `-35.00` (not `'-35.00`).
+
+### Verification
+
+- `npm test` passed: 93 tests, 0 failures.
+- `npm run typecheck` passed.
+- `npm run build` passed for application version `0.2.1`.
+- `npm start -- --no-open` started the built app; `/api/runtime/status` reports `sourceRevision: c3523593bcb8`, `workingTree: "clean"`, provider mode `unconfigured`, queue stats all zero.
+- Runtime SSE indicators show emerald (connected) / amber (disconnected).
+- Settings sidebar GitHub icons no longer overlap at any viewport.
+- Hot-folder re-drop of edited file re-ingests with new ingestion ID.
+- Case inspector preview tabs switch without stale content.
+- CSV export opens in spreadsheet with numeric negative cells (SUM works).
 
 ## [0.2.0] - 2026-11-27
 
@@ -46,36 +87,6 @@ Feature release for local persistence, ingestion records, integration setup, and
 - `npm run typecheck` passed.
 - `npm run build` passed for application version `0.2.0`.
 - `npm start -- --no-open` started the built app; `/` and `/api/health` returned HTTP 200, with health reporting app version `0.2.0` and Mozaik core `6.0.0`.
-
-## [0.2.1] - 2026-11-27
-
-Patch release fixing six production-affecting UI/runtime bugs discovered during hackathon submission preparation. All fixes are local-only with no external dependencies.
-
-### Fixed
-
-- **SSE status indicators** (`src/components/corridor-workspace.tsx`): Replaced malformed Tailwind class `bg-[#2c2111]0` with valid `bg-amber-600` for disconnected state at two locations (header status row and footer status bar). The invalid class produced no visible dot in production builds.
-
-- **Settings sidebar GitHub icon overlap** (`src/components/settings-view.tsx`): Added `pb-10` bottom padding to the settings `Card` so the absolute-positioned GitHub octocat icons (repo + issues links) no longer cover the last settings tile.
-
-- **Hot-folder watcher re-ingestion** (`src/runtime/orchestrator.ts`): Changed `seenFiles` from a `Set<string>` to a `Map<string, string>` keyed by filename with values of `${mtimeMs}:${size}`. The watcher now re-ingests a file when its modification time or size changes, skips directories and non-files, and avoids partial-write races by verifying the signature again after the 250 ms debounce.
-
-- **Stale production bundle** (`scripts/start.mjs`): Added `bundleIsStale()` that compares the newest mtime among tracked source directories (`src`, `public`, `next.config.mjs`, `package.json`, `tailwind.config.ts`, `postcss.config.mjs`, `tsconfig.json`) against the `.next/BUILD_ID` mtime. The start script now rebuilds when sources are newer instead of serving a stale bundle.
-
-- **Preview format race condition** (`src/components/case-inspector-modal.tsx`): Added a `useRef` run counter that clears `previewText`/`previewError` on format change and ignores stale fetch responses, preventing CSV/TXT previews from showing stale PDF content while the new fetch is in flight.
-
-- **CSV export negative amounts** (`src/core/reports/export-formats.ts`): Fixed `csvEscape()` to keep plain numbers (including negatives like `-35.00`) numeric in spreadsheets. Only values that start with `= + - @` and are **not** plain numbers receive the leading-apostrophe neutralization. Added regression test covering `-35.00` → `-35.00` (not `'-35.00`).
-
-### Verification
-
-- `npm test` passed: 93 tests, 0 failures.
-- `npm run typecheck` passed.
-- `npm run build` passed for application version `0.2.1`.
-- `npm start -- --no-open` started the built app; `/api/runtime/status` reports `sourceRevision: c3523593bcb8`, `workingTree: "clean"`, provider mode `unconfigured`, queue stats all zero.
-- Runtime SSE indicators show emerald (connected) / amber (disconnected).
-- Settings sidebar GitHub icons no longer overlap at any viewport.
-- Hot-folder re-drop of edited file re-ingests with new ingestion ID.
-- Case inspector preview tabs switch without stale content.
-- CSV export opens in spreadsheet with numeric negative cells (SUM works).
 
 ## [0.1.1] - 2026-11-26
 

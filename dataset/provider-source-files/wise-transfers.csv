@@ -1,0 +1,2 @@
+wire_id,transaction_ref,platform,date,instructed_amount,instructed_currency,settled_amount,settled_currency,platform_fee,platform_fee_currency,charge_bearer,remittance_info,sender
+WISE-RAW-DEMO-001,WISE-RAW-DEMO-001,wise,2026-11-24,4200.00,EUR,4190.00,EUR,10.00,EUR,SHA,INV-DEMO-26001,Fable Works GmbH Synthetic

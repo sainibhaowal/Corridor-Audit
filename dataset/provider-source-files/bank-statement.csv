@@ -1,0 +1,2 @@
+wire_id,transaction_ref,date,instructed_amount,instructed_currency,settled_amount,settled_currency,charge_bearer,receiver_fee,fee_currency,remittance_info,sender
+BANK-RAW-DEMO-001,BANK-RAW-DEMO-001,2026-11-22,1850.00,EUR,1837.50,EUR,OUR,12.50,EUR,INV-DEMO-26002,Bright Path Retail Synthetic

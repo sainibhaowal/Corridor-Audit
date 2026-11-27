@@ -1,0 +1,63 @@
+{
+    "caseId":  "DEMO-2026-002",
+    "title":  "OUR transfer with a recorded receiver-side fee",
+    "channelLabel":  "Invoice record + bank statement",
+    "settlementEvidence":  "observed",
+    "createdAt":  "2026-11-25T09:16:00.000Z",
+    "invoice":  {
+                    "invoiceId":  "INV-DEMO-26002",
+                    "vendorOrClient":  "Cedar Ridge Analytics (synthetic)",
+                    "issueDate":  "2026-11-01",
+                    "dueDate":  "2026-11-22",
+                    "expectedAmount":  {
+                                           "amountMinor":  185000,
+                                           "currency":  "EUR"
+                                       },
+                    "expectedSettlementCurrency":  "EUR",
+                    "contractedChargeBearer":  "OUR",
+                    "remittanceHint":  "INV-DEMO-26002",
+                    "sourceRefs":  [
+                                       {
+                                           "sourceType":  "invoice",
+                                           "recordId":  "INV-DEMO-26002",
+                                           "field":  "payment_terms",
+                                           "rawExcerpt":  "Synthetic invoice INV-DEMO-26002; EUR 1,850.00; payment terms say sender-borne charges OUR; reference INV-DEMO-26002."
+                                       }
+                                   ]
+                },
+    "wire":  {
+                 "wireId":  "BANK-DEMO-TR-81002",
+                 "transactionRef":  "BANK-DEMO-TR-81002",
+                 "format":  "bank_csv",
+                 "platformName":  "direct_bank",
+                 "valueDate":  "2026-11-22",
+                 "instructedAmount":  {
+                                          "amountMinor":  185000,
+                                          "currency":  "EUR"
+                                      },
+                 "settledAmount":  {
+                                       "amountMinor":  183750,
+                                       "currency":  "EUR"
+                                   },
+                 "chargeBearer":  "OUR",
+                 "senderCharges":  [
+
+                                   ],
+                 "receiverCharges":  [
+                                         {
+                                             "amountMinor":  1250,
+                                             "currency":  "EUR"
+                                         }
+                                     ],
+                 "remittanceInfo":  "INV-DEMO-26002",
+                 "senderName":  "Bright Path Retail Ltd (synthetic)",
+                 "sourceRefs":  [
+                                    {
+                                        "sourceType":  "bank_csv",
+                                        "recordId":  "BANK-DEMO-TR-81002",
+                                        "field":  "statement_entry",
+                                        "rawExcerpt":  "Synthetic statement record: instructed EUR 1,850.00; credited EUR 1,837.50; receiver fee EUR 12.50; reference INV-DEMO-26002; value date 2026-11-22."
+                                    }
+                                ]
+             }
+}

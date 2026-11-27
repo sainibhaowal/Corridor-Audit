@@ -59,7 +59,7 @@ export function LoginShell({ cognitoMode, error }: LoginShellProps) {
 
 			{/* LEFT COVER / HERO PANEL */}
 			<section
-				className={`relative flex flex-col justify-between overflow-hidden border-b p-8 sm:p-12 lg:col-span-7 lg:border-r lg:border-b-0 ${
+				className={`relative flex flex-col justify-between overflow-hidden border-b p-8 sm:p-12 lg:col-span-6 lg:border-r lg:border-b-0 ${
 					isLight
 						? "border-slate-200 bg-gradient-to-br from-[#eef7f4] via-[#f4f9fb] to-[#eef2ff]"
 						: "border-[#16232c] bg-gradient-to-br from-[#071119] via-[#09151d] to-[#0a1b1a]"
@@ -101,11 +101,11 @@ export function LoginShell({ cognitoMode, error }: LoginShellProps) {
 								<span
 									className={`rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold ${
 										isLight
-											? "border-emerald-300 bg-emerald-100/80 text-emerald-800"
-											: "border-emerald-800/70 bg-emerald-950/60 text-emerald-300"
+									? "border-teal-300 bg-white/80 text-teal-800"
+									: "border-[#24504c] bg-[#0c1c1c] text-[#62e1c3]"
 									}`}
 								>
-									v0.2.0
+									v0.3.0
 								</span>
 							</div>
 							<p className={`text-xs ${isLight ? "text-slate-600" : "text-[#81949a]"}`}>
@@ -194,7 +194,7 @@ export function LoginShell({ cognitoMode, error }: LoginShellProps) {
 
 			{/* RIGHT LOGIN FORM PANEL */}
 			<section
-				className={`flex flex-col items-center justify-center px-6 py-12 sm:px-10 lg:col-span-5 ${
+				className={`flex flex-col items-center justify-center px-6 py-12 sm:px-10 lg:col-span-6 ${
 					isLight ? "bg-white" : "bg-[#080d12]"
 				}`}
 			>

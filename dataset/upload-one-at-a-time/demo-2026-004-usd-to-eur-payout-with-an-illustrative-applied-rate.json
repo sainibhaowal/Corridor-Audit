@@ -1,0 +1,65 @@
+{
+    "caseId":  "DEMO-2026-004",
+    "title":  "USD-to-EUR payout with an illustrative applied rate",
+    "channelLabel":  "Wise-style FX transfer + invoice record",
+    "settlementEvidence":  "observed",
+    "createdAt":  "2026-11-25T09:20:00.000Z",
+    "invoice":  {
+                    "invoiceId":  "INV-DEMO-26004",
+                    "vendorOrClient":  "Juniper Cloud Services (synthetic)",
+                    "issueDate":  "2026-11-08",
+                    "dueDate":  "2026-11-24",
+                    "expectedAmount":  {
+                                           "amountMinor":  400000,
+                                           "currency":  "USD"
+                                       },
+                    "expectedSettlementCurrency":  "EUR",
+                    "contractedChargeBearer":  "SHA",
+                    "remittanceHint":  "INV-DEMO-26004",
+                    "sourceRefs":  [
+                                       {
+                                           "sourceType":  "invoice",
+                                           "recordId":  "INV-DEMO-26004",
+                                           "field":  "invoice_total",
+                                           "rawExcerpt":  "Synthetic invoice INV-DEMO-26004; total USD 4,000.00; requested settlement EUR; due 2026-11-24."
+                                       }
+                                   ]
+                },
+    "wire":  {
+                 "wireId":  "WISE-DEMO-TR-81004",
+                 "transactionRef":  "WISE-DEMO-TR-81004",
+                 "format":  "platform_payout",
+                 "platformName":  "wise",
+                 "valueDate":  "2026-11-24",
+                 "instructedAmount":  {
+                                          "amountMinor":  400000,
+                                          "currency":  "USD"
+                                      },
+                 "settledAmount":  {
+                                       "amountMinor":  355000,
+                                       "currency":  "EUR"
+                                   },
+                 "bankAppliedRate":  0.89,
+                 "chargeBearer":  "SHA",
+                 "platformFee":  {
+                                     "amountMinor":  1000,
+                                     "currency":  "EUR"
+                                 },
+                 "senderCharges":  [
+
+                                   ],
+                 "receiverCharges":  [
+
+                                     ],
+                 "remittanceInfo":  "INV-DEMO-26004",
+                 "senderName":  "Juniper Cloud Services batch (synthetic)",
+                 "sourceRefs":  [
+                                    {
+                                        "sourceType":  "platform_csv",
+                                        "recordId":  "WISE-DEMO-TR-81004",
+                                        "field":  "transfer_export",
+                                        "rawExcerpt":  "Synthetic FX transfer: USD 4,000.00 at fictional illustrative rate 0.8900; fee EUR 10.00; recipient amount EUR 3,550.00; reference INV-DEMO-26004."
+                                    }
+                                ]
+             }
+}

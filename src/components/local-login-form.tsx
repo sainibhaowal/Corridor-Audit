@@ -115,7 +115,7 @@ export function LocalLoginForm({ theme = "dark" }: LocalLoginFormProps) {
 			<div
 				className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-[11px] ${
 					isLight
-						? "border-emerald-200 bg-emerald-50 text-slate-700"
+						? "border-slate-200 bg-slate-50 text-slate-700"
 						: "border-[#225b51]/60 bg-[#0d2725]/40 text-[#c7d3d6]"
 				}`}
 			>
@@ -130,13 +130,27 @@ export function LocalLoginForm({ theme = "dark" }: LocalLoginFormProps) {
 					onClick={fillTestAdmin}
 					className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2.5 py-1 font-semibold transition-colors ${
 						isLight
-							? "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-100"
+							? "border-emerald-700 bg-emerald-700 text-white hover:border-emerald-800 hover:bg-emerald-800"
 							: "border-[#2c4a43] bg-[#0e2620] text-[#62e1c3] hover:bg-[#14352d]"
 					}`}
 				>
 					<Sparkles className="h-3 w-3" />
 					Fill Test Admin
 				</button>
+			</div>
+			<div
+				className={`flex items-start gap-2 rounded-lg px-3 py-2 text-[11px] leading-4 ${
+					isLight ? "bg-sky-50 text-slate-600" : "bg-[#0c1720] text-[#a4b4b8]"
+				}`}
+				role="note"
+			>
+				<span className={`mt-0.5 shrink-0 font-bold ${isLight ? "text-sky-700" : "text-sky-300"}`}>
+					DEMO
+				</span>
+				<p>
+					Click <span className="font-semibold">Fill Test Admin</span>, then click{" "}
+					<span className="font-semibold">Sign in to CorridorAudit</span> to open the demo workspace.
+				</p>
 			</div>
 
 			{errorMsg && (

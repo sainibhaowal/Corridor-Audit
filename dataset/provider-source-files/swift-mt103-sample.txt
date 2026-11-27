@@ -1,0 +1,14 @@
+Synthetic SWIFT MT103 demonstration fixture. Fictional parties and references only.
+{1:F01DEMOXXXXAXXX0000000000}{2:I103DEMOYYYYXXXXN}{4:
+:20:MT103-DEMO-81002
+:23B:CRED
+:32A:261122EUR1837,50
+:33B:EUR1850,00
+:50K:/DEMO-ORDERING-001
+Bright Path Retail Synthetic
+:59:/DEMO-BENEFICIARY-002
+Cedar Ridge Analytics Synthetic
+:70:/INV/INV-DEMO-26002
+:71A:OUR
+:71G:EUR12,50
+-}

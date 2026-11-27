@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document>
+  <BkToCstmrStmt>
+    <Stmt>
+      <Ntry>
+        <NtryRef>CAMT-DEMO-81003</NtryRef>
+        <Amt Ccy="EUR">1250.00</Amt>
+        <BookgDt><Dt>2026-11-23</Dt></BookgDt>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><EndToEndId>CAMT-DEMO-81003</EndToEndId></Refs>
+            <AmtDtls><InstdAmt><Amt Ccy="EUR">1250.00</Amt></InstdAmt></AmtDtls>
+            <RmtInf><Ustrd>INV-DEMO-26003 synthetic harborlight payment</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

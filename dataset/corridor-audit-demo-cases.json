@@ -1,0 +1,195 @@
+{
+  "datasetName": "CorridorAudit synthetic judge demo",
+  "datasetVersion": "1.0.0",
+  "disclaimer": "All names, references, amounts, rates, aliases, and excerpts are synthetic demonstration data. Not financial or legal advice.",
+  "cases": [
+    {
+      "caseId": "DEMO-2026-001",
+      "title": "Wise EUR payout with separately stated service fee",
+      "channelLabel": "Wise transfer export + invoice record",
+      "settlementEvidence": "observed",
+      "createdAt": "2026-11-25T09:14:00.000Z",
+      "invoice": {
+        "invoiceId": "INV-DEMO-26001",
+        "vendorOrClient": "Northstar Design Studio (synthetic)",
+        "issueDate": "2026-11-03",
+        "dueDate": "2026-11-24",
+        "expectedAmount": { "amountMinor": 420000, "currency": "EUR" },
+        "expectedSettlementCurrency": "EUR",
+        "contractedChargeBearer": "SHA",
+        "lineItems": [
+          { "description": "Interface design milestone", "quantity": 3, "unitPriceMinor": 100000, "lineTotalMinor": 300000 },
+          { "description": "Accessibility review", "quantity": 2, "unitPriceMinor": 60000, "lineTotalMinor": 120000 }
+        ],
+        "remittanceHint": "INV-DEMO-26001",
+        "sourceRefs": [{ "sourceType": "invoice", "recordId": "INV-DEMO-26001", "field": "invoice_totals", "rawExcerpt": "Synthetic invoice INV-DEMO-26001; total EUR 4,200.00; due 2026-11-24; reference INV-DEMO-26001." }]
+      },
+      "wire": {
+        "wireId": "WISE-DEMO-TR-81001",
+        "transactionRef": "WISE-DEMO-TR-81001",
+        "format": "platform_payout",
+        "platformName": "wise",
+        "valueDate": "2026-11-24",
+        "instructedAmount": { "amountMinor": 420000, "currency": "EUR" },
+        "settledAmount": { "amountMinor": 419000, "currency": "EUR" },
+        "chargeBearer": "SHA",
+        "platformFee": { "amountMinor": 1000, "currency": "EUR" },
+        "senderCharges": [],
+        "receiverCharges": [],
+        "remittanceInfo": "INV-DEMO-26001",
+        "senderName": "Fable Works GmbH (synthetic)",
+        "sourceRefs": [{ "sourceType": "platform_csv", "recordId": "WISE-DEMO-TR-81001", "field": "transfer_export", "rawExcerpt": "Synthetic Wise-style record: instructed EUR 4,200.00; fee EUR 10.00; recipient amount EUR 4,190.00; reference INV-DEMO-26001; value date 2026-11-24." }]
+      }
+    },
+    {
+      "caseId": "DEMO-2026-002",
+      "title": "OUR transfer with a recorded receiver-side fee",
+      "channelLabel": "Invoice record + bank statement",
+      "settlementEvidence": "observed",
+      "createdAt": "2026-11-25T09:16:00.000Z",
+      "invoice": {
+        "invoiceId": "INV-DEMO-26002",
+        "vendorOrClient": "Cedar Ridge Analytics (synthetic)",
+        "issueDate": "2026-11-01",
+        "dueDate": "2026-11-22",
+        "expectedAmount": { "amountMinor": 185000, "currency": "EUR" },
+        "expectedSettlementCurrency": "EUR",
+        "contractedChargeBearer": "OUR",
+        "remittanceHint": "INV-DEMO-26002",
+        "sourceRefs": [{ "sourceType": "invoice", "recordId": "INV-DEMO-26002", "field": "payment_terms", "rawExcerpt": "Synthetic invoice INV-DEMO-26002; EUR 1,850.00; payment terms say sender-borne charges OUR; reference INV-DEMO-26002." }]
+      },
+      "wire": {
+        "wireId": "BANK-DEMO-TR-81002",
+        "transactionRef": "BANK-DEMO-TR-81002",
+        "format": "bank_csv",
+        "platformName": "direct_bank",
+        "valueDate": "2026-11-22",
+        "instructedAmount": { "amountMinor": 185000, "currency": "EUR" },
+        "settledAmount": { "amountMinor": 183750, "currency": "EUR" },
+        "chargeBearer": "OUR",
+        "senderCharges": [],
+        "receiverCharges": [{ "amountMinor": 1250, "currency": "EUR" }],
+        "remittanceInfo": "INV-DEMO-26002",
+        "senderName": "Bright Path Retail Ltd (synthetic)",
+        "sourceRefs": [{ "sourceType": "bank_csv", "recordId": "BANK-DEMO-TR-81002", "field": "statement_entry", "rawExcerpt": "Synthetic statement record: instructed EUR 1,850.00; credited EUR 1,837.50; receiver fee EUR 12.50; reference INV-DEMO-26002; value date 2026-11-22." }]
+      }
+    },
+    {
+      "caseId": "DEMO-2026-003",
+      "title": "Two same-value transfers reference one invoice",
+      "channelLabel": "Invoice record + bank statement entries",
+      "settlementEvidence": "observed",
+      "createdAt": "2026-11-25T09:18:00.000Z",
+      "invoice": {
+        "invoiceId": "INV-DEMO-26003",
+        "vendorOrClient": "Harborlight Media Co (synthetic)",
+        "issueDate": "2026-11-06",
+        "dueDate": "2026-11-24",
+        "expectedAmount": { "amountMinor": 125000, "currency": "EUR" },
+        "expectedSettlementCurrency": "EUR",
+        "contractedChargeBearer": "SHA",
+        "remittanceHint": "INV-DEMO-26003",
+        "sourceRefs": [{ "sourceType": "invoice", "recordId": "INV-DEMO-26003", "field": "invoice_total", "rawExcerpt": "Synthetic invoice INV-DEMO-26003; total EUR 1,250.00; due 2026-11-24; reference INV-DEMO-26003." }]
+      },
+      "wire": {
+        "wireId": "BANK-DEMO-TR-81003A",
+        "transactionRef": "BANK-DEMO-TR-81003A",
+        "format": "bank_csv",
+        "platformName": "direct_bank",
+        "valueDate": "2026-11-23",
+        "instructedAmount": { "amountMinor": 125000, "currency": "EUR" },
+        "settledAmount": { "amountMinor": 125000, "currency": "EUR" },
+        "chargeBearer": "SHA",
+        "senderCharges": [],
+        "receiverCharges": [],
+        "remittanceInfo": "INV-DEMO-26003",
+        "senderName": "Harborlight Media Co (synthetic)",
+        "sourceRefs": [{ "sourceType": "bank_csv", "recordId": "BANK-DEMO-TR-81003A", "field": "statement_entry", "rawExcerpt": "Synthetic bank entry: EUR 1,250.00; reference INV-DEMO-26003; value date 2026-11-23." }]
+      },
+      "candidateWires": [{
+        "wireId": "BANK-DEMO-TR-81003B",
+        "transactionRef": "BANK-DEMO-TR-81003B",
+        "format": "bank_csv",
+        "platformName": "direct_bank",
+        "valueDate": "2026-11-24",
+        "instructedAmount": { "amountMinor": 125000, "currency": "EUR" },
+        "settledAmount": { "amountMinor": 125000, "currency": "EUR" },
+        "chargeBearer": "SHA",
+        "senderCharges": [],
+        "receiverCharges": [],
+        "remittanceInfo": "INV-DEMO-26003",
+        "senderName": "Harborlight Media Co (synthetic)",
+        "sourceRefs": [{ "sourceType": "bank_csv", "recordId": "BANK-DEMO-TR-81003B", "field": "statement_entry", "rawExcerpt": "Synthetic second entry: EUR 1,250.00; same invoice reference INV-DEMO-26003; value date 2026-11-24." }]
+      }]
+    },
+    {
+      "caseId": "DEMO-2026-004",
+      "title": "USD-to-EUR payout with an illustrative applied rate",
+      "channelLabel": "Wise-style FX transfer + invoice record",
+      "settlementEvidence": "observed",
+      "createdAt": "2026-11-25T09:20:00.000Z",
+      "invoice": {
+        "invoiceId": "INV-DEMO-26004",
+        "vendorOrClient": "Juniper Cloud Services (synthetic)",
+        "issueDate": "2026-11-08",
+        "dueDate": "2026-11-24",
+        "expectedAmount": { "amountMinor": 400000, "currency": "USD" },
+        "expectedSettlementCurrency": "EUR",
+        "contractedChargeBearer": "SHA",
+        "remittanceHint": "INV-DEMO-26004",
+        "sourceRefs": [{ "sourceType": "invoice", "recordId": "INV-DEMO-26004", "field": "invoice_total", "rawExcerpt": "Synthetic invoice INV-DEMO-26004; total USD 4,000.00; requested settlement EUR; due 2026-11-24." }]
+      },
+      "wire": {
+        "wireId": "WISE-DEMO-TR-81004",
+        "transactionRef": "WISE-DEMO-TR-81004",
+        "format": "platform_payout",
+        "platformName": "wise",
+        "valueDate": "2026-11-24",
+        "instructedAmount": { "amountMinor": 400000, "currency": "USD" },
+        "settledAmount": { "amountMinor": 355000, "currency": "EUR" },
+        "bankAppliedRate": 0.89,
+        "chargeBearer": "SHA",
+        "platformFee": { "amountMinor": 1000, "currency": "EUR" },
+        "senderCharges": [],
+        "receiverCharges": [],
+        "remittanceInfo": "INV-DEMO-26004",
+        "senderName": "Juniper Cloud Services batch (synthetic)",
+        "sourceRefs": [{ "sourceType": "platform_csv", "recordId": "WISE-DEMO-TR-81004", "field": "transfer_export", "rawExcerpt": "Synthetic FX transfer: USD 4,000.00 at fictional illustrative rate 0.8900; fee EUR 10.00; recipient amount EUR 3,550.00; reference INV-DEMO-26004." }]
+      }
+    },
+    {
+      "caseId": "DEMO-2026-005",
+      "title": "QuickBooks-style invoice without payment evidence",
+      "channelLabel": "Accounting invoice-only record",
+      "settlementEvidence": "incomplete",
+      "evidenceGap": "The accounting invoice is present, but no bank statement or provider payment record was supplied. The zero-value wire is a structural placeholder, not payment evidence.",
+      "createdAt": "2026-11-25T09:22:00.000Z",
+      "invoice": {
+        "invoiceId": "QBO-DEMO-INV-81005",
+        "vendorOrClient": "Blue Fern Office Systems (synthetic)",
+        "issueDate": "2026-11-09",
+        "dueDate": "2026-11-26",
+        "expectedAmount": { "amountMinor": 780000, "currency": "USD" },
+        "expectedSettlementCurrency": "USD",
+        "contractedChargeBearer": "SHA",
+        "remittanceHint": "QBO-DEMO-INV-81005",
+        "sourceRefs": [{ "sourceType": "invoice", "recordId": "QBO-DEMO-INV-81005", "field": "accounting_invoice", "rawExcerpt": "Synthetic QuickBooks-style invoice QBO-DEMO-INV-81005; total USD 7,800.00; status open; no payment application or settlement included." }]
+      },
+      "wire": {
+        "wireId": "NO-SETTLEMENT-QBO-DEMO-81005",
+        "transactionRef": "NO-SETTLEMENT-QBO-DEMO-81005",
+        "format": "bank_csv",
+        "platformName": "direct_bank",
+        "valueDate": "2026-11-26",
+        "instructedAmount": { "amountMinor": 780000, "currency": "USD" },
+        "settledAmount": { "amountMinor": 0, "currency": "USD" },
+        "chargeBearer": "SHA",
+        "senderCharges": [],
+        "receiverCharges": [],
+        "remittanceInfo": "QBO-DEMO-INV-81005",
+        "senderName": "Blue Fern Office Systems (synthetic)",
+        "sourceRefs": [{ "sourceType": "bank_csv", "recordId": "NO-SETTLEMENT-QBO-DEMO-81005", "field": "evidence_gap", "rawExcerpt": "Synthetic fixture marker only: no matching statement entry or payment record was supplied. This marker does not indicate a transfer occurred." }]
+      }
+    }
+  ]
+}

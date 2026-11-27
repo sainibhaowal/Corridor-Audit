@@ -1,0 +1,94 @@
+{
+    "caseId":  "DEMO-2026-003",
+    "title":  "Two same-value transfers reference one invoice",
+    "channelLabel":  "Invoice record + bank statement entries",
+    "settlementEvidence":  "observed",
+    "createdAt":  "2026-11-25T09:18:00.000Z",
+    "invoice":  {
+                    "invoiceId":  "INV-DEMO-26003",
+                    "vendorOrClient":  "Harborlight Media Co (synthetic)",
+                    "issueDate":  "2026-11-06",
+                    "dueDate":  "2026-11-24",
+                    "expectedAmount":  {
+                                           "amountMinor":  125000,
+                                           "currency":  "EUR"
+                                       },
+                    "expectedSettlementCurrency":  "EUR",
+                    "contractedChargeBearer":  "SHA",
+                    "remittanceHint":  "INV-DEMO-26003",
+                    "sourceRefs":  [
+                                       {
+                                           "sourceType":  "invoice",
+                                           "recordId":  "INV-DEMO-26003",
+                                           "field":  "invoice_total",
+                                           "rawExcerpt":  "Synthetic invoice INV-DEMO-26003; total EUR 1,250.00; due 2026-11-24; reference INV-DEMO-26003."
+                                       }
+                                   ]
+                },
+    "wire":  {
+                 "wireId":  "BANK-DEMO-TR-81003A",
+                 "transactionRef":  "BANK-DEMO-TR-81003A",
+                 "format":  "bank_csv",
+                 "platformName":  "direct_bank",
+                 "valueDate":  "2026-11-23",
+                 "instructedAmount":  {
+                                          "amountMinor":  125000,
+                                          "currency":  "EUR"
+                                      },
+                 "settledAmount":  {
+                                       "amountMinor":  125000,
+                                       "currency":  "EUR"
+                                   },
+                 "chargeBearer":  "SHA",
+                 "senderCharges":  [
+
+                                   ],
+                 "receiverCharges":  [
+
+                                     ],
+                 "remittanceInfo":  "INV-DEMO-26003",
+                 "senderName":  "Harborlight Media Co (synthetic)",
+                 "sourceRefs":  [
+                                    {
+                                        "sourceType":  "bank_csv",
+                                        "recordId":  "BANK-DEMO-TR-81003A",
+                                        "field":  "statement_entry",
+                                        "rawExcerpt":  "Synthetic bank entry: EUR 1,250.00; reference INV-DEMO-26003; value date 2026-11-23."
+                                    }
+                                ]
+             },
+    "candidateWires":  [
+                           {
+                               "wireId":  "BANK-DEMO-TR-81003B",
+                               "transactionRef":  "BANK-DEMO-TR-81003B",
+                               "format":  "bank_csv",
+                               "platformName":  "direct_bank",
+                               "valueDate":  "2026-11-24",
+                               "instructedAmount":  {
+                                                        "amountMinor":  125000,
+                                                        "currency":  "EUR"
+                                                    },
+                               "settledAmount":  {
+                                                     "amountMinor":  125000,
+                                                     "currency":  "EUR"
+                                                 },
+                               "chargeBearer":  "SHA",
+                               "senderCharges":  [
+
+                                                 ],
+                               "receiverCharges":  [
+
+                                                   ],
+                               "remittanceInfo":  "INV-DEMO-26003",
+                               "senderName":  "Harborlight Media Co (synthetic)",
+                               "sourceRefs":  [
+                                                  {
+                                                      "sourceType":  "bank_csv",
+                                                      "recordId":  "BANK-DEMO-TR-81003B",
+                                                      "field":  "statement_entry",
+                                                      "rawExcerpt":  "Synthetic second entry: EUR 1,250.00; same invoice reference INV-DEMO-26003; value date 2026-11-24."
+                                                  }
+                                              ]
+                           }
+                       ]
+}

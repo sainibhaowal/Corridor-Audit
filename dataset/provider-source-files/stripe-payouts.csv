@@ -1,0 +1,2 @@
+wire_id,transaction_ref,platform,date,gross_amount,gross_currency,net_amount,payout_currency,platform_fee,platform_fee_currency,charge_bearer,remittance_info,sender
+STRIPE-RAW-DEMO-001,STRIPE-RAW-DEMO-001,stripe,2026-11-23,5600.00,USD,5553.25,USD,42.00,USD,SHA,INV-DEMO-26003,Maple Circuit Labs Synthetic
