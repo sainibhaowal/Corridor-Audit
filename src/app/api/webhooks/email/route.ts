@@ -105,7 +105,6 @@ export async function POST(request: Request) {
 		const orchestrator = initCorridorOrchestrator()
 		const execution = orchestrator.enqueueBatch(cases)
 		db.markWebhookReceiptStatus({ ...identity, status: "queued" })
-		db.appendWorkspaceAuditEvent({ workspaceId: DEFAULT_WORKSPACE_ID, actorType: "system", action: "email_adapter.accepted", targetType: "email_event", targetId: eventIdentity.eventId, requestId: request.headers.get("x-request-id") || undefined, metadata: { queuedCount: cases.length } })
 		void execution.catch((err) => {
 			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
 			console.error(`Email ingestion ${rec.id} failed during audit processing:`, err)

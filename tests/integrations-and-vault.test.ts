@@ -1300,6 +1300,10 @@ test("Raw Data Vault persists raw payloads and supports inspect, download, and r
 	assert.ok(listJson.stats.total >= 2)
 	assert.ok(listJson.stats.webhook >= 1)
 	assert.ok(listJson.stats.email >= 1)
+	const ingestionEvents = getCorridorDb().listWorkspaceAuditEvents(DEFAULT_WORKSPACE_ID, 100)
+	assert.ok(ingestionEvents.some((event) => event.action === "ingestion.received"))
+	assert.ok(ingestionEvents.some((event) => event.action === "ingestion.parse.complete"))
+	assert.ok(ingestionEvents.some((event) => event.action === "webhook.status.queued"))
 
 	const targetId = listJson.ingestions.find((ingestion) => ingestion.caseIds.length > 0)!.id
 	const detailRes = await getIngestionRoute(

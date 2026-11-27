@@ -78,6 +78,25 @@ export const MAX_CASE_ATTEMPTS = 3
 export class CorridorDatabase {
 	private readonly db: DatabaseSync
 
+	private inTransaction<T>(work: () => T): T {
+		const nested = this.db.isTransaction
+		const savepoint = `corridor_${randomUUID().replaceAll("-", "")}`
+		this.db.exec(nested ? `SAVEPOINT ${savepoint}` : "BEGIN IMMEDIATE")
+		try {
+			const result = work()
+			this.db.exec(nested ? `RELEASE SAVEPOINT ${savepoint}` : "COMMIT")
+			return result
+		} catch (error) {
+			if (nested) {
+				this.db.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`)
+				this.db.exec(`RELEASE SAVEPOINT ${savepoint}`)
+			} else {
+				this.db.exec("ROLLBACK")
+			}
+			throw error
+		}
+	}
+
 	constructor(dbPath?: string) {
 		const target = dbPath || process.env.CORRIDOR_DB_PATH || resolve(process.cwd(), "data/corridoraudit.db")
 		if (target !== ":memory:") {
@@ -310,10 +329,13 @@ export class CorridorDatabase {
 		const id = `approval_${randomUUID()}`
 		const requestedAt = pending.createdAt || new Date().toISOString()
 		const argsSha256 = createHash("sha256").update(pending.argsJson, "utf8").digest("hex")
-		this.db.prepare(`INSERT INTO review_approvals
-			(id, workspace_id, case_id, tool_name, action_type, args_sha256, pending_json, pending_json_encrypted, requested_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`)
-			.run(id, workspaceId, pending.caseId, pending.toolName, pending.actionType, argsSha256, encryptSecret(JSON.stringify(pending)), requestedAt)
+		this.inTransaction(() => {
+			this.db.prepare(`INSERT INTO review_approvals
+				(id, workspace_id, case_id, tool_name, action_type, args_sha256, pending_json, pending_json_encrypted, requested_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`)
+				.run(id, workspaceId, pending.caseId, pending.toolName, pending.actionType, argsSha256, encryptSecret(JSON.stringify(pending)), requestedAt)
+			this.appendWorkspaceAuditEvent({ workspaceId, actorType: "system", action: "review.requested", targetType: "case", targetId: pending.caseId, metadata: { approvalId: id, toolName: pending.toolName, actionType: pending.actionType } })
+		})
 		return id
 	}
 
@@ -842,13 +864,16 @@ export class CorridorDatabase {
 	}): SyncRunRecord {
 		const id = `sync_${randomUUID().slice(0, 10)}`
 		const startedAt = new Date().toISOString()
-		this.db
-			.prepare(
-				`INSERT INTO sync_runs (
-					id, integration_id, workspace_id, provider, trigger_type, status, started_at
-				) VALUES (?, ?, ?, ?, ?, 'running', ?)`,
-			)
-			.run(id, params.integrationId, params.workspaceId, params.provider, params.trigger, startedAt)
+		this.inTransaction(() => {
+			this.db
+				.prepare(
+					`INSERT INTO sync_runs (
+						id, integration_id, workspace_id, provider, trigger_type, status, started_at
+					) VALUES (?, ?, ?, ?, ?, 'running', ?)`,
+				)
+				.run(id, params.integrationId, params.workspaceId, params.provider, params.trigger, startedAt)
+			this.appendWorkspaceAuditEvent({ workspaceId: params.workspaceId, actorType: "system", action: "integration.sync.start", targetType: "integration", targetId: params.provider, metadata: { syncRunId: id, trigger: params.trigger } })
+		})
 		return {
 			id,
 			integrationId: params.integrationId,
@@ -1216,14 +1241,15 @@ export class CorridorDatabase {
 		const sizeBytes = buf.byteLength
 		const createdAt = new Date().toISOString()
 
-		this.db
-			.prepare(
+		this.inTransaction(() => {
+			this.db
+				.prepare(
 				`INSERT INTO raw_ingestions (
 					id, workspace_id, source_channel, source_provider, filename, filename_encrypted, format,
 					sha256, size_bytes, raw_content, raw_content_encrypted, is_base64, metadata_json,
 					metadata_json_encrypted, parse_status, parse_error, parse_error_encrypted, case_ids_json, created_at
 				) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 1, ?, ?, 1, ?, ?, ?, ?, ?)`,
-			)
+				)
 			.run(
 				id,
 				workspaceId,
@@ -1241,7 +1267,17 @@ export class CorridorDatabase {
 				Number(Boolean(params.parseError)),
 				JSON.stringify(params.caseIds ?? []),
 				createdAt,
-			)
+				)
+			this.appendWorkspaceAuditEvent({
+					workspaceId,
+					actorType: "system",
+					action: "ingestion.received",
+					targetType: "raw_ingestion",
+					targetId: id,
+					outcome: params.parseStatus === "failed" ? "failure" : "success",
+					metadata: { channel: params.sourceChannel, provider: params.sourceProvider, format: params.format, sizeBytes, sha256 },
+				})
+		})
 
 		return this.getRawIngestion(id, true, workspaceId)!
 	}
@@ -1253,20 +1289,31 @@ export class CorridorDatabase {
 		parseError?: string
 		caseIds?: string[]
 	}): void {
-		this.db
-			.prepare(
+		this.inTransaction(() => {
+			const updated = this.db
+				.prepare(
 				`UPDATE raw_ingestions
 				SET parse_status = ?, parse_error = ?, parse_error_encrypted = ?, case_ids_json = ?
-				WHERE id = ? AND workspace_id = ?`,
+				WHERE id = ? AND workspace_id = ? RETURNING source_channel, source_provider, size_bytes`,
 			)
-			.run(
+			.get(
 				params.parseStatus,
 				params.parseError ? encryptSecret(params.parseError) : null,
 				Number(Boolean(params.parseError)),
 				JSON.stringify(params.caseIds ?? []),
 				params.id,
 				params.workspaceId || DEFAULT_WORKSPACE_ID,
-			)
+			) as { source_channel: string; source_provider: string; size_bytes: number } | undefined
+			if (updated) this.appendWorkspaceAuditEvent({
+				workspaceId: params.workspaceId || DEFAULT_WORKSPACE_ID,
+				actorType: "system",
+				action: params.parseStatus === "failed" ? "ingestion.parse.failed" : "ingestion.parse.complete",
+				targetType: "raw_ingestion",
+				targetId: params.id,
+				outcome: params.parseStatus === "failed" ? "failure" : "success",
+				metadata: { channel: updated.source_channel, provider: updated.source_provider, caseCount: params.caseIds?.length || 0 },
+			})
+		})
 	}
 
 	recordWebhookReceipt(params: {
@@ -1330,9 +1377,13 @@ export class CorridorDatabase {
 		eventId: string
 		status: WebhookReceiptResult["status"]
 	}): void {
-		this.db.prepare(`UPDATE webhook_receipts SET status = ?, updated_at = ?
-			WHERE workspace_id = ? AND provider = ? AND event_id = ?`)
-			.run(params.status, new Date().toISOString(), params.workspaceId || DEFAULT_WORKSPACE_ID, params.provider, params.eventId)
+		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
+		this.inTransaction(() => {
+			const updated = this.db.prepare(`UPDATE webhook_receipts SET status = ?, updated_at = ?
+				WHERE workspace_id = ? AND provider = ? AND event_id = ? RETURNING event_id`)
+				.get(params.status, new Date().toISOString(), workspaceId, params.provider, params.eventId)
+			if (updated) this.appendWorkspaceAuditEvent({ workspaceId, actorType: "system", action: `webhook.status.${params.status}`, targetType: "webhook_event", targetId: params.eventId, outcome: params.status === "failed" ? "failure" : "success", metadata: { provider: params.provider } })
+		})
 	}
 
 	listRawIngestions(params?: {
