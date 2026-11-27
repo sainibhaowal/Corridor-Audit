@@ -352,3 +352,9 @@ Update this section per milestone with the exact command, result, environment, a
 - Workspace team invitations now accept only the four supported roles: owner, controller, analyst, and viewer. Runtime validation rejects crafted role strings even though TypeScript request types are narrower.
 - Team removal now runs atomically with an active-owner count check. It refuses to remove the last active owner, returns a distinct not-found result for unknown members, and the API reports clear `409` and `404` responses. A remove request without a member ID now returns `400` instead of falling through to workspace settings updates. Existing UI response shape for successful operations is unchanged.
 - Typecheck: passed. Integration test file: 26 passed, 0 failed. Full suite: 68 passed, 0 failed. Production build: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 signed email payload validation
+
+- The inbound email adapter now validates its JSON envelope, supported field types, attachment object shape, a maximum of 50 attachments, and bounded string sizes before scanning or parsing. Provider-specific extra fields are allowed so the generic adapter can retain vendor metadata without trusting known financial fields by cast.
+- A malformed signed JSON body or invalid signed envelope is durably retained in the encrypted raw-ingestion vault, marked failed, and answered with `422`. Invalid signatures remain rejected before payload storage. This is envelope validation only; it does not certify provider-specific payload semantics or financial truth.
+- Typecheck: passed. Integration test file: 26 passed, 0 failed. Full suite: 68 passed, 0 failed. Production build: passed. `git diff --check`: passed. Verification ran locally on Windows.

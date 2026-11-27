@@ -1,5 +1,6 @@
 import { normalizeInboundPayloadToCases } from "../ingest/normalize-upload"
 import type { SettlementCase } from "../types"
+import { z } from "zod"
 
 export interface InboundEmailAttachment {
 	filename?: string
@@ -22,6 +23,34 @@ export interface InboundEmailPayload {
 	text?: string
 	attachments?: InboundEmailAttachment[]
 	Attachments?: InboundEmailAttachment[]
+}
+
+const boundedEmailText = z.string().max(10 * 1024 * 1024)
+const emailAttachmentSchema = z.object({
+	filename: z.string().max(512).optional(),
+	name: z.string().max(512).optional(),
+	contentType: z.string().max(255).optional(),
+	contentBase64: boundedEmailText.optional(),
+	Content: boundedEmailText.optional(),
+	content: boundedEmailText.optional(),
+}).passthrough()
+
+export const inboundEmailPayloadSchema = z.object({
+	from: z.string().max(2048).optional(),
+	From: z.string().max(2048).optional(),
+	to: z.string().max(2048).optional(),
+	To: z.string().max(2048).optional(),
+	subject: z.string().max(2048).optional(),
+	Subject: z.string().max(2048).optional(),
+	textBody: boundedEmailText.optional(),
+	TextBody: boundedEmailText.optional(),
+	text: boundedEmailText.optional(),
+	attachments: z.array(emailAttachmentSchema).max(50).optional(),
+	Attachments: z.array(emailAttachmentSchema).max(50).optional(),
+}).passthrough()
+
+export function validateInboundEmailPayload(input: unknown) {
+	return inboundEmailPayloadSchema.safeParse(input)
 }
 
 /**

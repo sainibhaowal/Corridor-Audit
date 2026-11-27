@@ -1314,6 +1314,19 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 		}),
 	)
 	assert.equal(malformedEmailRes.status, 422, "signed malformed email payloads are retained and reported as parse failures")
+	const invalidEmailShape = JSON.stringify({ from: 17, attachments: "not-an-array" })
+	const invalidEmailShapeSig = createHmac("sha256", secret).update(invalidEmailShape, "utf8").digest("hex")
+	const invalidEmailShapeRes = await emailWebhookRoute(
+		new Request("http://127.0.0.1/api/webhooks/email", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", "x-corridor-signature": `sha256=${invalidEmailShapeSig}` },
+			body: invalidEmailShape,
+		}),
+	)
+	assert.equal(invalidEmailShapeRes.status, 422, "signed email JSON with an invalid envelope is rejected after being retained")
+	const invalidEmailShapeJson = await invalidEmailShapeRes.json() as { ingestionId?: string }
+	assert.ok(invalidEmailShapeJson.ingestionId)
+	assert.equal(getCorridorDb().getRawIngestion(invalidEmailShapeJson.ingestionId!)?.parseStatus, "failed")
 
 	// Reset requireWebhookSignature back to false so other tests remain unaffected
 	await postWorkspaceRoute(

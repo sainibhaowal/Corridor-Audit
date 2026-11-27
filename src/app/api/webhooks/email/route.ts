@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
-import { parseInboundEmailToCases, type InboundEmailPayload } from "@/core/integrations/email-parser"
+import { parseInboundEmailToCases, validateInboundEmailPayload, type InboundEmailPayload } from "@/core/integrations/email-parser"
 import { verifyInboundWebhookRequest } from "@/core/security/webhook-signatures"
 import { readRequestTextLimited, RequestBodyTooLargeError } from "@/core/security/request-body"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
@@ -38,24 +38,32 @@ export async function POST(request: Request) {
 		const identity = { provider: "email_inbound", eventId: eventIdentity.eventId }
 		receiptIdentity = identity
 		let payload: InboundEmailPayload | undefined
+		let payloadValidationFailed = false
 		try {
-			payload = JSON.parse(raw) as InboundEmailPayload
+			const parsed: unknown = JSON.parse(raw)
+			const validation = validateInboundEmailPayload(parsed)
+			if (validation.success) payload = validation.data
+			else payloadValidationFailed = true
 		} catch {
-			payload = undefined
+			payloadValidationFailed = true
 		}
 		const sender = payload?.from || payload?.From || "unknown-sender"
 		const subject = payload?.subject || payload?.Subject || "Inbound Email"
 		let malwareScanStatus = "not_applicable"
-		for (const attachment of payload?.attachments || payload?.Attachments || []) {
-			const base64 = attachment.contentBase64 || attachment.Content
-			const content = attachment.content
-			if (!base64 && !content) continue
-			const normalizedBase64 = base64?.replace(/\s/g, "")
-			if (normalizedBase64 && !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(normalizedBase64)) {
-				throw new Error("Inbound email attachment has invalid base64 encoding.")
+		if (payload) {
+			for (const attachment of payload.attachments || payload.Attachments || []) {
+				const base64 = attachment.contentBase64 || attachment.Content
+				const content = attachment.content
+				if (!base64 && !content) continue
+				const normalizedBase64 = base64?.replace(/\s/g, "")
+				if (normalizedBase64 && !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(normalizedBase64)) {
+					throw new Error("Inbound email attachment has invalid base64 encoding.")
+				}
+				const scan = await scanFileBytes(normalizedBase64 ? Buffer.from(normalizedBase64, "base64") : Buffer.from(content!, "utf8"))
+				malwareScanStatus = scan.status
 			}
-			const scan = await scanFileBytes(normalizedBase64 ? Buffer.from(normalizedBase64, "base64") : Buffer.from(content!, "utf8"))
-			malwareScanStatus = scan.status
+		} else {
+			malwareScanStatus = "not_scanned_invalid_payload"
 		}
 		const receipt = db.recordWebhookReceipt({
 			workspaceId: DEFAULT_WORKSPACE_ID,
@@ -74,8 +82,10 @@ export async function POST(request: Request) {
 		}
 		const rec = receipt.ingestion
 		ingestionId = rec.id
-		if (!payload) {
-			const message = "Email webhook body is not valid JSON. The raw payload was retained for inspection."
+		if (!payload || payloadValidationFailed) {
+			const message = payloadValidationFailed
+				? "Email webhook JSON does not match the supported email payload structure. The signed raw payload was retained for inspection."
+				: "Email webhook body is not valid JSON. The signed raw payload was retained for inspection."
 			db.updateRawIngestionOutcome({ id: rec.id, parseStatus: "failed", parseError: message })
 			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
 			return NextResponse.json({ ok: false, error: message, ingestionId: rec.id }, { status: 422 })
