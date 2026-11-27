@@ -38,7 +38,7 @@
 ## 3. Frontend Workbench (`src/components/` & `src/app/`)
 | Component | Responsibility |
 | :--- | :--- |
-| `src/components/corridor-workspace.tsx` | 3-panel workbench shell: navigation, sidebar drag-and-drop / click `Upload source` with live stage indicator (`uploading` → `processing` → `ingested`), top toast notification, auto-switch to Live Agent Stream, breakpoint resolution controls, and Cases / Artifacts / Ledger drawer. |
+| `src/components/corridor-workspace.tsx` | 3-panel workbench shell: navigation, sidebar drag-and-drop / click `Upload source` with live stage indicator (`uploading` → `processing` → `ingested`), top toast notification, auto-switch to Live Agent Stream, `> Waiting for Data` live ready state (hides `Configure LLM Key` when configured, subtle aurora glow), live Run-Activity header (`Agents`, `Tools`, elapsed timer), `Subagent` / `Lead Agent` badges, live `Thinking` timer, expandable tool-call cards, breakpoint resolution controls, and Cases / Artifacts / Ledger drawer. |
 | `src/components/corridor-summary-view.tsx` | KPI summary cards, interactive `CorridorAnalyticsPanel`, per-case verdict table, and batch **Export Sheet (.csv)** / **Export All (.json)**. |
 | `src/components/corridor-analytics-panel.tsx` | Real-data interactive analytics widgets: Line/Area/Bar Trend chart, Stacked/Pie Cost & Leak breakdown, Model & Agent usage meter, Case Risk Heat-Graph, and Trust & Accuracy Proof card. |
 | `src/components/case-inspector-modal.tsx` | Case Inspector modal with **Summary & Cent Ledger**, **Trace Waterfall (Gantt)**, **In-Built File Preview** (inline `.pdf` iframe, parsed `.csv` table, `.txt`, `.json`), **Technical JSON**, and **Review Request Draft (.txt)**. |

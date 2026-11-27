@@ -10,7 +10,7 @@ npm install
 cp .env.example .env   # or Copy-Item .env.example .env on PowerShell
 npm run dev            # opens at http://127.0.0.1:3000
 ```
-Open `http://127.0.0.1:3000` and open **System Settings** (bottom-left) to paste any supported LLM key (NVIDIA NIM, Google Gemini, Groq, OpenRouter, OpenAI, Anthropic, or local Ollama) and verify model discovery.
+Open `http://127.0.0.1:3000` and open **System Settings** (bottom-left) to paste any supported LLM key (NVIDIA NIM, Google Gemini, Groq, OpenRouter, OpenAI, Anthropic, or local Ollama) and verify model discovery. Once live, `Configure LLM Key` hides automatically and the workspace displays **`> Waiting for Data . . .`**.
 
 ---
 
