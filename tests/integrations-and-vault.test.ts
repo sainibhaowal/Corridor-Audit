@@ -1260,18 +1260,19 @@ test("provider sync follows Stripe, Wise, QuickBooks, and Xero page cursors", as
 
 test("QuickBooks and Xero payment applications stay separate from bank settlement evidence", async () => {
 	const previousFetch = global.fetch
+	let includeInvoicePages = true
 	global.fetch = (async (input) => {
 		const url = String(input)
 		if (url.includes("quickbooks.api.intuit.com")) {
 			const query = decodeURIComponent(new URL(url).searchParams.get("query") || "")
 			if (query.includes("FROM Invoice")) {
-				return new Response(JSON.stringify({ QueryResponse: { Invoice: [{
+				return new Response(JSON.stringify({ QueryResponse: { Invoice: includeInvoicePages ? [{
 					Id: "qbo-invoice-1",
 					DocNumber: "QBO-INV-1",
 					TotalAmt: 250,
 					CurrencyRef: { value: "USD" },
 					TxnDate: "2026-11-20",
-				}] } }), { status: 200 })
+			}] : [] } }), { status: 200 })
 			}
 			return new Response(JSON.stringify({ QueryResponse: { Payment: [{
 				Id: "qbo-payment-1",
@@ -1287,13 +1288,13 @@ test("QuickBooks and Xero payment applications stay separate from bank settlemen
 		}
 		if (url.includes("api.xero.com")) {
 			if (url.includes("/Invoices?")) {
-				return new Response(JSON.stringify({ Invoices: [{
+				return new Response(JSON.stringify({ Invoices: includeInvoicePages ? [{
 					InvoiceID: "xero-invoice-1",
 					InvoiceNumber: "XERO-INV-1",
 					Total: 120,
 					CurrencyCode: "EUR",
 					DateString: "2026-11-20",
-				}] }), { status: 200 })
+			}] : [] }), { status: 200 })
 			}
 			return new Response(JSON.stringify({ Payments: [{
 				PaymentID: "xero-payment-1",
@@ -1351,6 +1352,30 @@ test("QuickBooks and Xero payment applications stay separate from bank settlemen
 		const db = getCorridorDb()
 		db.saveCase(quickBooks.cases[0]!)
 		assert.equal(db.getPersistedCase(quickBooks.cases[0]!.caseId)?.accountingPayments?.[1]?.mappingIssue, quickBooks.cases[0]?.accountingPayments?.[1]?.mappingIssue)
+
+		includeInvoicePages = false
+		const cursor = "2026-11-27T12:00:00.000Z"
+		const quickBooksIncremental = await fetchCasesFromIntegration({
+			integration: integration("quickbooks", { realmId: "realm-payment-test" }),
+			credentials: { accessToken: "qbo-test" },
+			lastSuccessfulSyncAt: cursor,
+			existingCases: [quickBooks.cases[0]!],
+		})
+		assert.equal(quickBooksIncremental.cases.length, 1)
+		assert.equal(quickBooksIncremental.cases[0]?.caseId, quickBooks.cases[0]?.caseId)
+		assert.equal(quickBooksIncremental.cases[0]?.accountingPayments?.length, 2)
+		assert.match(quickBooksIncremental.cases[0]?.evidenceGap || "", /earlier local sync/)
+
+		const xeroIncremental = await fetchCasesFromIntegration({
+			integration: integration("xero", { tenantId: "tenant-payment-test" }),
+			credentials: { accessToken: "xero-test" },
+			lastSuccessfulSyncAt: cursor,
+			existingCases: [xero.cases[0]!],
+		})
+		assert.equal(xeroIncremental.cases.length, 1)
+		assert.equal(xeroIncremental.cases[0]?.caseId, xero.cases[0]?.caseId)
+		assert.equal(xeroIncremental.cases[0]?.accountingPayments?.length, 2)
+		assert.match(xeroIncremental.cases[0]?.evidenceGap || "", /earlier local sync/)
 	} finally {
 		global.fetch = previousFetch
 	}
@@ -1475,6 +1500,73 @@ test("changed Xero invoice data creates an immutable source revision case", asyn
 		assert.equal(cases.length, 2)
 		const revision = cases.find((item) => item.sourceRevisionOf === "XERO-INV-REVISION-01")
 		assert.equal(revision?.invoice?.expectedAmount.amountMinor, 12500)
+	} finally {
+		global.fetch = previousFetch
+		db.disconnectIntegration(DEFAULT_WORKSPACE_ID, "xero")
+	}
+})
+
+test("Xero incremental payment updates attach to an invoice persisted by an earlier sync", async () => {
+	const db = getCorridorDb()
+	const previousFetch = global.fetch
+	db.upsertIntegration({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider: "xero",
+		category: "accounting",
+		authMode: "oauth2",
+		status: "connected",
+		credentials: { accessToken: "xero-historical-payment-test" },
+		config: { tenantId: "tenant-historical-payment-test" },
+	})
+	let invoiceSyncCount = 0
+	let paymentSyncCount = 0
+	global.fetch = (async (input) => {
+		const url = String(input)
+		if (url.includes("/Invoices?")) {
+			invoiceSyncCount += 1
+			return new Response(JSON.stringify({ Invoices: invoiceSyncCount === 1 ? [{
+				InvoiceID: "xero-historical-invoice-01",
+				InvoiceNumber: "INV-HIST-01",
+				Total: 75,
+				CurrencyCode: "EUR",
+				DateString: "2026-11-20",
+			}] : [] }), { status: 200 })
+		}
+		if (url.includes("/Payments?")) {
+			paymentSyncCount += 1
+			return new Response(JSON.stringify({ Payments: paymentSyncCount === 1 ? [] : [{
+				PaymentID: "xero-historical-payment-01",
+				DateString: "2026-11-26",
+				Amount: 75,
+				Status: "AUTHORISED",
+				IsReconciled: true,
+				Invoice: { InvoiceID: "xero-historical-invoice-01" },
+			}] }), { status: 200 })
+		}
+		throw new Error(`Unexpected Xero request: ${url}`)
+	}) as typeof fetch
+	const orchestrator = {
+		state: { casesById: new Map() },
+		enqueueBatch: async (cases: import("../src/core/types").SettlementCase[]) => {
+			for (const settlementCase of cases) db.saveCase(settlementCase)
+			return []
+		},
+	} as unknown as Parameters<typeof runIntegrationSync>[0]["orchestrator"]
+	try {
+		const initial = await runIntegrationSync({ provider: "xero", workspaceId: DEFAULT_WORKSPACE_ID, orchestrator })
+		assert.equal(initial.status, "success")
+		assert.equal(initial.casesQueued, 1)
+		const incremental = await runIntegrationSync({ provider: "xero", workspaceId: DEFAULT_WORKSPACE_ID, orchestrator })
+		assert.equal(incremental.status, "success")
+		assert.equal(incremental.casesQueued, 1)
+		const linkedRevision = db.listPersistedCases().find((settlementCase) =>
+			settlementCase.sourceRevisionOf === "XERO-INV-HIST-01" &&
+			settlementCase.accountingPayments?.some((application) => application.paymentId === "xero-historical-payment-01"),
+		)
+		assert.equal(linkedRevision?.settlementEvidence, "incomplete")
+		assert.equal(linkedRevision?.accountingPayments?.[0]?.amount?.amountMinor, 7500)
+		assert.equal(linkedRevision?.wire.settledAmount.amountMinor, 0)
+		assert.match(linkedRevision?.evidenceGap || "", /earlier local sync/)
 	} finally {
 		global.fetch = previousFetch
 		db.disconnectIntegration(DEFAULT_WORKSPACE_ID, "xero")

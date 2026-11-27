@@ -153,7 +153,22 @@ export async function runIntegrationSync(params: {
 		})
 		const credentials = await credentialsForSync({ db, workspaceId, provider: integration.provider })
 		assertLease()
-		const fetched = await fetchCasesFromIntegration({ integration, credentials, lastSuccessfulSyncAt: integration.lastSyncedAt })
+		const invoiceSourceField = integration.provider === "quickbooks"
+			? "quickbooks.invoice"
+			: integration.provider === "xero"
+				? "xero.invoice"
+				: undefined
+		const existingCases = invoiceSourceField
+			? db.listPersistedCases(workspaceId).filter((settlementCase) =>
+				settlementCase.invoice?.sourceRefs?.some((sourceRef) => sourceRef.field === invoiceSourceField),
+			)
+			: undefined
+		const fetched = await fetchCasesFromIntegration({
+			integration,
+			credentials,
+			lastSuccessfulSyncAt: integration.lastSyncedAt,
+			existingCases,
+		})
 		assertLease()
 
 		const freshCases = prepareChangedCases(fetched.cases, db, workspaceId)

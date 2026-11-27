@@ -46,6 +46,28 @@ function providerDate(value?: string): string | undefined {
 	return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === date ? date : undefined
 }
 
+function existingAccountingInvoiceCases(
+	cases: SettlementCase[],
+	field: "quickbooks.invoice" | "xero.invoice",
+): Map<string, SettlementCase> {
+	const byInvoiceId = new Map<string, SettlementCase>()
+	for (const settlementCase of cases) {
+		const invoiceRef = settlementCase.invoice?.sourceRefs?.find((sourceRef) => sourceRef.field === field)
+		if (invoiceRef) byInvoiceId.set(invoiceRef.recordId, settlementCase)
+	}
+	return byInvoiceId
+}
+
+function mergeAccountingPaymentApplications(
+	existing: AccountingPaymentApplication[] | undefined,
+	updates: AccountingPaymentApplication[],
+): { applications: AccountingPaymentApplication[]; truncated: boolean } {
+	const byId = new Map((existing ?? []).map((application) => [application.applicationId, application]))
+	for (const application of updates) byId.set(application.applicationId, application)
+	const merged = [...byId.values()]
+	return { applications: merged.slice(-1000), truncated: merged.length > 1000 }
+}
+
 function syncSince(lastSuccessfulSyncAt?: string): Date | undefined {
 	if (!lastSuccessfulSyncAt) return undefined
 	const timestamp = Date.parse(lastSuccessfulSyncAt)
@@ -228,6 +250,7 @@ async function fetchQuickBooksCases(
 	credentials: IntegrationCredentials,
 	config: Record<string, string>,
 	lastSuccessfulSyncAt?: string,
+	existingCases: SettlementCase[] = [],
 ): Promise<ConnectorFetchResult> {
 	const realmId = config.realmId?.trim()
 	if (!realmId) {
@@ -275,6 +298,7 @@ async function fetchQuickBooksCases(
 	await fetchQuickBooksPages("Invoice", invoices)
 	await fetchQuickBooksPages("Payment", payments)
 	const invoicesById = new Map(invoices.map((invoice) => [invoice.Id, invoice]))
+	const priorCasesByInvoice = existingAccountingInvoiceCases(existingCases, "quickbooks.invoice")
 	const applicationsByInvoice = new Map<string, AccountingPaymentApplication[]>()
 	const truncatedPaymentApplications = new Set<string>()
 	for (const payment of payments) {
@@ -282,8 +306,9 @@ async function fetchQuickBooksCases(
 			const linkedInvoices = (line.LinkedTxn ?? []).filter((linked) => linked.TxnType === "Invoice" && linked.TxnId)
 			for (const linked of linkedInvoices) {
 				const invoice = invoicesById.get(linked.TxnId!)
-				if (!invoice) continue
-				const invoiceCurrency = (invoice.CurrencyRef?.value || "USD").toUpperCase()
+				const priorCase = priorCasesByInvoice.get(linked.TxnId!)
+				if (!invoice && !priorCase) continue
+				const invoiceCurrency = (invoice?.CurrencyRef?.value || priorCase?.invoice?.expectedAmount.currency || "USD").toUpperCase()
 				const paymentCurrency = (payment.CurrencyRef?.value || invoiceCurrency).toUpperCase()
 				const mappingIssue = linkedInvoices.length > 1
 					? "This QuickBooks payment line links to multiple invoice records; its amount cannot be allocated to one invoice safely."
@@ -300,32 +325,34 @@ async function fetchQuickBooksCases(
 				}
 				const application: AccountingPaymentApplication = {
 					provider: "quickbooks",
-					applicationId: `${payment.Id}:${lineIndex}:${invoice.Id}`,
+					applicationId: `${payment.Id}:${lineIndex}:${linked.TxnId}`,
 					paymentId: payment.Id,
-					invoiceRecordId: invoice.Id,
+					invoiceRecordId: linked.TxnId!,
 					date: providerDate(payment.TxnDate),
 					amount: !mappingIssue ? { amountMinor: parseDecimalStringToMinor(String(line.Amount), invoiceCurrency), currency: invoiceCurrency } : undefined,
 					status: payment.TxnStatus,
 					mappingIssue,
 					sourceRef,
 				}
-				const current = applicationsByInvoice.get(invoice.Id) ?? []
+				const current = applicationsByInvoice.get(linked.TxnId!) ?? []
 				if (current.length < 1000) current.push(application)
-				else truncatedPaymentApplications.add(invoice.Id)
-				applicationsByInvoice.set(invoice.Id, current)
+				else truncatedPaymentApplications.add(linked.TxnId!)
+				applicationsByInvoice.set(linked.TxnId!, current)
 			}
 		}
 	}
 	const cases: SettlementCase[] = invoices.map((inv) => {
 		const ccy = (inv.CurrencyRef?.value || "USD").toUpperCase()
 		const minor = parseDecimalStringToMinor(String(inv.TotalAmt), ccy)
-		const accountingPayments = applicationsByInvoice.get(inv.Id) ?? []
+		const priorCase = priorCasesByInvoice.get(inv.Id)
+		const merged = mergeAccountingPaymentApplications(priorCase?.accountingPayments, applicationsByInvoice.get(inv.Id) ?? [])
+		const accountingPayments = merged.applications
 		return {
 			caseId: `QBO-${inv.DocNumber || inv.Id}`,
 			title: `QuickBooks Invoice ${inv.DocNumber || inv.Id}`,
 			channelLabel: "QuickBooks Online",
 			settlementEvidence: accountingPayments.length > 0 ? "incomplete" : "estimated",
-			evidenceGap: `${accountingPaymentGap("QuickBooks", accountingPayments)}${truncatedPaymentApplications.has(inv.Id) ? " More than 1,000 applications were linked; the displayed list is capped and the complete source response remains in the raw vault." : ""}`,
+			evidenceGap: `${accountingPaymentGap("QuickBooks", accountingPayments)}${truncatedPaymentApplications.has(inv.Id) || merged.truncated ? " More than 1,000 applications were linked; the displayed list is capped and the complete source response remains in the raw vault." : ""}`,
 			accountingPayments,
 			createdAt: new Date().toISOString(),
 			invoice: {
@@ -359,6 +386,19 @@ async function fetchQuickBooksCases(
 			},
 		}
 	})
+	const returnedInvoiceIds = new Set(invoices.map((invoice) => invoice.Id))
+	for (const [invoiceId, applications] of applicationsByInvoice) {
+		if (returnedInvoiceIds.has(invoiceId)) continue
+		const priorCase = priorCasesByInvoice.get(invoiceId)
+		if (!priorCase) continue
+		const merged = mergeAccountingPaymentApplications(priorCase.accountingPayments, applications)
+		cases.push({
+			...priorCase,
+			settlementEvidence: "incomplete",
+			accountingPayments: merged.applications,
+			evidenceGap: `${accountingPaymentGap("QuickBooks", merged.applications)} The linked invoice record was loaded from an earlier local sync because it was outside this incremental invoice window.${merged.truncated ? " More than 1,000 applications are linked; the displayed list is capped and the full provider responses remain in the raw vault." : ""}`,
+		})
+	}
 	return { recordsFetched: invoices.length + payments.length, cases, rawPayload: combineRawPages(rawPages) }
 }
 
@@ -366,6 +406,7 @@ async function fetchXeroCases(
 	credentials: IntegrationCredentials,
 	config: Record<string, string>,
 	lastSuccessfulSyncAt?: string,
+	existingCases: SettlementCase[] = [],
 ): Promise<ConnectorFetchResult> {
 	const tenantId = config.tenantId?.trim()
 	if (!tenantId) {
@@ -412,13 +453,16 @@ async function fetchXeroCases(
 	await fetchXeroPages("Invoices", invoices)
 	await fetchXeroPages("Payments", payments)
 	const invoicesById = new Map(invoices.map((invoice) => [invoice.InvoiceID, invoice]))
+	const priorCasesByInvoice = existingAccountingInvoiceCases(existingCases, "xero.invoice")
 	const applicationsByInvoice = new Map<string, AccountingPaymentApplication[]>()
 	const truncatedPaymentApplications = new Set<string>()
 	for (const payment of payments) {
 		const invoiceId = payment.Invoice?.InvoiceID
-		if (!invoiceId || !invoicesById.has(invoiceId)) continue
-		const invoice = invoicesById.get(invoiceId)!
-		const ccy = (invoice.CurrencyCode || "USD").toUpperCase()
+		if (!invoiceId) continue
+		const invoice = invoicesById.get(invoiceId)
+		const priorCase = priorCasesByInvoice.get(invoiceId)
+		if (!invoice && !priorCase) continue
+		const ccy = (invoice?.CurrencyCode || priorCase?.invoice?.expectedAmount.currency || "USD").toUpperCase()
 		const mappingIssue = payment.Status !== "AUTHORISED"
 			? `Xero payment status is ${payment.Status || "missing"}; its amount was not allocated.`
 			: typeof payment.Amount !== "number" || !Number.isFinite(payment.Amount) || payment.Amount < 0
@@ -449,13 +493,15 @@ async function fetchXeroCases(
 	const cases: SettlementCase[] = invoices.map((inv) => {
 		const ccy = (inv.CurrencyCode || "USD").toUpperCase()
 		const minor = parseDecimalStringToMinor(String(inv.Total ?? 0), ccy)
-		const accountingPayments = applicationsByInvoice.get(inv.InvoiceID) ?? []
+		const priorCase = priorCasesByInvoice.get(inv.InvoiceID)
+		const merged = mergeAccountingPaymentApplications(priorCase?.accountingPayments, applicationsByInvoice.get(inv.InvoiceID) ?? [])
+		const accountingPayments = merged.applications
 		return {
 			caseId: `XERO-${inv.InvoiceNumber || inv.InvoiceID.slice(0, 8)}`,
 			title: `Xero Invoice ${inv.InvoiceNumber || inv.InvoiceID}`,
 			channelLabel: "Xero Accounting",
 			settlementEvidence: accountingPayments.length > 0 ? "incomplete" : "estimated",
-			evidenceGap: `${accountingPaymentGap("Xero", accountingPayments)}${truncatedPaymentApplications.has(inv.InvoiceID) ? " More than 1,000 applications were linked; the displayed list is capped and the complete source response remains in the raw vault." : ""}`,
+			evidenceGap: `${accountingPaymentGap("Xero", accountingPayments)}${truncatedPaymentApplications.has(inv.InvoiceID) || merged.truncated ? " More than 1,000 applications were linked; the displayed list is capped and the complete source response remains in the raw vault." : ""}`,
 			accountingPayments,
 			createdAt: new Date().toISOString(),
 			invoice: {
@@ -489,6 +535,19 @@ async function fetchXeroCases(
 			},
 		}
 	})
+	const returnedInvoiceIds = new Set(invoices.map((invoice) => invoice.InvoiceID))
+	for (const [invoiceId, applications] of applicationsByInvoice) {
+		if (returnedInvoiceIds.has(invoiceId)) continue
+		const priorCase = priorCasesByInvoice.get(invoiceId)
+		if (!priorCase) continue
+		const merged = mergeAccountingPaymentApplications(priorCase.accountingPayments, applications)
+		cases.push({
+			...priorCase,
+			settlementEvidence: "incomplete",
+			accountingPayments: merged.applications,
+			evidenceGap: `${accountingPaymentGap("Xero", merged.applications)} The linked invoice record was loaded from an earlier local sync because it was outside this incremental invoice window.${merged.truncated ? " More than 1,000 applications are linked; the displayed list is capped and the full provider responses remain in the raw vault." : ""}`,
+		})
+	}
 	return { recordsFetched: invoices.length + payments.length, cases, rawPayload: combineRawPages(rawPages) }
 }
 
@@ -535,6 +594,7 @@ export async function fetchCasesFromIntegration(params: {
 	integration: IntegrationRecord
 	credentials: IntegrationCredentials | null
 	lastSuccessfulSyncAt?: string
+	existingCases?: SettlementCase[]
 }): Promise<ConnectorFetchResult> {
 	const { integration, credentials } = params
 	switch (integration.provider) {
@@ -547,9 +607,9 @@ export async function fetchCasesFromIntegration(params: {
 		case "wise":
 			return fetchWiseCases(credentials ?? {}, integration.config)
 		case "quickbooks":
-			return fetchQuickBooksCases(credentials ?? {}, integration.config, params.lastSuccessfulSyncAt)
+			return fetchQuickBooksCases(credentials ?? {}, integration.config, params.lastSuccessfulSyncAt, params.existingCases)
 		case "xero":
-			return fetchXeroCases(credentials ?? {}, integration.config, params.lastSuccessfulSyncAt)
+			return fetchXeroCases(credentials ?? {}, integration.config, params.lastSuccessfulSyncAt, params.existingCases)
 		default:
 			return fetchGenericEndpointCases(integration.provider, credentials ?? {}, integration.config)
 	}
