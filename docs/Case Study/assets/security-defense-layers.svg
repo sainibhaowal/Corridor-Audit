@@ -1,116 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 620" width="1300" height="620" font-family="Inter, Segoe UI, system-ui, sans-serif">
-  <rect width="1300" height="620" rx="20" fill="#080d12" stroke="#1c2a33" stroke-width="2"/>
-
-  <rect x="28" y="22" width="1244" height="68" rx="14" fill="#0d141b" stroke="#225b51"/>
-  <text x="50" y="50" fill="#62e1c3" font-size="12" font-weight="700" letter-spacing="1.8">FINTECH DEFENSE-IN-DEPTH · CRYPTOGRAPHY, HASHING &amp; ZERO-LEAKAGE</text>
-  <text x="50" y="75" fill="#e3edef" font-size="21" font-weight="800">5-Layer Security Architecture Protecting Keys, Webhooks, Raw Data &amp; Payouts</text>
-
-  <!-- LAYER 1 -->
-  <rect x="28" y="112" width="236" height="478" rx="14" fill="#0d141b" stroke="#62e1c3"/>
-  <text x="46" y="142" fill="#62e1c3" font-size="12" font-weight="800">LAYER 1 · INBOUND AUTH</text>
-  <text x="46" y="166" fill="#e3edef" font-size="15" font-weight="800">HMAC-SHA256 &amp; OAuth2</text>
-  <rect x="44" y="186" width="204" height="110" rx="10" fill="#080d12" stroke="#1c2a33"/>
-  <text x="56" y="210" fill="#75e4c7" font-size="12" font-weight="700">Timing-Safe Verification</text>
-  <text x="56" y="230" fill="#c7d3d6" font-size="11">• crypto.timingSafeEqual()</text>
-  <text x="56" y="248" fill="#c7d3d6" font-size="11">• Stripe-Signature (300s TTL)</text>
-  <text x="56" y="266" fill="#c7d3d6" font-size="11">• Wise X-Signature-SHA256</text>
-  <text x="56" y="284" fill="#c7d3d6" font-size="11">• X-Corridor-Signature</text>
-
-  <rect x="44" y="312" width="204" height="110" rx="10" fill="#080d12" stroke="#1c2a33"/>
-  <text x="56" y="336" fill="#75e4c7" font-size="12" font-weight="700">OAuth2 CSRF Protection</text>
-  <text x="56" y="356" fill="#c7d3d6" font-size="11">• 128-bit randomBytes(16)</text>
-  <text x="56" y="374" fill="#c7d3d6" font-size="11">• Single-use state token</text>
-  <text x="56" y="392" fill="#c7d3d6" font-size="11">• 10-minute expiry window</text>
-  <text x="56" y="410" fill="#c7d3d6" font-size="11">• 401 on invalid signatures</text>
-
-  <rect x="44" y="438" width="204" height="132" rx="10" fill="#0d2725" stroke="#225b51"/>
-  <text x="56" y="462" fill="#e3edef" font-size="12" font-weight="700">Secret Rotation</text>
-  <text x="56" y="484" fill="#a4b4b8" font-size="11">Admins can rotate workspace</text>
-  <text x="56" y="502" fill="#a4b4b8" font-size="11">whsec_* keys in 1 click</text>
-  <text x="56" y="520" fill="#a4b4b8" font-size="11">inside System Settings.</text>
-  <text x="56" y="548" fill="#62e1c3" font-size="10.5" font-weight="700">webhook-signatures.ts</text>
-
-  <!-- LAYER 2 -->
-  <rect x="280" y="112" width="236" height="478" rx="14" fill="#0d141b" stroke="#10b981"/>
-  <text x="298" y="142" fill="#34d399" font-size="12" font-weight="800">LAYER 2 · ENCRYPTION</text>
-  <text x="298" y="166" fill="#e3edef" font-size="15" font-weight="800">AES-256-GCM Vault</text>
-  <rect x="296" y="186" width="204" height="146" rx="10" fill="#080d12" stroke="#1c2a33"/>
-  <text x="308" y="210" fill="#34d399" font-size="12" font-weight="700">Authenticated Ciphertext</text>
-  <text x="308" y="232" fill="#c7d3d6" font-size="11">• 256-bit Master Key</text>
-  <text x="308" y="250" fill="#c7d3d6" font-size="11">• 96-bit Random IV / write</text>
-  <text x="308" y="268" fill="#c7d3d6" font-size="11">• 128-bit GCM Auth Tag</text>
-  <text x="308" y="286" fill="#c7d3d6" font-size="11">• v1:iv:tag:ciphertext</text>
-  <text x="308" y="310" fill="#81949a" font-size="10">Protects OAuth &amp; API tokens</text>
-
-  <rect x="296" y="348" width="204" height="222" rx="10" fill="#080d12" stroke="#1c2a33"/>
-  <text x="308" y="372" fill="#34d399" font-size="12" font-weight="700">Zero-Leakage Key Policy</text>
-  <text x="308" y="394" fill="#c7d3d6" font-size="11">• LLM keys stay in RAM only</text>
-  <text x="308" y="414" fill="#c7d3d6" font-size="11">• Never written to .env/Git</text>
-  <text x="308" y="434" fill="#c7d3d6" font-size="11">• API responses return only</text>
-  <text x="308" y="452" fill="#75e4c7" font-size="11" font-family="JetBrains Mono, monospace">  whsec_••••a1b2</text>
-  <text x="308" y="474" fill="#c7d3d6" font-size="11">• Disconnect wipes creds</text>
-  <text x="308" y="494" fill="#c7d3d6" font-size="11">• .gitignore blocks DB/keys</text>
-  <text x="308" y="548" fill="#34d399" font-size="10.5" font-weight="700">src/core/security/vault.ts</text>
-
-  <!-- LAYER 3 -->
-  <rect x="532" y="112" width="236" height="478" rx="14" fill="#0d141b" stroke="#62e1c3"/>
-  <text x="550" y="142" fill="#62e1c3" font-size="12" font-weight="800">LAYER 3 · FINGERPRINTING</text>
-  <text x="550" y="166" fill="#e3edef" font-size="15" font-weight="800">SHA-256 Raw Vault</text>
-  <rect x="548" y="186" width="204" height="170" rx="10" fill="#080d12" stroke="#1c2a33"/>
-  <text x="560" y="210" fill="#75e4c7" font-size="12" font-weight="700">Tamper-Evident Hashing</text>
-  <text x="560" y="232" fill="#c7d3d6" font-size="11">• Raw bytes hashed BEFORE</text>
-  <text x="560" y="250" fill="#c7d3d6" font-size="11">  any parser touches them</text>
-  <text x="560" y="272" fill="#c7d3d6" font-size="11">• 64-char hex SHA-256</text>
-  <text x="560" y="290" fill="#c7d3d6" font-size="11">• Stored in raw_ingestions</text>
-  <text x="560" y="312" fill="#c7d3d6" font-size="11">• Exact size_bytes logged</text>
-  <text x="560" y="334" fill="#c7d3d6" font-size="11">• Non-repudiation proof</text>
-
-  <rect x="548" y="372" width="204" height="198" rx="10" fill="#080d12" stroke="#1c2a33"/>
-  <text x="560" y="396" fill="#75e4c7" font-size="12" font-weight="700">Field-Level Provenance</text>
-  <text x="560" y="418" fill="#c7d3d6" font-size="11">• Every parsed figure links</text>
-  <text x="560" y="436" fill="#c7d3d6" font-size="11">  to SourceRef[] tags</text>
-  <text x="560" y="458" fill="#c7d3d6" font-size="11">• :32A:, :71A:, :71G:, CSV</text>
-  <text x="560" y="478" fill="#c7d3d6" font-size="11">• verify_citations_integrity</text>
-  <text x="560" y="498" fill="#c7d3d6" font-size="11">  blocks uncited verdicts</text>
-  <text x="560" y="548" fill="#62e1c3" font-size="10.5" font-weight="700">src/core/db/database.ts</text>
-
-  <!-- LAYER 4 -->
-  <rect x="784" y="112" width="236" height="478" rx="14" fill="#0d141b" stroke="#8b5cf6"/>
-  <text x="802" y="142" fill="#a78bfa" font-size="12" font-weight="800">LAYER 4 · FRAUD GUARD</text>
-  <text x="802" y="166" fill="#e3edef" font-size="15" font-weight="800">BEC &amp; Checksum Shield</text>
-  <rect x="800" y="186" width="204" height="170" rx="10" fill="#080d12" stroke="#1c2a33"/>
-  <text x="812" y="210" fill="#a78bfa" font-size="12" font-weight="700">Banking Integrity</text>
-  <text x="812" y="232" fill="#c7d3d6" font-size="11">• ISO 13616 IBAN Mod-97</text>
-  <text x="812" y="252" fill="#c7d3d6" font-size="11">• ISO 9362 SWIFT BIC</text>
-  <text x="812" y="272" fill="#c7d3d6" font-size="11">• BEC bank-change alert</text>
-  <text x="812" y="292" fill="#c7d3d6" font-size="11">  vs priorAccountRef</text>
-  <text x="812" y="314" fill="#c7d3d6" font-size="11">• Duplicate wire detection</text>
-
-  <rect x="800" y="372" width="204" height="198" rx="10" fill="#080d12" stroke="#1c2a33"/>
-  <text x="812" y="396" fill="#a78bfa" font-size="12" font-weight="700">Runtime Sandboxing</text>
-  <text x="812" y="418" fill="#c7d3d6" font-size="11">• Terminal allowlist blocks</text>
-  <text x="812" y="436" fill="#c7d3d6" font-size="11">  OS shell injection (400)</text>
-  <text x="812" y="458" fill="#c7d3d6" font-size="11">• Isolated CorridorState</text>
-  <text x="812" y="476" fill="#c7d3d6" font-size="11">  slots per agent role</text>
-  <text x="812" y="498" fill="#c7d3d6" font-size="11">• Zero floating-point math</text>
-  <text x="812" y="548" fill="#a78bfa" font-size="10.5" font-weight="700">DuplicateAnomalyAgent</text>
-
-  <!-- LAYER 5 -->
-  <rect x="1036" y="112" width="236" height="478" rx="14" fill="#2c2111" stroke="#f0c77f"/>
-  <text x="1054" y="142" fill="#f0c77f" font-size="12" font-weight="800">LAYER 5 · HUMAN GATE</text>
-  <text x="1054" y="166" fill="#e3edef" font-size="15" font-weight="800">Interception Breakpoint</text>
-  <rect x="1052" y="186" width="204" height="384" rx="10" fill="#080d12" stroke="#674b23"/>
-  <text x="1064" y="212" fill="#f0c77f" font-size="12" font-weight="700">Mandatory Sign-Off</text>
-  <text x="1064" y="236" fill="#c7d3d6" font-size="11">No high-risk dispute or</text>
-  <text x="1064" y="254" fill="#c7d3d6" font-size="11">anomaly closes silently.</text>
-  <text x="1064" y="284" fill="#75e4c7" font-size="12" font-weight="700">1. Approve Dispute</text>
-  <text x="1064" y="302" fill="#a4b4b8" font-size="11">Issues bank claim letter</text>
-  <text x="1064" y="332" fill="#f0c77f" font-size="12" font-weight="700">2. Reject &amp; Steer</text>
-  <text x="1064" y="350" fill="#a4b4b8" font-size="11">Injects override note &amp;</text>
-  <text x="1064" y="368" fill="#a4b4b8" font-size="11">re-runs AuditorAgent</text>
-  <text x="1064" y="398" fill="#fca5a5" font-size="12" font-weight="700">3. Stop Case</text>
-  <text x="1064" y="416" fill="#a4b4b8" font-size="11">Aborts settlement action</text>
-  <text x="1064" y="454" fill="#c7d3d6" font-size="11">Supports Auto-Risk or</text>
-  <text x="1064" y="472" fill="#c7d3d6" font-size="11">Step-Every-Tool mode.</text>
-  <text x="1064" y="548" fill="#f0c77f" font-size="10.5" font-weight="700">InterceptionHandler</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 520" width="1100" height="520" font-family="Inter, Segoe UI, system-ui, sans-serif">
+  <rect width="1100" height="520" rx="20" fill="#080d12" stroke="#1c2a33" stroke-width="2"/>
+  <text x="36" y="44" fill="#62e1c3" font-size="12" font-weight="700" letter-spacing="1.5">LOCAL PREVIEW · IMPLEMENTED CONTROLS AND GAPS</text>
+  <text x="36" y="76" fill="#e3edef" font-size="22" font-weight="800">Security boundaries in the current implementation</text>
+  <rect x="36" y="108" width="500" height="330" rx="14" fill="#0d141b" stroke="#225b51"/>
+  <text x="60" y="146" fill="#75e4c7" font-size="16" font-weight="800">Implemented</text>
+  <text x="60" y="184" fill="#c7d3d6" font-size="14">• AES-256-GCM for integration credentials and webhook secrets</text>
+  <text x="60" y="218" fill="#c7d3d6" font-size="14">• Optional HMAC checks for supported webhook signatures</text>
+  <text x="60" y="252" fill="#c7d3d6" font-size="14">• SHA-256 digest recorded with raw-ingestion metadata</text>
+  <text x="60" y="286" fill="#c7d3d6" font-size="14">• Allowlisted app console; no arbitrary OS shell execution</text>
+  <text x="60" y="338" fill="#81949a" font-size="12">Raw payload content remains plaintext in SQLite.</text>
+  <text x="60" y="362" fill="#81949a" font-size="12">Webhook signature enforcement defaults to off.</text>
+  <rect x="564" y="108" width="500" height="330" rx="14" fill="#17120c" stroke="#8b5cf6"/>
+  <text x="588" y="146" fill="#f0c77f" font-size="16" font-weight="800">Not provided</text>
+  <text x="588" y="184" fill="#c7d3d6" font-size="14">• User authentication, authorization, and tenant isolation</text>
+  <text x="588" y="218" fill="#c7d3d6" font-size="14">• Immutable evidence storage or authenticated audit trail</text>
+  <text x="588" y="252" fill="#c7d3d6" font-size="14">• Production key rotation, backup, and restore workflow</text>
+  <text x="588" y="286" fill="#c7d3d6" font-size="14">• Distributed durable queue, monitoring, and incident response</text>
+  <text x="588" y="338" fill="#81949a" font-size="12">SourceRef validation checks structure; it does not authenticate evidence.</text>
+  <text x="588" y="362" fill="#81949a" font-size="12">Use synthetic or public data for local evaluation.</text>
+  <rect x="36" y="462" width="1028" height="34" rx="8" fill="#2c2111" stroke="#f0c77f"/>
+  <text x="550" y="484" text-anchor="middle" fill="#f0c77f" font-size="13" font-weight="700">This diagram is not a security certification or production-readiness claim.</text>
 </svg>
