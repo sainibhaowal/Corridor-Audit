@@ -215,7 +215,9 @@ test("existing SQLite databases add the manual submitter column without replacin
 
 test("existing SQLite integrations gain a durable full-reconciliation timestamp", () => {
 	const dbPath = resolve(tmpdir(), `corridor-integration-reconcile-migration-${process.pid}-${Date.now()}.db`)
-	const legacySchema = CORRIDOR_SCHEMA_SQL.replace("\tlast_full_synced_at TEXT,\n", "")
+	const legacySchema = CORRIDOR_SCHEMA_SQL
+		.replace("\tlast_full_synced_at TEXT,\n", "")
+		.replace("\tlast_full_sync_attempt_at TEXT,\n", "")
 	assert.notEqual(legacySchema, CORRIDOR_SCHEMA_SQL, "the fixture must represent the previous integrations schema")
 	const legacyDb = new DatabaseSync(dbPath)
 	legacyDb.exec(legacySchema)
@@ -224,6 +226,7 @@ test("existing SQLite integrations gain a durable full-reconciliation timestamp"
 	try {
 		const columns = (upgradedDb as unknown as { db: DatabaseSync }).db.prepare("PRAGMA table_info(integrations)").all() as Array<{ name: string }>
 		assert.ok(columns.some((column) => column.name === "last_full_synced_at"))
+		assert.ok(columns.some((column) => column.name === "last_full_sync_attempt_at"))
 	} finally {
 		upgradedDb.close()
 		rmSync(dbPath, { force: true })
@@ -1527,6 +1530,59 @@ test("cursor providers perform a durable full reconciliation before resuming inc
 		if (previousInterval === undefined) delete process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS
 		else process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS = previousInterval
 		db.disconnectIntegration(DEFAULT_WORKSPACE_ID, "wise")
+	}
+})
+
+test("a page-limited full sync warns, resumes from the cursor, and backs off the next full attempt", async () => {
+	const db = getCorridorDb()
+	const previousFetch = global.fetch
+	const previousInterval = process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS
+	const requests: URL[] = []
+	process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS = "168"
+	global.fetch = (async (input) => {
+		const url = new URL(String(input))
+		requests.push(url)
+		if (url.searchParams.has("created[gte]")) {
+			return new Response(JSON.stringify({ data: [], has_more: false }), { status: 200 })
+		}
+		return new Response(JSON.stringify({ data: [{ id: `po-page-${requests.length}`, created: 1790000000, amount: 1000, currency: "usd", description: "Test payout" }], has_more: true }), { status: 200 })
+	}) as typeof fetch
+	const integration = db.upsertIntegration({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider: "stripe",
+		category: "payouts",
+		authMode: "api_token",
+		status: "connected",
+		credentials: { apiKey: "stripe-full-limit-test" },
+	})
+	const oldSyncAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
+	db.markIntegrationSyncState({
+		integrationId: integration.id,
+		status: "connected",
+		lastSyncStatus: "success",
+		lastSyncedAt: oldSyncAt,
+		lastFullSyncedAt: oldSyncAt,
+	})
+	const orchestrator = { state: { casesById: new Map() } } as unknown as Parameters<typeof runIntegrationSync>[0]["orchestrator"]
+	try {
+		const deferred = await runIntegrationSync({ provider: "stripe", workspaceId: DEFAULT_WORKSPACE_ID, orchestrator })
+		assert.equal(deferred.status, "success")
+		assert.match(deferred.error || "", /full reconciliation remains incomplete/)
+		assert.equal(requests.length, 101)
+		assert.equal(requests[100]?.searchParams.has("created[gte]"), true)
+		const afterFallback = db.getIntegration(DEFAULT_WORKSPACE_ID, "stripe")
+		assert.equal(afterFallback?.lastFullSyncedAt, oldSyncAt)
+		assert.ok(afterFallback?.lastFullSyncAttemptAt)
+
+		const incremental = await runIntegrationSync({ provider: "stripe", workspaceId: DEFAULT_WORKSPACE_ID, orchestrator })
+		assert.equal(incremental.status, "success")
+		assert.equal(requests.length, 102, "the next scheduled run resumes incrementally instead of repeating the oversized full scan")
+		assert.equal(requests[101]?.searchParams.has("created[gte]"), true)
+	} finally {
+		global.fetch = previousFetch
+		if (previousInterval === undefined) delete process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS
+		else process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS = previousInterval
+		db.disconnectIntegration(DEFAULT_WORKSPACE_ID, "stripe")
 	}
 })
 

@@ -78,6 +78,7 @@ export interface IntegrationRecord {
 	config: Record<string, string>
 	lastSyncedAt?: string
 	lastFullSyncedAt?: string
+	lastFullSyncAttemptAt?: string
 	lastSyncStatus?: "success" | "failed"
 	lastError?: string
 	createdAt: string
@@ -197,6 +198,7 @@ CREATE TABLE IF NOT EXISTS integrations (
 	config_json TEXT NOT NULL DEFAULT '{}',
 	last_synced_at TEXT,
 	last_full_synced_at TEXT,
+	last_full_sync_attempt_at TEXT,
 	last_sync_status TEXT,
 	last_error TEXT,
 	created_at TEXT NOT NULL,

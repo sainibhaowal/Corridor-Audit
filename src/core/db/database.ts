@@ -269,9 +269,9 @@ export class CorridorDatabase {
 
 	private ensureIntegrationFullSyncColumn(): void {
 		const columns = this.db.prepare("PRAGMA table_info(integrations)").all() as Array<{ name: string }>
-		if (!columns.some((column) => column.name === "last_full_synced_at")) {
-			this.db.exec("ALTER TABLE integrations ADD COLUMN last_full_synced_at TEXT")
-		}
+		const existing = new Set(columns.map((column) => column.name))
+		if (!existing.has("last_full_synced_at")) this.db.exec("ALTER TABLE integrations ADD COLUMN last_full_synced_at TEXT")
+		if (!existing.has("last_full_sync_attempt_at")) this.db.exec("ALTER TABLE integrations ADD COLUMN last_full_sync_attempt_at TEXT")
 	}
 
 	private ensureTeamIdentityColumn(): void {
@@ -784,6 +784,7 @@ export class CorridorDatabase {
 			config: JSON.parse(String(row.config_json || "{}")) as Record<string, string>,
 			lastSyncedAt: row.last_synced_at ? String(row.last_synced_at) : undefined,
 			lastFullSyncedAt: row.last_full_synced_at ? String(row.last_full_synced_at) : undefined,
+			lastFullSyncAttemptAt: row.last_full_sync_attempt_at ? String(row.last_full_sync_attempt_at) : undefined,
 			lastSyncStatus: row.last_sync_status ? (String(row.last_sync_status) as "success" | "failed") : undefined,
 			lastError: row.last_error ? String(row.last_error) : undefined,
 			createdAt: String(row.created_at),
@@ -1023,13 +1024,15 @@ export class CorridorDatabase {
 		lastError?: string | null
 		lastSyncedAt?: string
 		lastFullSyncedAt?: string
+		lastFullSyncAttemptAt?: string
 	}): void {
 		this.db
 			.prepare(
 				`UPDATE integrations
 				SET status = ?, last_sync_status = COALESCE(?, last_sync_status),
 					last_error = ?, last_synced_at = COALESCE(?, last_synced_at),
-					last_full_synced_at = COALESCE(?, last_full_synced_at), updated_at = ?
+					last_full_synced_at = COALESCE(?, last_full_synced_at),
+					last_full_sync_attempt_at = COALESCE(?, last_full_sync_attempt_at), updated_at = ?
 				WHERE id = ?`,
 			)
 			.run(
@@ -1038,6 +1041,7 @@ export class CorridorDatabase {
 				params.lastError ?? null,
 				params.lastSyncedAt ?? null,
 				params.lastFullSyncedAt ?? null,
+				params.lastFullSyncAttemptAt ?? null,
 				new Date().toISOString(),
 				params.integrationId,
 			)

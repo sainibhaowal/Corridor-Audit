@@ -21,6 +21,13 @@ const LINKED_INVOICE_LOOKUP_BATCH_SIZE = 40
 const MAX_LINKED_INVOICE_LOOKUP_BATCHES = 20
 const SYNC_CURSOR_OVERLAP_MS = 5 * 60 * 1000
 
+export class ProviderPageLimitError extends Error {
+	constructor(readonly provider: string, readonly resource: string, readonly pageLimit: number) {
+		super(`${provider} ${resource} sync exceeded the ${pageLimit}-page safety limit.`)
+		this.name = "ProviderPageLimitError"
+	}
+}
+
 function accountingPaymentGap(providerName: string, applications: AccountingPaymentApplication[]): string {
 	if (applications.length === 0) {
 		return `${providerName} invoice evidence was fetched, but no linked accounting payment application was fetched. The zero-value unmatched wire is structural only and is not evidence that no payment occurred.`
@@ -130,7 +137,7 @@ async function fetchStripeCases(credentials: IntegrationCredentials, lastSuccess
 		const lastId = pagePayouts.at(-1)?.id
 		if (!lastId) throw new Error("Stripe indicated another page but returned no payout cursor.")
 		startingAfter = lastId
-		if (page === MAX_PROVIDER_SYNC_PAGES - 1) throw new Error(`Stripe payout sync exceeded the ${MAX_PROVIDER_SYNC_PAGES}-page safety limit.`)
+		if (page === MAX_PROVIDER_SYNC_PAGES - 1) throw new ProviderPageLimitError("Stripe", "payout", MAX_PROVIDER_SYNC_PAGES)
 	}
 	const cases: SettlementCase[] = payouts.map((p) => {
 		const ccy = p.currency.toUpperCase()
@@ -215,7 +222,7 @@ async function fetchWiseCases(
 		const pageTransfers = JSON.parse(rawPage) as typeof transfers
 		transfers.push(...pageTransfers)
 		if (pageTransfers.length < WISE_PAGE_SIZE) break
-		if (page === MAX_PROVIDER_SYNC_PAGES - 1) throw new Error(`Wise transfer sync exceeded the ${MAX_PROVIDER_SYNC_PAGES}-page safety limit.`)
+		if (page === MAX_PROVIDER_SYNC_PAGES - 1) throw new ProviderPageLimitError("Wise", "transfer", MAX_PROVIDER_SYNC_PAGES)
 	}
 
 	const cases: SettlementCase[] = transfers.map((t) => ({
@@ -298,7 +305,7 @@ async function fetchQuickBooksCases(
 			const pageRecords = json.QueryResponse?.[entity] ?? []
 			target.push(...pageRecords)
 			if (pageRecords.length < ACCOUNTING_PAGE_SIZE) break
-			if (page === MAX_PROVIDER_SYNC_PAGES - 1) throw new Error(`QuickBooks ${entity.toLowerCase()} sync exceeded the ${MAX_PROVIDER_SYNC_PAGES}-page safety limit.`)
+			if (page === MAX_PROVIDER_SYNC_PAGES - 1) throw new ProviderPageLimitError("QuickBooks", entity.toLowerCase(), MAX_PROVIDER_SYNC_PAGES)
 		}
 	}
 	await fetchQuickBooksPages("Invoice", invoices)
@@ -482,7 +489,7 @@ async function fetchXeroCases(
 			const pageRecords = json[resource] ?? []
 			target.push(...pageRecords)
 			if (pageRecords.length < ACCOUNTING_PAGE_SIZE) break
-			if (page === MAX_PROVIDER_SYNC_PAGES) throw new Error(`Xero ${resource.toLowerCase()} sync exceeded the ${MAX_PROVIDER_SYNC_PAGES}-page safety limit.`)
+			if (page === MAX_PROVIDER_SYNC_PAGES) throw new ProviderPageLimitError("Xero", resource.toLowerCase(), MAX_PROVIDER_SYNC_PAGES)
 		}
 	}
 	await fetchXeroPages("Invoices", invoices)

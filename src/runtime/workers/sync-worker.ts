@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "../../core/db/database"
 import type { IntegrationRecord, SyncRunRecord } from "../../core/db/schema"
 import type { IntegrationCredentials } from "../../core/db/schema"
-import { fetchCasesFromIntegration } from "../../core/integrations/connectors"
+import { fetchCasesFromIntegration, ProviderPageLimitError } from "../../core/integrations/connectors"
 import { refreshOAuthCredentials } from "../../core/integrations/oauth"
 import type { SettlementCase } from "../../core/types"
 import type { CorridorOrchestrator } from "../orchestrator"
@@ -17,7 +17,7 @@ const SYNC_LEASE_RENEW_MS = 15_000
 const CURSOR_RECONCILIATION_PROVIDERS = new Set(["stripe", "wise", "xero"])
 
 export function shouldRunFullProviderReconciliation(
-	integration: Pick<IntegrationRecord, "provider" | "lastFullSyncedAt">,
+	integration: Pick<IntegrationRecord, "provider" | "lastFullSyncedAt" | "lastFullSyncAttemptAt">,
 	nowMs = Date.now(),
 ): boolean {
 	if (!CURSOR_RECONCILIATION_PROVIDERS.has(integration.provider)) return false
@@ -25,9 +25,12 @@ export function shouldRunFullProviderReconciliation(
 	if (!Number.isSafeInteger(hours) || hours < 24 || hours > 720) {
 		throw new Error("PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS must be an integer from 24 to 720.")
 	}
-	if (!integration.lastFullSyncedAt) return true
-	const lastFullSyncMs = Date.parse(integration.lastFullSyncedAt)
-	return !Number.isFinite(lastFullSyncMs) || nowMs - lastFullSyncMs >= hours * 60 * 60 * 1000
+	const intervalMs = hours * 60 * 60 * 1000
+	const lastFullSyncMs = integration.lastFullSyncedAt ? Date.parse(integration.lastFullSyncedAt) : Number.NaN
+	if (Number.isFinite(lastFullSyncMs) && nowMs - lastFullSyncMs < intervalMs) return false
+	const lastAttemptMs = integration.lastFullSyncAttemptAt ? Date.parse(integration.lastFullSyncAttemptAt) : Number.NaN
+	if (Number.isFinite(lastAttemptMs) && nowMs - lastAttemptMs < intervalMs) return false
+	return true
 }
 
 export class IntegrationSyncBusyError extends Error {
@@ -154,6 +157,7 @@ export async function runIntegrationSync(params: {
 		}
 	}
 	let run: SyncRunRecord | undefined
+	let fullReconciliationAttemptAt: string | undefined
 	try {
 		const latestIntegration = db.getIntegration(workspaceId, params.provider)
 		if (!latestIntegration || latestIntegration.status === "disconnected") {
@@ -174,7 +178,16 @@ export async function runIntegrationSync(params: {
 		})
 		const credentials = await credentialsForSync({ db, workspaceId, provider: integration.provider })
 		assertLease()
-		const fullReconciliation = shouldRunFullProviderReconciliation(integration)
+		let fullReconciliation = shouldRunFullProviderReconciliation(integration)
+		let reconciliationMode: "full" | "incremental" | "incremental_after_full_limit" = fullReconciliation ? "full" : "incremental"
+		if (
+			!fullReconciliation &&
+			!integration.lastSyncedAt &&
+			!integration.lastFullSyncedAt &&
+			integration.lastFullSyncAttemptAt
+		) {
+			throw new Error(`The initial ${integration.provider} full sync previously exceeded the page limit and no successful incremental cursor exists. Configure a smaller historical backfill window with the provider before retrying.`)
+		}
 		const invoiceSourceField = integration.provider === "quickbooks"
 			? "quickbooks.invoice"
 			: integration.provider === "xero"
@@ -185,12 +198,26 @@ export async function runIntegrationSync(params: {
 				settlementCase.invoice?.sourceRefs?.some((sourceRef) => sourceRef.field === invoiceSourceField),
 			)
 			: undefined
-		const fetched = await fetchCasesFromIntegration({
-			integration,
-			credentials,
-			lastSuccessfulSyncAt: fullReconciliation ? undefined : integration.lastSyncedAt,
-			existingCases,
-		})
+		let fetched
+		try {
+			fetched = await fetchCasesFromIntegration({
+				integration,
+				credentials,
+				lastSuccessfulSyncAt: fullReconciliation ? undefined : integration.lastSyncedAt,
+				existingCases,
+			})
+		} catch (error) {
+			if (!(error instanceof ProviderPageLimitError) || !fullReconciliation) throw error
+			fullReconciliationAttemptAt = new Date().toISOString()
+			if (!integration.lastSyncedAt) {
+				throw new Error(`${error.message} No earlier successful cursor exists, so incremental continuation is unsafe. Configure a smaller initial backfill window with the provider.`)
+			}
+			const warning = `${error.message} Incremental sync continued from the last successful cursor; full reconciliation remains incomplete.`
+			reconciliationMode = "incremental_after_full_limit"
+			fullReconciliation = false
+			fetched = await fetchCasesFromIntegration({ integration, credentials, lastSuccessfulSyncAt: integration.lastSyncedAt, existingCases })
+			fetched.warnings = [...(fetched.warnings ?? []), warning]
+		}
 		assertLease()
 
 		const freshCases = prepareChangedCases(fetched.cases, db, workspaceId)
@@ -209,7 +236,7 @@ export async function runIntegrationSync(params: {
 					provider: integration.provider,
 					recordsFetched: String(fetched.recordsFetched),
 					mappingCaseCount: String(fetched.cases.length),
-					reconciliationMode: fullReconciliation ? "full" : "incremental",
+					reconciliationMode,
 					...(fetched.warnings?.length ? { mappingWarnings: JSON.stringify(fetched.warnings) } : {}),
 				},
 				parseStatus: "parsed",
@@ -251,6 +278,7 @@ export async function runIntegrationSync(params: {
 			lastError: null,
 			lastSyncedAt: now,
 			lastFullSyncedAt: fullReconciliation ? now : undefined,
+			lastFullSyncAttemptAt: fullReconciliationAttemptAt,
 		})
 
 		return {
@@ -281,6 +309,7 @@ export async function runIntegrationSync(params: {
 			status: "error",
 			lastSyncStatus: "failed",
 			lastError: msg,
+			lastFullSyncAttemptAt: fullReconciliationAttemptAt,
 		})
 
 		return {
