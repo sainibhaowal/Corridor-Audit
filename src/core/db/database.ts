@@ -65,6 +65,8 @@ export class CorridorDatabase {
 		this.encryptLegacySensitiveJson()
 		this.ensureRawContentEncryptionColumn()
 		this.encryptLegacyRawContent()
+		this.ensureRawMetadataEncryptionColumns()
+		this.encryptLegacyRawMetadata()
 		this.ensureDefaultWorkspace()
 		this.ensureWorkspaceTaxPolicies()
 		this.ensureWorkspaceReviewPolicies()
@@ -237,6 +239,33 @@ export class CorridorDatabase {
 			.all() as Array<{ id: string; raw_content: string }>
 		const update = this.db.prepare("UPDATE raw_ingestions SET raw_content = ?, raw_content_encrypted = 1 WHERE id = ?")
 		for (const row of rows) update.run(encryptSecret(row.raw_content), row.id)
+	}
+
+	private ensureRawMetadataEncryptionColumns(): void {
+		const columns = this.db.prepare("PRAGMA table_info(raw_ingestions)").all() as Array<{ name: string }>
+		const existing = new Set(columns.map((column) => column.name))
+		for (const flag of ["filename_encrypted", "metadata_json_encrypted", "parse_error_encrypted"]) {
+			if (!existing.has(flag)) this.db.exec(`ALTER TABLE raw_ingestions ADD COLUMN ${flag} INTEGER NOT NULL DEFAULT 0`)
+		}
+	}
+
+	private encryptLegacyRawMetadata(): void {
+		const fields = [
+			{ column: "filename", flag: "filename_encrypted", nullable: false },
+			{ column: "metadata_json", flag: "metadata_json_encrypted", nullable: false },
+			{ column: "parse_error", flag: "parse_error_encrypted", nullable: true },
+		]
+		for (const field of fields) {
+			const rows = this.db.prepare(`SELECT rowid, ${field.column} AS content FROM raw_ingestions WHERE ${field.flag} = 0`).all() as Array<{
+				rowid: number
+				content: string | null
+			}>
+			const update = this.db.prepare(`UPDATE raw_ingestions SET ${field.column} = ?, ${field.flag} = 1 WHERE rowid = ?`)
+			for (const row of rows) {
+				const encrypted = row.content === null && field.nullable ? null : encryptSecret(String(row.content ?? ""))
+				update.run(encrypted, row.rowid)
+			}
+		}
 	}
 
 	private ensureDefaultWorkspace(): void {
@@ -896,12 +925,19 @@ export class CorridorDatabase {
 	}
 
 	private mapRawIngestionRow(row: Record<string, unknown>, includeContent: boolean): RawIngestionRecord {
+		const filename = Boolean(row.filename_encrypted) ? decryptSecret(String(row.filename)) : String(row.filename)
+		const metadataJson = Boolean(row.metadata_json_encrypted)
+			? decryptSecret(String(row.metadata_json))
+			: String(row.metadata_json || "{}")
+		const parseError = row.parse_error
+			? (Boolean(row.parse_error_encrypted) ? decryptSecret(String(row.parse_error)) : String(row.parse_error))
+			: undefined
 		return {
 			id: String(row.id),
 			workspaceId: String(row.workspace_id),
 			sourceChannel: String(row.source_channel) as RawIngestionChannel,
 			sourceProvider: String(row.source_provider),
-			filename: String(row.filename),
+			filename,
 			format: String(row.format),
 			sha256: String(row.sha256),
 			sizeBytes: Number(row.size_bytes),
@@ -909,9 +945,9 @@ export class CorridorDatabase {
 				? (Boolean(row.raw_content_encrypted) ? decryptSecret(String(row.raw_content)) : String(row.raw_content))
 				: undefined,
 			isBase64: Boolean(row.is_base64),
-			metadata: JSON.parse(String(row.metadata_json || "{}")) as Record<string, string>,
+			metadata: JSON.parse(metadataJson) as Record<string, string>,
 			parseStatus: String(row.parse_status) as RawIngestionParseStatus,
-			parseError: row.parse_error ? String(row.parse_error) : undefined,
+			parseError,
 			caseIds: JSON.parse(String(row.case_ids_json || "[]")) as string[],
 			createdAt: String(row.created_at),
 		}
@@ -942,25 +978,26 @@ export class CorridorDatabase {
 		this.db
 			.prepare(
 				`INSERT INTO raw_ingestions (
-					id, workspace_id, source_channel, source_provider, filename, format,
+					id, workspace_id, source_channel, source_provider, filename, filename_encrypted, format,
 					sha256, size_bytes, raw_content, raw_content_encrypted, is_base64, metadata_json,
-					parse_status, parse_error, case_ids_json, created_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
+					metadata_json_encrypted, parse_status, parse_error, parse_error_encrypted, case_ids_json, created_at
+				) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 1, ?, ?, 1, ?, ?, ?, ?, ?)`,
 			)
 			.run(
 				id,
 				workspaceId,
 				params.sourceChannel,
 				params.sourceProvider,
-				params.filename,
+				encryptSecret(params.filename),
 				params.format,
 				sha256,
 				sizeBytes,
 				encryptSecret(params.rawContent),
 				Number(Boolean(params.isBase64)),
-				JSON.stringify(params.metadata ?? {}),
+				encryptSecret(JSON.stringify(params.metadata ?? {})),
 				params.parseStatus ?? "parsed",
-				params.parseError ?? null,
+				params.parseError ? encryptSecret(params.parseError) : null,
+				Number(Boolean(params.parseError)),
 				JSON.stringify(params.caseIds ?? []),
 				createdAt,
 			)
@@ -978,12 +1015,13 @@ export class CorridorDatabase {
 		this.db
 			.prepare(
 				`UPDATE raw_ingestions
-				SET parse_status = ?, parse_error = ?, case_ids_json = ?
+				SET parse_status = ?, parse_error = ?, parse_error_encrypted = ?, case_ids_json = ?
 				WHERE id = ? AND workspace_id = ?`,
 			)
 			.run(
 				params.parseStatus,
-				params.parseError ?? null,
+				params.parseError ? encryptSecret(params.parseError) : null,
+				Number(Boolean(params.parseError)),
 				JSON.stringify(params.caseIds ?? []),
 				params.id,
 				params.workspaceId || DEFAULT_WORKSPACE_ID,
@@ -1066,8 +1104,8 @@ export class CorridorDatabase {
 		const rows = params?.channel && params.channel !== "all"
 			? (this.db
 					.prepare(
-						`SELECT id, workspace_id, source_channel, source_provider, filename, format,
-							sha256, size_bytes, is_base64, metadata_json, parse_status, parse_error,
+						`SELECT id, workspace_id, source_channel, source_provider, filename, filename_encrypted, format,
+							sha256, size_bytes, is_base64, metadata_json, metadata_json_encrypted, parse_status, parse_error, parse_error_encrypted,
 							case_ids_json, created_at
 						FROM raw_ingestions
 						WHERE workspace_id = ? AND source_channel = ?
@@ -1076,8 +1114,8 @@ export class CorridorDatabase {
 					.all(workspaceId, params.channel, limit) as Array<Record<string, unknown>>)
 			: (this.db
 					.prepare(
-						`SELECT id, workspace_id, source_channel, source_provider, filename, format,
-							sha256, size_bytes, is_base64, metadata_json, parse_status, parse_error,
+						`SELECT id, workspace_id, source_channel, source_provider, filename, filename_encrypted, format,
+							sha256, size_bytes, is_base64, metadata_json, metadata_json_encrypted, parse_status, parse_error, parse_error_encrypted,
 							case_ids_json, created_at
 						FROM raw_ingestions
 						WHERE workspace_id = ?

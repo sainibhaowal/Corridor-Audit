@@ -564,27 +564,64 @@ test("raw ingestion payloads are encrypted in SQLite and decrypt through the vau
 		filename: "private.json",
 		format: "json",
 		rawContent: raw,
+		metadata: { customer: "PRIVATE-CUSTOMER-01" },
+		parseStatus: "failed",
+		parseError: "PRIVATE-PARSER-DETAIL",
 	})
 	assert.equal(ingestion.rawContent, raw)
+	assert.deepEqual(ingestion.metadata, { customer: "PRIVATE-CUSTOMER-01" })
+	assert.equal(ingestion.filename, "private.json")
+	assert.equal(ingestion.parseError, "PRIVATE-PARSER-DETAIL")
 	db.close()
 
 	const inspection = new DatabaseSync(dbPath)
-	const stored = inspection.prepare("SELECT raw_content, raw_content_encrypted FROM raw_ingestions WHERE id = ?")
-		.get(ingestion.id) as { raw_content: string; raw_content_encrypted: number }
+	const stored = inspection.prepare(`SELECT raw_content, raw_content_encrypted, filename, filename_encrypted,
+		metadata_json, metadata_json_encrypted, parse_error, parse_error_encrypted FROM raw_ingestions WHERE id = ?`)
+		.get(ingestion.id) as {
+			raw_content: string
+			raw_content_encrypted: number
+			filename: string
+			filename_encrypted: number
+			metadata_json: string
+			metadata_json_encrypted: number
+			parse_error: string
+			parse_error_encrypted: number
+		}
 	assert.equal(stored.raw_content_encrypted, 1)
 	assert.ok(stored.raw_content.startsWith("v1:"))
 	assert.ok(!stored.raw_content.includes("PRIVATE-INV-01"))
-	inspection.prepare("UPDATE raw_ingestions SET raw_content = ?, raw_content_encrypted = 0 WHERE id = ?")
-		.run(raw, ingestion.id)
+	assert.equal(stored.filename_encrypted, 1)
+	assert.equal(stored.metadata_json_encrypted, 1)
+	assert.equal(stored.parse_error_encrypted, 1)
+	assert.ok(!stored.filename.includes("private.json"))
+	assert.ok(!stored.metadata_json.includes("PRIVATE-CUSTOMER-01"))
+	assert.ok(!stored.parse_error.includes("PRIVATE-PARSER-DETAIL"))
+	inspection.prepare(`UPDATE raw_ingestions SET raw_content = ?, raw_content_encrypted = 0,
+		filename = ?, filename_encrypted = 0, metadata_json = ?, metadata_json_encrypted = 0,
+		parse_error = ?, parse_error_encrypted = 0 WHERE id = ?`)
+		.run(raw, "private.json", JSON.stringify({ customer: "PRIVATE-CUSTOMER-01" }), "PRIVATE-PARSER-DETAIL", ingestion.id)
 	inspection.close()
 
 	const reopened = new CorridorDatabase(dbPath)
-	assert.equal(reopened.getRawIngestion(ingestion.id, true)?.rawContent, raw)
+	const migratedIngestion = reopened.getRawIngestion(ingestion.id, true)
+	assert.equal(migratedIngestion?.rawContent, raw)
+	assert.equal(migratedIngestion?.filename, "private.json")
+	assert.deepEqual(migratedIngestion?.metadata, { customer: "PRIVATE-CUSTOMER-01" })
+	assert.equal(migratedIngestion?.parseError, "PRIVATE-PARSER-DETAIL")
 	reopened.close()
 	const migrated = new DatabaseSync(dbPath)
-	const migratedRow = migrated.prepare("SELECT raw_content, raw_content_encrypted FROM raw_ingestions WHERE id = ?")
-		.get(ingestion.id) as { raw_content: string; raw_content_encrypted: number }
+	const migratedRow = migrated.prepare(`SELECT raw_content, raw_content_encrypted, filename_encrypted,
+		metadata_json_encrypted, parse_error_encrypted FROM raw_ingestions WHERE id = ?`).get(ingestion.id) as {
+		raw_content: string
+		raw_content_encrypted: number
+		filename_encrypted: number
+		metadata_json_encrypted: number
+		parse_error_encrypted: number
+	}
 	assert.equal(migratedRow.raw_content_encrypted, 1)
+	assert.equal(migratedRow.filename_encrypted, 1)
+	assert.equal(migratedRow.metadata_json_encrypted, 1)
+	assert.equal(migratedRow.parse_error_encrypted, 1)
 	assert.ok(migratedRow.raw_content.startsWith("v1:"))
 	migrated.close()
 	rmSync(dbPath, { force: true })

@@ -245,6 +245,7 @@ CREATE TABLE IF NOT EXISTS raw_ingestions (
 	source_channel TEXT NOT NULL,
 	source_provider TEXT NOT NULL,
 	filename TEXT NOT NULL,
+	filename_encrypted INTEGER NOT NULL DEFAULT 0,
 	format TEXT NOT NULL,
 	sha256 TEXT NOT NULL,
 	size_bytes INTEGER NOT NULL,
@@ -252,8 +253,10 @@ CREATE TABLE IF NOT EXISTS raw_ingestions (
 	raw_content_encrypted INTEGER NOT NULL DEFAULT 0,
 	is_base64 INTEGER NOT NULL DEFAULT 0,
 	metadata_json TEXT NOT NULL DEFAULT '{}',
+	metadata_json_encrypted INTEGER NOT NULL DEFAULT 0,
 	parse_status TEXT NOT NULL DEFAULT 'parsed',
 	parse_error TEXT,
+	parse_error_encrypted INTEGER NOT NULL DEFAULT 0,
 	case_ids_json TEXT NOT NULL DEFAULT '[]',
 	created_at TEXT NOT NULL
 );
