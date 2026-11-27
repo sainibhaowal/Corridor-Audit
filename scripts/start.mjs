@@ -1,7 +1,38 @@
 import "dotenv/config"
 import { exec, spawn } from "node:child_process"
-import { existsSync } from "node:fs"
+import { existsSync, readdirSync, statSync } from "node:fs"
 import { resolve } from "node:path"
+
+const SOURCE_INPUTS = [
+	"src",
+	"public",
+	"next.config.mjs",
+	"package.json",
+	"tailwind.config.ts",
+	"postcss.config.mjs",
+	"tsconfig.json",
+]
+
+function newestMtimeMs(target) {
+	try {
+		const stats = statSync(target)
+		if (!stats.isDirectory()) return stats.mtimeMs
+		let newest = 0
+		for (const entry of readdirSync(target, { withFileTypes: true })) {
+			newest = Math.max(newest, newestMtimeMs(resolve(target, entry.name)))
+		}
+		return newest
+	} catch {
+		return 0
+	}
+}
+
+function bundleIsStale() {
+	const buildIdPath = resolve(process.cwd(), ".next/BUILD_ID")
+	if (!existsSync(buildIdPath)) return true
+	const builtAt = statSync(buildIdPath).mtimeMs
+	return SOURCE_INPUTS.some((input) => newestMtimeMs(resolve(process.cwd(), input)) > builtAt)
+}
 
 function openBrowser(url) {
 	const cmd =
@@ -43,8 +74,13 @@ async function main() {
 	}
 	const nextCli = resolve(process.cwd(), "node_modules/next/dist/bin/next")
 
-	if (!existsSync(resolve(process.cwd(), ".next/BUILD_ID"))) {
-		console.log("Building CorridorAudit Next.js production bundle (first run)...")
+	if (bundleIsStale()) {
+		const firstRun = !existsSync(resolve(process.cwd(), ".next/BUILD_ID"))
+		console.log(
+			firstRun
+				? "Building CorridorAudit Next.js production bundle (first run)..."
+				: "Rebuilding CorridorAudit (sources changed since the last build)...",
+		)
 		await runCommand(process.execPath, [nextCli, "build"])
 	}
 

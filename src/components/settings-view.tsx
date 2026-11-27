@@ -360,7 +360,7 @@ export function SettingsView({
 			{/* STABLE TWO-COLUMN SETTINGS WORKSPACE */}
 			<div className="grid min-h-[480px] gap-4 lg:grid-cols-[230px_1fr]">
 				{/* LEFT SETTINGS SIDEBAR - CLEAN SECTIONS ONLY */}
-				<Card className="relative flex flex-col gap-1 p-3">
+				<Card className="relative flex flex-col gap-1 p-3 pb-10">
 					<div className="absolute right-2 bottom-2 flex gap-1">
 						<a
 							href="https://github.com/sainibhaowal/Corridor-Audit"

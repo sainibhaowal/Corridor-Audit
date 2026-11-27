@@ -53,18 +53,33 @@ function startHotFolderWatcher(orchestrator: CorridorOrchestrator): void {
 
 	const hotFolder = orchestrator.hotFolder
 	if (!existsSync(hotFolder)) mkdirSync(hotFolder, { recursive: true })
-	const seenFiles = new Set<string>()
+	// Track the last processed signature per filename so that re-dropping an
+	// updated file with the same name is ingested again, while duplicate watch
+	// events for an unchanged file are ignored.
+	const seenFiles = new Map<string, string>()
 	try {
 		const watcher = watch(hotFolder, (_eventType, filename) => {
-			if (!filename || seenFiles.has(filename)) return
+			if (!filename) return
 			const fullPath = resolve(hotFolder, filename)
-			if (!existsSync(fullPath)) return
-			seenFiles.add(filename)
+			let stats
+			try {
+				stats = statSync(fullPath)
+			} catch {
+				return
+			}
+			if (!stats.isFile()) return
+			const signature = `${stats.mtimeMs}:${stats.size}`
+			if (seenFiles.get(filename) === signature) return
+			seenFiles.set(filename, signature)
 			setTimeout(() => void (async () => {
 				let ingestionId: string | undefined
 				try {
+					// The file may still be mid-write; a later watch event will
+					// schedule another pass with the final signature.
+					const current = statSync(fullPath)
+					if (`${current.mtimeMs}:${current.size}` !== signature) return
 					const ext = extname(filename).toLowerCase()
-					if (statSync(fullPath).size > MAX_MALWARE_SCAN_BYTES) throw new MalwareScanLimitError()
+					if (current.size > MAX_MALWARE_SCAN_BYTES) throw new MalwareScanLimitError()
 					const buf = readFileSync(fullPath)
 					const malwareScan = await scanFileBytes(buf)
 					const isPdf = ext === ".pdf"

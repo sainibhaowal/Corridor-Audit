@@ -788,7 +788,7 @@ export function CorridorWorkspace() {
 								<span
 									className={cn(
 										"h-2 w-2 rounded-full",
-										sseConnected ? "bg-emerald-600" : "bg-[#2c2111]0",
+										sseConnected ? "bg-emerald-600" : "bg-amber-600",
 									)}
 								/>
 								<span>{sseConnected ? "SSE Stream Active" : "SSE Reconnecting..."}</span>
@@ -1470,7 +1470,7 @@ export function CorridorWorkspace() {
 
 			<footer className="flex h-7 shrink-0 items-center justify-between rounded-xl border border-[#1c2a33] bg-[#0d141b] px-3 text-[10px] text-[#81949a]">
 				<div className="flex min-w-0 items-center gap-3">
-					<span className="flex items-center gap-1.5"><span className={cn("h-1.5 w-1.5 rounded-full", sseConnected ? "bg-emerald-600" : "bg-[#2c2111]0")} />{sseConnected ? "Runtime connected" : "Reconnecting"}</span>
+					<span className="flex items-center gap-1.5"><span className={cn("h-1.5 w-1.5 rounded-full", sseConnected ? "bg-emerald-600" : "bg-amber-600")} />{sseConnected ? "Runtime connected" : "Reconnecting"}</span>
 					<span className="hidden truncate sm:inline">{provider.label}</span>
 					<span className="hidden font-mono md:inline">{activeCaseId ?? "No active case"}</span>
 				</div>
