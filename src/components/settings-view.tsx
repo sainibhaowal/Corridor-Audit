@@ -9,11 +9,16 @@ import {
 	GitBranch,
 	KeyRound,
 	Loader2,
+	LogOut,
+	Mail,
 	RefreshCw,
 	Search,
+	Shield,
 	ShieldAlert,
 	ShieldCheck,
 	Trash2,
+	UserCheck,
+	UserCircle2,
 	Users,
 	XCircle,
 } from "lucide-react"
@@ -23,6 +28,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { SelectBox } from "@/components/ui/select-box"
 import { cn } from "@/lib/utils"
+import { getInitials, type LocalUserProfile } from "./user-profile-modal"
 import {
 	formatModelDisplayName,
 	PROVIDER_DEFAULT_MODELS,
@@ -41,7 +47,8 @@ const PROVIDERS: Array<{ id: ProviderId; label: string; subtitle: string }> = [
 	{ id: "ollama", label: "Ollama (Local)", subtitle: "Local self-hosted models" },
 ]
 
-type SettingsSection = "providers" | "gate" | "workspace" | "team"
+export type SettingsSection = "profile" | "providers" | "gate" | "workspace" | "team"
+const AVATAR_COLORS = ["#10b981", "#38bdf8", "#a78bfa", "#f59e0b", "#f43f5e", "#6366f1"]
 
 interface WorkspaceSettingsState {
 	name: string
@@ -68,6 +75,10 @@ interface SettingsViewProps {
 	breakpointMode: "risk_only" | "step_tool"
 	onBreakpointModeChange: (mode: "risk_only" | "step_tool") => void
 	onProviderSaved: (next: ProviderStatus) => void
+	initialSection?: SettingsSection
+	localUser?: LocalUserProfile | null
+	onUserUpdated?: (user: LocalUserProfile) => void
+	theme?: "dark" | "light"
 }
 
 export function SettingsView({
@@ -75,8 +86,30 @@ export function SettingsView({
 	breakpointMode,
 	onBreakpointModeChange,
 	onProviderSaved,
+	initialSection = "profile",
+	localUser,
+	onUserUpdated,
+	theme = "dark",
 }: SettingsViewProps) {
-	const [section, setSection] = useState<SettingsSection>("providers")
+	const [section, setSection] = useState<SettingsSection>(initialSection)
+	const [profileName, setProfileName] = useState(localUser?.name || "Test Admin")
+	const [profileColor, setProfileColor] = useState(localUser?.avatarColor || "#10b981")
+	const [currentPwd, setCurrentPwd] = useState("")
+	const [newPwd, setNewPwd] = useState("")
+	const [showPwd, setShowPwd] = useState(false)
+	const [profileBusy, setProfileBusy] = useState(false)
+	const [profileMsg, setProfileMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null)
+
+	useEffect(() => {
+		setSection(initialSection)
+	}, [initialSection])
+
+	useEffect(() => {
+		if (localUser) {
+			setProfileName(localUser.name)
+			setProfileColor(localUser.avatarColor || "#10b981")
+		}
+	}, [localUser])
 	const [selectedProvider, setSelectedProvider] = useState<ProviderId>(currentProvider.provider)
 
 	const [baseURL, setBaseURL] = useState(
@@ -410,6 +443,7 @@ export function SettingsView({
 					</div>
 					{(
 						[
+							{ id: "profile", label: "User Profile & Account", icon: UserCircle2 },
 							{ id: "providers", label: "AI Providers & Models", icon: Cpu },
 							{ id: "gate", label: "Review Gate & Thresholds", icon: ShieldAlert },
 							{ id: "workspace", label: "Workspace & Tax Profile", icon: Building2 },
@@ -424,6 +458,7 @@ export function SettingsView({
 								onClick={() => {
 									setSection(item.id)
 									setWorkspaceNotice(null)
+									setProfileMsg(null)
 								}}
 								className={cn(
 									"flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left text-xs font-semibold transition-colors",
@@ -441,6 +476,232 @@ export function SettingsView({
 
 				{/* RIGHT DETAIL PANE */}
 				<Card className="flex flex-col justify-between p-5">
+					{section === "profile" && (
+						<div className="space-y-5">
+							<div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1c2a33] pb-4">
+								<div className="flex items-center gap-3.5">
+									<div
+										style={{ backgroundColor: profileColor }}
+										className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-base font-black text-white shadow-sm"
+									>
+										{getInitials(profileName || localUser?.name || "TA")}
+									</div>
+									<div>
+										<h3 className="text-sm font-bold text-[#e3edef]">
+											{localUser?.name || "Workspace User"}
+										</h3>
+										<div className="mt-0.5 flex items-center gap-1.5 text-xs text-[#81949a]">
+											<Mail className="h-3.5 w-3.5" />
+											<span>{localUser?.email || "Signed in"}</span>
+										</div>
+									</div>
+								</div>
+								<Badge variant="ok">
+									<Shield className="h-3 w-3" />
+									{(localUser?.role || "owner").toUpperCase()}
+								</Badge>
+							</div>
+
+							{profileMsg && (
+								<div
+									className={cn(
+										"rounded-lg border px-3 py-2 text-xs",
+										profileMsg.kind === "ok"
+											? theme === "light"
+												? "border-emerald-300 bg-emerald-50 text-emerald-800"
+												: "border-[#2c4a43] bg-[#0e2620] text-[#62e1c3]"
+											: theme === "light"
+												? "border-rose-300 bg-rose-50 text-rose-800"
+												: "border-red-900/70 bg-red-950/40 text-red-200",
+									)}
+								>
+									{profileMsg.text}
+								</div>
+							)}
+
+							<form
+								onSubmit={async (e) => {
+									e.preventDefault()
+									setProfileBusy(true)
+									setProfileMsg(null)
+									try {
+										const res = await fetch("/api/profile", {
+											method: "POST",
+											headers: { "Content-Type": "application/json" },
+											body: JSON.stringify({
+												action: "update_profile",
+												name: profileName.trim(),
+												avatarColor: profileColor,
+											}),
+										})
+										const json = (await res.json().catch(() => ({}))) as {
+											ok?: boolean
+											user?: LocalUserProfile
+											error?: string
+										}
+										if (!res.ok || !json.user) throw new Error(json.error || "Failed to update profile.")
+										onUserUpdated?.(json.user)
+										setProfileMsg({ kind: "ok", text: "Profile & DP updated." })
+									} catch (err) {
+										setProfileMsg({
+											kind: "err",
+											text: err instanceof Error ? err.message : String(err),
+										})
+									} finally {
+										setProfileBusy(false)
+									}
+								}}
+								className="space-y-3"
+							>
+								<div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
+									<UserCheck className="h-3.5 w-3.5 text-[#62e1c3]" />
+									Profile &amp; DP Avatar
+								</div>
+
+								<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+									<div>
+										<label className="mb-1 block text-[11px] font-semibold text-[#81949a]">
+											Display Name
+										</label>
+										<input
+											type="text"
+											value={profileName}
+											onChange={(e) => setProfileName(e.target.value)}
+											placeholder="Display Name"
+											className="h-9 w-full rounded-lg border border-[#263841] bg-[#080d12] px-3 text-xs text-[#e3edef] outline-none focus:border-[#62e1c3]"
+										/>
+									</div>
+									<div>
+										<label className="mb-1 block text-[11px] font-semibold text-[#81949a]">
+											DP Avatar Color
+										</label>
+										<div className="flex h-9 items-center gap-2">
+											{AVATAR_COLORS.map((hex) => (
+												<button
+													key={hex}
+													type="button"
+													onClick={() => setProfileColor(hex)}
+													style={{ backgroundColor: hex }}
+													className={cn(
+														"h-6 w-6 rounded-md transition-transform",
+														profileColor === hex
+															? theme === "light"
+																? "scale-110 ring-2 ring-slate-900 ring-offset-1"
+																: "scale-110 ring-2 ring-white ring-offset-1 ring-offset-[#080d12]"
+															: "opacity-80 hover:opacity-100",
+													)}
+												/>
+											))}
+										</div>
+									</div>
+								</div>
+
+								<div className="flex justify-end">
+									<Button type="submit" variant="emerald" size="sm" disabled={profileBusy}>
+										Save Profile
+									</Button>
+								</div>
+							</form>
+
+							<div className="h-px bg-[#1c2a33]" />
+
+							<form
+								onSubmit={async (e) => {
+									e.preventDefault()
+									setProfileBusy(true)
+									setProfileMsg(null)
+									try {
+										const res = await fetch("/api/profile", {
+											method: "POST",
+											headers: { "Content-Type": "application/json" },
+											body: JSON.stringify({
+												action: "reset_password",
+												currentPassword: currentPwd || undefined,
+												newPassword: newPwd,
+											}),
+										})
+										const json = (await res.json().catch(() => ({}))) as {
+											ok?: boolean
+											error?: string
+											message?: string
+										}
+										if (!res.ok || !json.ok) throw new Error(json.error || "Password reset failed.")
+										setCurrentPwd("")
+										setNewPwd("")
+										setProfileMsg({ kind: "ok", text: json.message || "Password updated." })
+									} catch (err) {
+										setProfileMsg({
+											kind: "err",
+											text: err instanceof Error ? err.message : String(err),
+										})
+									} finally {
+										setProfileBusy(false)
+									}
+								}}
+								className="space-y-3"
+							>
+								<div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
+									<KeyRound className="h-3.5 w-3.5 text-amber-500" />
+									Reset Password
+								</div>
+								<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+									<input
+										type={showPwd ? "text" : "password"}
+										value={currentPwd}
+										onChange={(e) => setCurrentPwd(e.target.value)}
+										placeholder="Current password (e.g. Admin@1234)"
+										className="h-9 w-full rounded-lg border border-[#263841] bg-[#080d12] px-3 text-xs text-[#e3edef] outline-none focus:border-[#62e1c3]"
+									/>
+									<div className="relative">
+										<input
+											type={showPwd ? "text" : "password"}
+											required
+											value={newPwd}
+											onChange={(e) => setNewPwd(e.target.value)}
+											placeholder="New strong password (min 8 chars)"
+											className="h-9 w-full rounded-lg border border-[#263841] bg-[#080d12] pr-9 pl-3 text-xs text-[#e3edef] outline-none focus:border-[#62e1c3]"
+										/>
+										<button
+											type="button"
+											onClick={() => setShowPwd((v) => !v)}
+											className="absolute top-1/2 right-2.5 -translate-y-1/2 text-[#81949a] hover:text-[#e3edef]"
+										>
+											{showPwd ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+										</button>
+									</div>
+								</div>
+								<div className="flex justify-end">
+									<Button type="submit" variant="outline" size="sm" disabled={profileBusy}>
+										Update Password
+									</Button>
+								</div>
+							</form>
+
+							<div className="h-px bg-[#1c2a33]" />
+
+							<div className="flex flex-wrap items-center justify-between gap-3">
+								<div className="text-xs text-[#81949a]">
+									Sign out of your current local session or switch to another account.
+								</div>
+								<form action="/api/auth/logout" method="post">
+									<Button
+										type="submit"
+										variant="outline"
+										size="sm"
+										className={
+											theme === "light"
+												? "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100"
+												: "border-rose-900/60 bg-rose-950/30 text-rose-300 hover:bg-rose-950/50"
+										}
+									>
+										<LogOut className="h-3.5 w-3.5" />
+										Logout &amp; Switch Account
+									</Button>
+								</form>
+							</div>
+						</div>
+					)}
+
 					{section === "providers" && (
 						<div className="space-y-4">
 							<div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1c2a33] pb-3.5">

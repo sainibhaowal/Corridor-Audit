@@ -4,7 +4,11 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff, Lock, Mail, Sparkles, User } from "lucide-react"
 
-export function LocalLoginForm() {
+interface LocalLoginFormProps {
+	theme?: "dark" | "light"
+}
+
+export function LocalLoginForm({ theme = "dark" }: LocalLoginFormProps) {
 	const router = useRouter()
 	const [mode, setMode] = useState<"login" | "register">("login")
 	const [name, setName] = useState("Test Admin")
@@ -13,6 +17,8 @@ export function LocalLoginForm() {
 	const [showPassword, setShowPassword] = useState(false)
 	const [busy, setBusy] = useState(false)
 	const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+	const isLight = theme === "light"
 
 	const fillTestAdmin = () => {
 		setMode("login")
@@ -58,9 +64,21 @@ export function LocalLoginForm() {
 		}
 	}
 
+	const inputClass = isLight
+		? "h-10 w-full rounded-lg border border-slate-300 bg-white pr-3 pl-9 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/15"
+		: "h-10 w-full rounded-lg border border-[#263841] bg-[#0c141c] pr-3 pl-9 text-sm text-[#e3edef] placeholder:text-[#5c7078] outline-none focus:border-[#62e1c3] focus:ring-2 focus:ring-[#62e1c3]/15"
+
+	const labelClass = isLight
+		? "block text-[11px] font-semibold uppercase tracking-wider text-slate-600"
+		: "block text-[11px] font-semibold uppercase tracking-wider text-[#81949a]"
+
 	return (
 		<form onSubmit={handleSubmit} className="space-y-4">
-			<div className="flex items-center justify-between gap-2 rounded-lg border border-[#1c2a33] bg-[#080d12] p-1">
+			<div
+				className={`flex items-center justify-between gap-1.5 rounded-lg border p-1 ${
+					isLight ? "border-slate-200 bg-slate-100" : "border-[#1c2a33] bg-[#0c141c]"
+				}`}
+			>
 				{(
 					[
 						{ id: "login", label: "Sign In" },
@@ -80,7 +98,13 @@ export function LocalLoginForm() {
 							}
 						}}
 						className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors ${
-							mode === tab.id ? "bg-[#12222c] text-[#62e1c3]" : "text-[#81949a] hover:text-[#e3edef]"
+							mode === tab.id
+								? isLight
+									? "bg-white text-emerald-700 shadow-xs"
+									: "bg-[#12222c] text-[#62e1c3]"
+								: isLight
+									? "text-slate-600 hover:text-slate-900"
+									: "text-[#81949a] hover:text-[#e3edef]"
 						}`}
 					>
 						{tab.label}
@@ -88,14 +112,27 @@ export function LocalLoginForm() {
 				))}
 			</div>
 
-			<div className="flex items-center justify-between rounded-lg border border-[#225b51]/60 bg-[#0d2725]/40 px-3 py-2 text-[11px]">
-				<div className="text-[#c7d3d6]">
-					Quick demo: <span className="font-mono text-[#75e4c7]">testadmin@corridoraudit.local</span>
+			<div
+				className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-[11px] ${
+					isLight
+						? "border-emerald-200 bg-emerald-50 text-slate-700"
+						: "border-[#225b51]/60 bg-[#0d2725]/40 text-[#c7d3d6]"
+				}`}
+			>
+				<div className="truncate">
+					Quick demo:{" "}
+					<span className={`font-mono ${isLight ? "font-semibold text-emerald-800" : "text-[#75e4c7]"}`}>
+						testadmin@corridoraudit.local
+					</span>
 				</div>
 				<button
 					type="button"
 					onClick={fillTestAdmin}
-					className="inline-flex items-center gap-1 rounded-md border border-[#2c4a43] bg-[#0e2620] px-2 py-1 font-semibold text-[#62e1c3] hover:bg-[#14352d]"
+					className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2.5 py-1 font-semibold transition-colors ${
+						isLight
+							? "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-100"
+							: "border-[#2c4a43] bg-[#0e2620] text-[#62e1c3] hover:bg-[#14352d]"
+					}`}
 				>
 					<Sparkles className="h-3 w-3" />
 					Fill Test Admin
@@ -103,66 +140,80 @@ export function LocalLoginForm() {
 			</div>
 
 			{errorMsg && (
-				<div className="rounded-lg border border-red-900/70 bg-red-950/40 px-3 py-2 text-xs text-red-200">
+				<div
+					className={`rounded-lg border px-3 py-2 text-xs ${
+						isLight
+							? "border-rose-300 bg-rose-50 text-rose-800"
+							: "border-red-900/70 bg-red-950/40 text-red-200"
+					}`}
+				>
 					{errorMsg}
 				</div>
 			)}
 
 			{mode === "register" && (
 				<div className="space-y-1">
-					<label className="block text-[11px] font-semibold uppercase tracking-wider text-[#81949a]">
-						Full Name
-					</label>
+					<label className={labelClass}>Full Name</label>
 					<div className="relative">
-						<User className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[#71858c]" />
+						<User
+							className={`pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 ${
+								isLight ? "text-slate-400" : "text-[#71858c]"
+							}`}
+						/>
 						<input
 							type="text"
 							required
 							value={name}
 							onChange={(e) => setName(e.target.value)}
 							placeholder="Alex Morgan"
-							className="h-10 w-full rounded-lg border border-[#263841] bg-[#080d12] pr-3 pl-9 text-sm text-[#e3edef] outline-none focus:border-[#62e1c3]"
+							className={inputClass}
 						/>
 					</div>
 				</div>
 			)}
 
 			<div className="space-y-1">
-				<label className="block text-[11px] font-semibold uppercase tracking-wider text-[#81949a]">
-					Email Address
-				</label>
+				<label className={labelClass}>Email Address</label>
 				<div className="relative">
-					<Mail className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[#71858c]" />
+					<Mail
+						className={`pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 ${
+							isLight ? "text-slate-400" : "text-[#71858c]"
+						}`}
+					/>
 					<input
 						type="email"
 						required
 						value={email}
 						onChange={(e) => setEmail(e.target.value)}
 						placeholder="name@example.com"
-						className="h-10 w-full rounded-lg border border-[#263841] bg-[#080d12] pr-3 pl-9 text-sm text-[#e3edef] outline-none focus:border-[#62e1c3]"
+						className={inputClass}
 					/>
 				</div>
 			</div>
 
 			<div className="space-y-1">
-				<label className="block text-[11px] font-semibold uppercase tracking-wider text-[#81949a]">
-					Password
-				</label>
+				<label className={labelClass}>Password</label>
 				<div className="relative">
-					<Lock className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[#71858c]" />
+					<Lock
+						className={`pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 ${
+							isLight ? "text-slate-400" : "text-[#71858c]"
+						}`}
+					/>
 					<input
 						type={showPassword ? "text" : "password"}
 						required
 						value={password}
 						onChange={(e) => setPassword(e.target.value)}
 						placeholder="Min 8 chars (letters + number/symbol)"
-						className="h-10 w-full rounded-lg border border-[#263841] bg-[#080d12] pr-10 pl-9 text-sm text-[#e3edef] outline-none focus:border-[#62e1c3]"
+						className={`${inputClass} pr-10`}
 					/>
 					<button
 						type="button"
 						aria-label={showPassword ? "Hide password" : "Show password"}
 						onClick={() => setShowPassword((v) => !v)}
-						className="absolute top-1/2 right-2.5 -translate-y-1/2 text-[#81949a] hover:text-[#e3edef]"
+						className={`absolute top-1/2 right-2.5 -translate-y-1/2 ${
+							isLight ? "text-slate-400 hover:text-slate-700" : "text-[#81949a] hover:text-[#e3edef]"
+						}`}
 					>
 						{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
 					</button>
@@ -172,7 +223,7 @@ export function LocalLoginForm() {
 			<button
 				type="submit"
 				disabled={busy}
-				className="flex h-11 w-full items-center justify-center rounded-lg bg-[#0d8b6f] px-4 text-sm font-semibold text-white transition hover:bg-[#10a382] disabled:opacity-50"
+				className="flex h-11 w-full items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
 			>
 				{busy ? "Signing in..." : mode === "login" ? "Sign in to CorridorAudit" : "Create Account & Enter"}
 			</button>

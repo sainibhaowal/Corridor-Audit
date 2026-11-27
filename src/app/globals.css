@@ -98,7 +98,7 @@ html[data-theme="light"] [class~="hover:bg-[#12342e]"]:hover {
 }
 
 html[data-theme="light"] [class~="text-[#e3edef]"],
-html[data-theme="light"] [class~="text-white"]:not([class*="bg-emerald-"]),
+html[data-theme="light"] [class~="text-white"]:not([class*="bg-emerald-"]):not([data-keep-white]),
 html[data-theme="light"] [class~="hover:text-[#e3edef]"]:hover {
 	color: #17252c !important;
 }
