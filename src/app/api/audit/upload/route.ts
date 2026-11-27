@@ -4,6 +4,7 @@ import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
 import { normalizeInboundPayloadToCases, type UploadPayload } from "@/core/ingest/normalize-upload"
 import { readRequestTextLimited, RequestBodyTooLargeError } from "@/core/security/request-body"
 import { authorizeCorridorRequest } from "@/core/security/authorization"
+import { MalwareDetectedError, MalwareScannerUnavailableError, MalwareScanLimitError, scanFileBytes } from "@/core/security/malware-scan"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 
 export const runtime = "nodejs"
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
 		const isBase64 = Boolean(body.base64 && !body.content)
 		const rawContent = body.content || body.base64 || ""
 		const format = body.format || "auto"
+		const malwareScan = await scanFileBytes(Buffer.from(rawContent, isBase64 ? "base64" : "utf8"))
 
 		if (rawContent) {
 			const rec = db.saveRawIngestion({
@@ -57,7 +59,7 @@ export async function POST(request: Request) {
 				format,
 				rawContent,
 				isBase64,
-				metadata: { filename, format },
+				metadata: { filename, format, malwareScan: malwareScan.status },
 			})
 			ingestionId = rec.id
 		}
@@ -93,6 +95,7 @@ export async function POST(request: Request) {
 				parseError: msg,
 			})
 		}
-		return NextResponse.json({ error: msg, ingestionId }, { status: err instanceof RequestBodyTooLargeError ? 413 : 400 })
+		const status = err instanceof RequestBodyTooLargeError || err instanceof MalwareScanLimitError ? 413 : err instanceof MalwareDetectedError ? 422 : err instanceof MalwareScannerUnavailableError ? 503 : 400
+		return NextResponse.json({ error: msg, ingestionId }, { status })
 	}
 }

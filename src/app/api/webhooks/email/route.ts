@@ -5,6 +5,7 @@ import { verifyInboundWebhookRequest } from "@/core/security/webhook-signatures"
 import { readRequestTextLimited, RequestBodyTooLargeError } from "@/core/security/request-body"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 import { deriveWebhookEventId } from "@/core/security/webhook-event-id"
+import { MalwareDetectedError, MalwareScannerUnavailableError, MalwareScanLimitError, scanFileBytes } from "@/core/security/malware-scan"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -44,6 +45,18 @@ export async function POST(request: Request) {
 		}
 		const sender = payload?.from || payload?.From || "unknown-sender"
 		const subject = payload?.subject || payload?.Subject || "Inbound Email"
+		let malwareScanStatus = "not_applicable"
+		for (const attachment of payload?.attachments || payload?.Attachments || []) {
+			const base64 = attachment.contentBase64 || attachment.Content
+			const content = attachment.content
+			if (!base64 && !content) continue
+			const normalizedBase64 = base64?.replace(/\s/g, "")
+			if (normalizedBase64 && !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(normalizedBase64)) {
+				throw new Error("Inbound email attachment has invalid base64 encoding.")
+			}
+			const scan = await scanFileBytes(normalizedBase64 ? Buffer.from(normalizedBase64, "base64") : Buffer.from(content!, "utf8"))
+			malwareScanStatus = scan.status
+		}
 		const receipt = db.recordWebhookReceipt({
 			workspaceId: DEFAULT_WORKSPACE_ID,
 			...identity,
@@ -51,7 +64,7 @@ export async function POST(request: Request) {
 			filename: `email-${eventIdentity.eventId.slice(-40)}.json`,
 			format: "json",
 			rawContent: raw,
-			metadata: { from: sender, subject, eventIdSource: eventIdentity.source },
+			metadata: { from: sender, subject, eventIdSource: eventIdentity.source, malwareScan: malwareScanStatus },
 		})
 		if (receipt.conflict) {
 			return NextResponse.json({ ok: false, error: "Email webhook event ID was already received with a different payload." }, { status: 409 })
@@ -118,6 +131,7 @@ export async function POST(request: Request) {
 			})
 		}
 		if (receiptIdentity) db.markWebhookReceiptStatus({ ...receiptIdentity, status: "failed" })
-		return NextResponse.json({ ok: false, error: msg, ingestionId }, { status: err instanceof RequestBodyTooLargeError ? 413 : 400 })
+		const status = err instanceof RequestBodyTooLargeError || err instanceof MalwareScanLimitError ? 413 : err instanceof MalwareDetectedError ? 422 : err instanceof MalwareScannerUnavailableError ? 503 : 400
+		return NextResponse.json({ ok: false, error: msg, ingestionId }, { status })
 	}
 }

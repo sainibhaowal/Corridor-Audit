@@ -13,6 +13,7 @@ import { GET as historyRoute } from "../src/app/api/history/route"
 import { GET as runtimeStatusRoute } from "../src/app/api/runtime/status/route"
 import { POST as terminalRoute } from "../src/app/api/terminal/route"
 import { POST as inboundWebhookRoute } from "../src/app/api/webhooks/inbound/route"
+import { POST as emailWebhookRoute } from "../src/app/api/webhooks/email/route"
 import { getCorridorDb } from "../src/core/db/database"
 
 test("Next.js App Router API routes serve health, terminal, upload ingestion, webhook ingestion, and history", async () => {
@@ -121,6 +122,37 @@ test("Next.js App Router API routes serve health, terminal, upload ingestion, we
 	assert.equal(histRes.status, 200)
 	const histJson = (await histRes.json()) as { cases?: Array<{ caseId: string }> }
 	assert.ok(Array.isArray(histJson.cases))
+})
+
+test("upload and email attachment intake record local malware scan status", async () => {
+	const env = process.env as unknown as Record<string, string | undefined>
+	const previousHost = env.CORRIDOR_CLAMD_HOST
+	delete env.CORRIDOR_CLAMD_HOST
+	try {
+		const upload = await uploadRoute(new Request("http://127.0.0.1/api/audit/upload", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ filename: "scan-status.txt", content: ":20:TXN-SCAN-01\n:32A:261124USD10,00", format: "mt103" }),
+		}))
+		assert.equal(upload.status, 202)
+		const uploadResult = await upload.json() as { ingestionId?: string }
+		assert.equal(getCorridorDb().getRawIngestion(uploadResult.ingestionId || "")?.metadata.malwareScan, "not_configured")
+
+		const email = await emailWebhookRoute(new Request("http://127.0.0.1/api/webhooks/email", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				from: "ops@example.test",
+				attachments: [{ filename: "malformed.pdf", contentBase64: Buffer.from("not a PDF").toString("base64") }],
+			}),
+		}))
+		assert.equal(email.status, 422)
+		const lastEmail = getCorridorDb().listRawIngestions({ channel: "email", limit: 1 })[0]
+		assert.equal(lastEmail?.metadata.malwareScan, "not_configured")
+	} finally {
+		if (previousHost === undefined) delete env.CORRIDOR_CLAMD_HOST
+		else env.CORRIDOR_CLAMD_HOST = previousHost
+	}
 })
 
 test.after(() => {

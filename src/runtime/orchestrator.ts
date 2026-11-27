@@ -1,9 +1,10 @@
 import "dotenv/config"
 import { randomUUID } from "node:crypto"
-import { existsSync, mkdirSync, readFileSync, watch } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, statSync, watch } from "node:fs"
 import { extname, resolve } from "node:path"
 import { getCorridorDb } from "../core/db/database"
 import { normalizeInboundPayloadToCases } from "../core/ingest/normalize-upload"
+import { MAX_MALWARE_SCAN_BYTES, MalwareScanLimitError, scanFileBytes } from "../core/security/malware-scan"
 import { ACTIVE_MODEL_SLOT, DynamicEndpointRouter, resolveInitialProviderConfig } from "../core/llm/providers"
 import type { AuditVerdict, SettlementCase } from "../core/types"
 import { createCorridorAgents } from "./agents/corridor-agents"
@@ -53,10 +54,12 @@ function startHotFolderWatcher(orchestrator: CorridorOrchestrator): void {
 			const fullPath = resolve(hotFolder, filename)
 			if (!existsSync(fullPath)) return
 			seenFiles.add(filename)
-			setTimeout(() => {
+			setTimeout(() => void (async () => {
 				try {
 					const ext = extname(filename).toLowerCase()
+					if (statSync(fullPath).size > MAX_MALWARE_SCAN_BYTES) throw new MalwareScanLimitError()
 					const buf = readFileSync(fullPath)
+					const malwareScan = await scanFileBytes(buf)
 					const isPdf = ext === ".pdf"
 					const rec = getCorridorDb().saveRawIngestion({
 						sourceChannel: "hot_folder",
@@ -65,7 +68,7 @@ function startHotFolderWatcher(orchestrator: CorridorOrchestrator): void {
 						format: ext.replace(/^\./, "") || "auto",
 						rawContent: isPdf ? buf.toString("base64") : buf.toString("utf8"),
 						isBase64: isPdf,
-						metadata: { fullPath },
+						metadata: { fullPath, malwareScan: malwareScan.status },
 					})
 					const cases = normalizeInboundPayloadToCases(
 						isPdf
@@ -80,10 +83,10 @@ function startHotFolderWatcher(orchestrator: CorridorOrchestrator): void {
 					void orchestrator.enqueueBatch(cases).catch((err) => {
 						console.error(`Hot-folder ingestion ${rec.id} failed during audit processing:`, err)
 					})
-				} catch {
-					// ignore transient partial write errors
+				} catch (error) {
+					console.error(`Hot-folder file ${filename} was not accepted:`, error instanceof Error ? error.message : "unknown error")
 				}
-			}, 250)
+			})(), 250)
 		})
 		watcher.unref?.()
 	} catch {
