@@ -46,6 +46,7 @@ flowchart TB
 | :--- | :--- |
 | **[API Endpoints Reference](./api-reference.md)** | All 29 `/api/*` route files, HTTP methods, RBAC roles, request/response contracts, and `?format=pdf\|csv\|txt\|json&preview=1` |
 | **[Database Schema & Vault](./database-schema.md)** | All 19 SQLite tables (including `case_sequences` & `case_checkpoints`), columns, foreign keys, leases, WAL backup, and AES-256-GCM encryption boundaries |
+| **[Dynamic Execution Layer](./execution-layer.md)** | Phase 0 Lead-LLM `delegate_subagents`, Phase 1 parallel subagents, Phase 2 `specialist.ready` barrier, `rerun_specialist_agent`, and `AgentTraceTree` SSE flow |
 | **[Codebase Module Map](./module-map.md)** | Complete file-by-file map of `src/core/`, `src/runtime/`, `src/components/`, `src/operations/`, and `tests/` |
 | **[Environment & Security Config](./env-and-security.md)** | Every `.env` variable, Cognito/local RBAC, SSRF DNS pinning, webhook signatures, and ClamAV scanning |
 | **[Bug Fixes — 2026-11-27](./bug-fixes/README.md)** | Index of six production-affecting UI/runtime/export bug fixes with root-cause analysis, code diffs, and verification |

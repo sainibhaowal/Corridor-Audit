@@ -12,7 +12,8 @@ CorridorAudit release history. Versions follow the policy in [docs/VERSIONING.md
 - **Model-Decided Single-Specialist Re-Run:** Added `rerun_specialist_agent` (`specialist.rerun`) with feedback history (`previousFeedbacks`, no hard cap) and parent wait-and-stop discipline on `AuditorAgent`.
 - **Sidebar Quick-Upload & Multi-Tab Live Sync:** Added drag-and-drop / click upload on the sidebar `Upload source` button with inline progress stages, top toast notification, SSE reconnect catch-up, `visibilitychange` resync, and `BroadcastChannel` cross-tab sync.
 - **Live Ready State & Execution Stream UI:** Added `> Waiting for Data` live status indicator with subtle bottom-edge aurora glow on the empty-state card (automatically hiding `Configure LLM Key` once a provider is live), plus a live Run-Activity header (agent/tool counts & elapsed timer), `Subagent` / `Lead Agent` badges, live `Thinking` elapsed timer, and expandable tool-call cards.
-- **Documentation:** Added `docs/developer/` (`README.md`, `api-reference.md`, `database-schema.md`, `module-map.md`, `env-and-security.md`), `docs/DEMO-GUIDE.md`, and Case Study Module `07`.
+- **Lead-LLM Dynamic Subagent Delegation & Execution Tree:** Added `delegate_subagents` (`onCaseQueuedPlan` Phase 0 planning) so `AuditorAgent` dynamically hires only needed subagents on `@mozaik-ai/core`, plus the collapsible nested `AgentTraceTree` UI with live barrier counters and `Expand all` / `Collapse all`.
+- **Documentation:** Added `docs/developer/` (`README.md`, `api-reference.md`, `database-schema.md`, `execution-layer.md`, `module-map.md`, `env-and-security.md`), `docs/DEMO-GUIDE.md`, and Case Study Module `07`.
 
 ## [0.2.0] - 2026-11-27
 
