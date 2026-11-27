@@ -187,6 +187,58 @@ export function CorridorWorkspace() {
 	const [modalTab, setModalTab] = useState<ModalTab>("ledger")
 	const [providerModalOpen, setProviderModalOpen] = useState(false)
 
+	const quickFileInputRef = useRef<HTMLInputElement | null>(null)
+	const [sidebarDragging, setSidebarDragging] = useState(false)
+	const [quickUploadStage, setQuickUploadStage] = useState<"idle" | "uploading" | "processing" | "ingested" | "error">("idle")
+	const [quickUploadLabel, setQuickUploadLabel] = useState<string>("")
+	const [topToast, setTopToast] = useState<{ title: string; subtitle: string; kind: "ok" | "error" } | null>(null)
+
+	const handleQuickUploadFile = useCallback(async (file: File) => {
+		try {
+			setQuickUploadStage("uploading")
+			setQuickUploadLabel(`Uploading ${file.name}...`)
+			let payload: Record<string, unknown>
+			if (file.name.toLowerCase().endsWith(".pdf")) {
+				const buf = await file.arrayBuffer()
+				const bytes = new Uint8Array(buf)
+				let binary = ""
+				for (let i = 0; i < bytes.length; i += 0x8000) {
+					binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+				}
+				payload = { filename: file.name, base64: btoa(binary), format: "pdf" }
+			} else {
+				payload = { filename: file.name, content: await file.text(), format: "auto" }
+			}
+			setQuickUploadStage("processing")
+			setQuickUploadLabel("Processing & indexing to Raw Vault...")
+			const res = await fetch("/api/audit/upload", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(payload),
+			})
+			const json = (await res.json().catch(() => ({}))) as { error?: string; queuedCount?: number }
+			if (!res.ok) throw new Error(json.error || `Upload failed (HTTP ${res.status})`)
+			const count = json.queuedCount ?? 1
+			setQuickUploadStage("ingested")
+			setQuickUploadLabel(`Ingested (${count}) · Live agents running`)
+			setTopToast({
+				title: `Ingested ${file.name} into Raw Data Vault`,
+				subtitle: `Live agent stream is running now (${count} case${count === 1 ? "" : "s"}).`,
+				kind: "ok",
+			})
+			setView("stream")
+			void refreshHistory()
+			setTimeout(() => setTopToast(null), 6000)
+			setTimeout(() => setQuickUploadStage((s) => (s === "ingested" ? "idle" : s)), 8000)
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err)
+			setQuickUploadStage("error")
+			setQuickUploadLabel(msg)
+			setTopToast({ title: "Upload failed", subtitle: msg, kind: "error" })
+			setTimeout(() => setTopToast(null), 6000)
+		}
+	}, [])
+
 	const refreshHistory = useCallback(async () => {
 		try {
 			const res = await fetch("/api/history", { cache: "no-store" })
@@ -620,6 +672,49 @@ export function CorridorWorkspace() {
 					</span>
 				</div>
 
+				{topToast && (
+					<div
+						role="status"
+						className={cn(
+							"fixed top-3 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border px-4 py-2.5 shadow-2xl backdrop-blur-md",
+							topToast.kind === "ok"
+								? "border-[#2c4a43] bg-[#0d1f1c]/95 text-[#e3edef]"
+								: "border-red-800/80 bg-red-950/95 text-red-100",
+						)}
+					>
+						<span
+							className={cn(
+								"h-2.5 w-2.5 shrink-0 rounded-full",
+								topToast.kind === "ok" ? "animate-pulse bg-[#62e1c3]" : "bg-red-400",
+							)}
+						/>
+						<div className="min-w-0">
+							<div className="text-xs font-bold">{topToast.title}</div>
+							<div className="text-[11px] text-[#9fb2b8]">{topToast.subtitle}</div>
+						</div>
+						{topToast.kind === "ok" && (
+							<button
+								type="button"
+								onClick={() => {
+									setView("stream")
+									setTopToast(null)
+								}}
+								className="rounded-md border border-[#2c4a43] bg-[#14352d] px-2.5 py-1 text-[11px] font-semibold text-[#62e1c3] hover:bg-[#1a443a]"
+							>
+								View Live
+							</button>
+						)}
+						<button
+							type="button"
+							aria-label="Dismiss notification"
+							onClick={() => setTopToast(null)}
+							className="text-xs text-[#81949a] hover:text-[#e3edef]"
+						>
+							×
+						</button>
+					</div>
+				)}
+
 				<div className="flex shrink-0 items-center gap-1.5">
 					<button
 						ref={themeToggleRef}
@@ -759,15 +854,79 @@ export function CorridorWorkspace() {
 						Autonomous Triggers
 					</div>}
 					<div className={cn("w-full", leftCollapsed ? "space-y-1" : "space-y-1.5")}>
-						<Button
-							variant="outline"
-							className={cn("w-full", leftCollapsed ? "justify-center px-0" : "justify-start")}
-							data-tooltip="Upload a source file"
-							onClick={() => setView("inbound")}
+						<input
+							ref={quickFileInputRef}
+							type="file"
+							accept=".csv,.txt,.xml,.json,.pdf"
+							className="hidden"
+							onChange={(e) => {
+								const file = e.target.files?.[0]
+								e.target.value = ""
+								if (file) void handleQuickUploadFile(file)
+							}}
+						/>
+						<div
+							onDragOver={(e) => {
+								e.preventDefault()
+								setSidebarDragging(true)
+							}}
+							onDragLeave={() => setSidebarDragging(false)}
+							onDrop={(e) => {
+								e.preventDefault()
+								setSidebarDragging(false)
+								const file = e.dataTransfer.files?.[0]
+								if (file) void handleQuickUploadFile(file)
+							}}
 						>
-							<FileUp className="h-3.5 w-3.5" />
-							{!leftCollapsed && "Upload source"}
-						</Button>
+							<Button
+								variant="outline"
+								className={cn(
+									"w-full transition-colors",
+									leftCollapsed ? "justify-center px-0" : "justify-start",
+									sidebarDragging && "border-[#62e1c3] bg-[#0e2620]/70 text-[#62e1c3]",
+								)}
+								data-tooltip="Click or drag & drop a file (.csv, .pdf, .txt, .xml, .json)"
+								onClick={() => quickFileInputRef.current?.click()}
+							>
+								<FileUp className="h-3.5 w-3.5" />
+								{!leftCollapsed && (sidebarDragging ? "Drop file to ingest..." : "Upload source")}
+							</Button>
+							{!leftCollapsed && (
+								<div className="mt-1.5 px-1">
+									{quickUploadStage === "idle" ? (
+										<div className="text-[10.5px] text-[#71858c]">
+											Click or drag &amp; drop (.csv, .pdf, .txt, .xml, .json)
+										</div>
+									) : (
+										<div className="space-y-1">
+											<div
+												className={cn(
+													"truncate text-[10.5px] font-medium",
+													quickUploadStage === "error"
+														? "text-red-400"
+														: quickUploadStage === "ingested"
+															? "text-[#62e1c3]"
+															: "text-amber-300",
+												)}
+											>
+												{quickUploadLabel}
+											</div>
+											<div className="h-1 w-full overflow-hidden rounded-full bg-[#132029]">
+												<div
+													className={cn(
+														"h-full transition-all duration-300",
+														quickUploadStage === "uploading" && "w-1/3 animate-pulse bg-amber-400",
+														quickUploadStage === "processing" && "w-2/3 animate-pulse bg-amber-400",
+														quickUploadStage === "ingested" && "w-full bg-[#62e1c3]",
+														quickUploadStage === "error" && "w-full bg-red-500",
+													)}
+												/>
+											</div>
+										</div>
+									)}
+								</div>
+							)}
+						</div>
 					</div>
 
 					<div className={cn("mt-auto w-full border-t border-[#1c2a33] pt-3", leftCollapsed && "flex flex-col items-center")}>
