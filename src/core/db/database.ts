@@ -20,6 +20,7 @@ import {
 	type TeamRole,
 	type WorkspaceRecord,
 	type WorkspaceTaxPolicyRecord,
+	type WorkspaceReviewPolicyRecord,
 } from "./schema"
 
 export const DEFAULT_WORKSPACE_ID = "ws-default"
@@ -45,6 +46,7 @@ export class CorridorDatabase {
 		this.encryptLegacyRawContent()
 		this.ensureDefaultWorkspace()
 		this.ensureWorkspaceTaxPolicies()
+		this.ensureWorkspaceReviewPolicies()
 	}
 
 	private ensureWorkspaceTaxPolicies(): void {
@@ -73,6 +75,33 @@ export class CorridorDatabase {
 			country: String(row.country),
 			withholdingTaxBps: Number(row.withholding_tax_bps),
 			effectiveAt: String(row.effective_at),
+			createdAt: String(row.created_at),
+		}
+	}
+
+	private ensureWorkspaceReviewPolicies(): void {
+		const workspaces = this.db.prepare("SELECT id, variance_threshold_minor FROM workspaces").all() as Array<{
+			id: string
+			variance_threshold_minor: number
+		}>
+		const latest = this.db.prepare("SELECT id FROM workspace_review_policies WHERE workspace_id = ? LIMIT 1")
+		const insert = this.db.prepare(`INSERT INTO workspace_review_policies
+			(id, workspace_id, variance_threshold_minor, threshold_unit, created_at) VALUES (?, ?, ?, 'case_settlement_currency_minor', ?)`)
+		for (const workspace of workspaces) {
+			if (latest.get(workspace.id)) continue
+			insert.run(`reviewp_${randomUUID().slice(0, 12)}`, workspace.id, workspace.variance_threshold_minor, new Date().toISOString())
+		}
+	}
+
+	getCurrentReviewPolicy(workspaceId = DEFAULT_WORKSPACE_ID): WorkspaceReviewPolicyRecord {
+		const row = this.db.prepare(`SELECT * FROM workspace_review_policies WHERE workspace_id = ? ORDER BY rowid DESC LIMIT 1`)
+			.get(workspaceId) as Record<string, unknown> | undefined
+		if (!row) throw new Error(`Review policy for workspace ${workspaceId} not found.`)
+		return {
+			id: String(row.id),
+			workspaceId: String(row.workspace_id),
+			varianceThresholdMinor: Number(row.variance_threshold_minor),
+			thresholdUnit: String(row.threshold_unit) as WorkspaceReviewPolicyRecord["thresholdUnit"],
 			createdAt: String(row.created_at),
 		}
 	}
@@ -217,6 +246,11 @@ export class CorridorDatabase {
 			this.db.prepare(`INSERT INTO workspace_tax_policies
 				(id, workspace_id, country, withholding_tax_bps, effective_at, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
 				.run(`taxp_${randomUUID().slice(0, 12)}`, workspaceId, updated.taxCountry, updated.withholdingTaxBps, now, now)
+		}
+		if (updated.varianceThresholdMinor !== current.varianceThresholdMinor) {
+			this.db.prepare(`INSERT INTO workspace_review_policies
+				(id, workspace_id, variance_threshold_minor, threshold_unit, created_at) VALUES (?, ?, ?, 'case_settlement_currency_minor', ?)`)
+				.run(`reviewp_${randomUUID().slice(0, 12)}`, workspaceId, updated.varianceThresholdMinor, new Date().toISOString())
 		}
 		return updated
 	}

@@ -72,6 +72,7 @@ test("CorridorDatabase persists workspaces, team members, encrypted integrations
 	assert.equal(ws.accountMode, "b2b")
 	assert.ok(ws.inboundEmailAddress.includes(DEFAULT_WORKSPACE_ID))
 	const initialTaxPolicy = db.getCurrentTaxPolicy(DEFAULT_WORKSPACE_ID)
+	const initialReviewPolicy = db.getCurrentReviewPolicy(DEFAULT_WORKSPACE_ID)
 
 	const updated = db.updateWorkspace(DEFAULT_WORKSPACE_ID, {
 		name: "Acme Global Ops",
@@ -90,8 +91,13 @@ test("CorridorDatabase persists workspaces, team members, encrypted integrations
 	assert.notEqual(updatedTaxPolicy.id, initialTaxPolicy.id)
 	assert.equal(updatedTaxPolicy.country, "DE")
 	assert.equal(updatedTaxPolicy.withholdingTaxBps, 1500)
+	const updatedReviewPolicy = db.getCurrentReviewPolicy(DEFAULT_WORKSPACE_ID)
+	assert.notEqual(updatedReviewPolicy.id, initialReviewPolicy.id)
+	assert.equal(updatedReviewPolicy.varianceThresholdMinor, 250)
+	assert.equal(updatedReviewPolicy.thresholdUnit, "case_settlement_currency_minor")
 	db.updateWorkspace(DEFAULT_WORKSPACE_ID, { name: "Acme Operations" })
 	assert.equal(db.getCurrentTaxPolicy(DEFAULT_WORKSPACE_ID).id, updatedTaxPolicy.id, "non-tax workspace changes do not create tax versions")
+	assert.equal(db.getCurrentReviewPolicy(DEFAULT_WORKSPACE_ID).id, updatedReviewPolicy.id, "non-policy workspace changes do not create review versions")
 
 	const member = db.addTeamMember({
 		workspaceId: DEFAULT_WORKSPACE_ID,

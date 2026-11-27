@@ -48,6 +48,14 @@ export interface WorkspaceTaxPolicyRecord {
 	createdAt: string
 }
 
+export interface WorkspaceReviewPolicyRecord {
+	id: string
+	workspaceId: string
+	varianceThresholdMinor: number
+	thresholdUnit: "case_settlement_currency_minor"
+	createdAt: string
+}
+
 export interface TeamMemberRecord {
 	id: string
 	workspaceId: string
@@ -133,6 +141,14 @@ CREATE TABLE IF NOT EXISTS workspace_tax_policies (
 	country TEXT NOT NULL,
 	withholding_tax_bps INTEGER NOT NULL,
 	effective_at TEXT NOT NULL,
+	created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workspace_review_policies (
+	id TEXT PRIMARY KEY,
+	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+	variance_threshold_minor INTEGER NOT NULL,
+	threshold_unit TEXT NOT NULL DEFAULT 'case_settlement_currency_minor',
 	created_at TEXT NOT NULL
 );
 

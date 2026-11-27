@@ -92,6 +92,9 @@ export async function POST(request: Request) {
 		if (body.withholdingTaxBps !== undefined && (!Number.isSafeInteger(body.withholdingTaxBps) || body.withholdingTaxBps < 0 || body.withholdingTaxBps > 10_000)) {
 			return NextResponse.json({ ok: false, error: "Workspace withholding rate must be an integer from 0 to 10,000 basis points." }, { status: 400 })
 		}
+		if (body.varianceThresholdMinor !== undefined && (!Number.isSafeInteger(body.varianceThresholdMinor) || body.varianceThresholdMinor < 0)) {
+			return NextResponse.json({ ok: false, error: "Variance tolerance must be a nonnegative integer in minor units." }, { status: 400 })
+		}
 
 		const workspace = db.updateWorkspace(DEFAULT_WORKSPACE_ID, {
 			name: body.name,

@@ -9,7 +9,7 @@ This is the live delivery record for production-readiness engineering. A row is 
 | 0 | Baseline and code-backed production record | Complete |
 | 1 | Canonical evidence completeness, provider mapping correctness, upload validation, and accurate states | In progress |
 | 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | In progress |
-| 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Not started |
+| 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Versioned tax and review policies implemented locally; durable approvals and summary hardening remain |
 | 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Local SQLite queue recovery and webhook deduplication slices complete; production queue not started |
 | 5 | Raw evidence object storage, encryption/key lifecycle, retention, backup, restore, and deletion | Local SQLite raw-payload encryption complete; managed storage and lifecycle not started |
 | 6 | Provider adapters with pagination, cursors, token refresh/revocation, event security, and reconciliation | Not started |
@@ -106,6 +106,13 @@ Update this section per milestone with the exact command, result, environment, a
 - The local orchestrator now coalesces concurrent case work and returns an existing completed verdict for the same case ID, reducing duplicate audits when a receipt is retried.
 - Event-ID idempotency does not replace provider timestamp/replay controls. Wise and Corridor still lack signed timestamp windows. Events without IDs only deduplicate byte-for-byte, and the queue remains local, single-process recovery.
 - `npm run typecheck`: passed. `npm test`: passed, 33 tests, 0 failures, including duplicate delivery and changed-payload conflict checks. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 versioned review threshold follow-up
+
+- Variance threshold updates now create review-policy snapshots. Risk gate decisions and final verdicts read the current snapshot, and the final verdict records its policy ID and threshold in source references.
+- The threshold is explicitly interpreted as minor units of the case settlement currency. API writes reject negative, non-integer, or unsafe threshold values.
+- This preserves the current UI field while making its unit explicit and adding calculation provenance. Per-currency threshold tables and historical policy replay remain future release work.
+- `npm run typecheck`: passed. `npm test`: passed, 33 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
 
 ### 2026-11-27 local raw-payload encryption slice
 

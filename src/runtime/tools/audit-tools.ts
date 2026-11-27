@@ -317,7 +317,8 @@ export const finalizeSettlementActionTool: Tool = {
 		const overriddenClean = acceptedHumanOverride
 		const recoverableFeeMinor = overriddenClean ? 0 : recoverableOurViolationMinor
 		const evidenceIncomplete = c.settlementEvidence !== "observed"
-		const varianceThresholdMinor = getCorridorDb().getWorkspace(DEFAULT_WORKSPACE_ID).varianceThresholdMinor
+		const reviewPolicy = getCorridorDb().getCurrentReviewPolicy(DEFAULT_WORKSPACE_ID)
+		const varianceThresholdMinor = reviewPolicy.varianceThresholdMinor
 
 		let status: AuditStatus = "CLEAN"
 		if (evidenceIncomplete) status = "EVIDENCE_INCOMPLETE"
@@ -330,6 +331,18 @@ export const finalizeSettlementActionTool: Tool = {
 
 		const allRefs = dedupeSourceRefs([
 			...terms.sourceRefs,
+			{
+				sourceType: "workspace_policy",
+				recordId: reviewPolicy.id,
+				field: "varianceThresholdMinor",
+				rawExcerpt: `Review policy ${reviewPolicy.id}: variance tolerance is ${formatMoney(varianceThresholdMinor, to)} (${reviewPolicy.thresholdUnit}). A nonzero measured variance remains visible even inside this threshold.`,
+			},
+			{
+				sourceType: "workspace_policy",
+				recordId: terms.taxPolicyVersionId,
+				field: "withholdingTaxRateBps",
+				rawExcerpt: `Tax policy ${terms.taxPolicyVersionId} (${terms.taxCountry}) recorded ${terms.withholdingTaxRateBps} bps; source=${terms.withholdingTaxSource}. Invoice rate takes precedence when supplied. This is not a jurisdictional tax determination.`,
+			},
 			...fx.sourceRefs,
 			...wire.sourceRefs,
 			...(anomaly?.sourceRefs ?? []),
