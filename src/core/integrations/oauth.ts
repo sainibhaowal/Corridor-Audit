@@ -156,3 +156,50 @@ export async function exchangeOAuthCode(params: {
 		externalAccountId: json.stripe_user_id,
 	}
 }
+
+export async function refreshOAuthCredentials(
+	provider: string,
+	credentials: IntegrationCredentials,
+): Promise<IntegrationCredentials> {
+	const spec = OAUTH_SPECS[provider]
+	if (!spec || !credentials.refreshToken) {
+		throw new Error(`A refresh token is not available for OAuth provider "${provider}". Reconnect this integration.`)
+	}
+	const clientId = process.env[spec.clientIdEnv]?.trim()
+	const clientSecret = spec.clientSecretEnv ? process.env[spec.clientSecretEnv]?.trim() : undefined
+	if (!clientId || (spec.clientSecretEnv && !clientSecret)) {
+		throw new Error(`Missing OAuth client configuration for ${provider}.`)
+	}
+	const body = new URLSearchParams({
+		grant_type: "refresh_token",
+		refresh_token: credentials.refreshToken,
+	})
+	const basicSecret = clientSecret ?? ""
+	const response = await fetch(spec.tokenUrl, {
+		method: "POST",
+		headers: {
+			Authorization: `Basic ${Buffer.from(`${clientId}:${basicSecret}`).toString("base64")}`,
+			"Content-Type": "application/x-www-form-urlencoded",
+			Accept: "application/json",
+		},
+		body: body.toString(),
+	})
+	if (!response.ok) {
+		const message = (await response.text()).slice(0, 240)
+		throw new Error(`${provider} OAuth token refresh failed (${response.status}): ${message}`)
+	}
+	const result = (await response.json()) as {
+		access_token?: string
+		refresh_token?: string
+		expires_in?: number
+	}
+	if (!result.access_token) throw new Error(`${provider} did not return an access token during refresh.`)
+	return {
+		...credentials,
+		accessToken: result.access_token,
+		refreshToken: result.refresh_token || credentials.refreshToken,
+		expiresAt: result.expires_in && Number.isFinite(result.expires_in)
+			? new Date(Date.now() + result.expires_in * 1000).toISOString()
+			: undefined,
+	}
+}

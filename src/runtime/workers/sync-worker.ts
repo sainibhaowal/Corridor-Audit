@@ -1,11 +1,39 @@
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "../../core/db/database"
 import type { SyncRunRecord } from "../../core/db/schema"
+import type { IntegrationCredentials } from "../../core/db/schema"
 import { fetchCasesFromIntegration } from "../../core/integrations/connectors"
+import { refreshOAuthCredentials } from "../../core/integrations/oauth"
 import type { CorridorOrchestrator } from "../orchestrator"
 
 const globalWorkerStore = globalThis as typeof globalThis & {
 	__corridorSyncWorkerStarted?: boolean
 	__corridorSyncIntervalMs?: number
+	__corridorOAuthRefreshes?: Map<string, Promise<IntegrationCredentials>>
+}
+
+async function credentialsForSync(params: {
+	db: ReturnType<typeof getCorridorDb>
+	workspaceId: string
+	provider: string
+}): Promise<IntegrationCredentials | null> {
+	const credentials = params.db.getDecryptedCredentials(params.workspaceId, params.provider)
+	if (!credentials?.expiresAt || Date.parse(credentials.expiresAt) > Date.now() + 120_000) return credentials
+	if (!credentials.refreshToken) throw new Error(`OAuth access token for ${params.provider} is expired and has no refresh token. Reconnect this integration.`)
+
+	const refreshes = globalWorkerStore.__corridorOAuthRefreshes ??= new Map()
+	const key = `${params.workspaceId}:${params.provider}`
+	let refresh = refreshes.get(key)
+	if (!refresh) {
+		refresh = refreshOAuthCredentials(params.provider, credentials)
+		refreshes.set(key, refresh)
+	}
+	try {
+		const updated = await refresh
+		params.db.updateIntegrationCredentials(params.workspaceId, params.provider, updated)
+		return updated
+	} finally {
+		if (refreshes.get(key) === refresh) refreshes.delete(key)
+	}
 }
 
 export async function runIntegrationSync(params: {
@@ -36,7 +64,7 @@ export async function runIntegrationSync(params: {
 	})
 
 	try {
-		const credentials = db.getDecryptedCredentials(workspaceId, integration.provider)
+		const credentials = await credentialsForSync({ db, workspaceId, provider: integration.provider })
 		const fetched = await fetchCasesFromIntegration({ integration, credentials })
 
 		const freshCases = fetched.cases.filter((c) => !params.orchestrator.state.casesById.has(c.caseId))

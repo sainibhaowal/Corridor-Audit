@@ -496,6 +496,13 @@ export class CorridorDatabase {
 		return decryptJson<IntegrationCredentials>(row.credentials_enc)
 	}
 
+	updateIntegrationCredentials(workspaceId: string, provider: string, credentials: IntegrationCredentials): void {
+		const updated = this.db.prepare(`UPDATE integrations SET credentials_enc = ?, updated_at = ?
+			WHERE workspace_id = ? AND provider = ? AND status <> 'disconnected'`)
+			.run(encryptJson(credentials), new Date().toISOString(), workspaceId, provider)
+		if (Number(updated.changes) !== 1) throw new Error(`Cannot update credentials for disconnected integration "${provider}".`)
+	}
+
 	storeOAuthAuthorizationState(params: {
 		state: string
 		provider: string

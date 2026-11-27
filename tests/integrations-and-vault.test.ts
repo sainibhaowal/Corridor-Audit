@@ -21,7 +21,8 @@ import { POST as inboundWebhookRoute } from "../src/app/api/webhooks/inbound/rou
 import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/core/db/database"
 import { parseInboundEmailToCases } from "../src/core/integrations/email-parser"
 import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
-import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode } from "../src/core/integrations/oauth"
+import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode, refreshOAuthCredentials } from "../src/core/integrations/oauth"
+import { runIntegrationSync } from "../src/runtime/workers/sync-worker"
 import { decryptJson, decryptSecret, encryptJson, encryptSecret, maskSecret } from "../src/core/security/vault"
 import {
 	verifyCorridorSignature,
@@ -201,8 +202,10 @@ test("Xero OAuth uses S256 PKCE and exchanges the persisted verifier", async () 
 	const previousClientId = process.env.XERO_CLIENT_ID
 	process.env.XERO_CLIENT_ID = "xero-public-client"
 	let tokenRequestBody = ""
+	let tokenRequestAuthorization = ""
 	global.fetch = (async (_input, init) => {
 		tokenRequestBody = String(init?.body || "")
+		tokenRequestAuthorization = new Headers(init?.headers).get("authorization") || ""
 		return new Response(JSON.stringify({ access_token: "xero-access", refresh_token: "xero-refresh", expires_in: 1800 }), { status: 200 })
 	}) as typeof fetch
 	try {
@@ -227,11 +230,73 @@ test("Xero OAuth uses S256 PKCE and exchanges the persisted verifier", async () 
 		assert.equal(tokenBody.has("client_secret"), false)
 		assert.equal(exchanged.credentials.accessToken, "xero-access")
 		assert.equal(exchanged.credentials.refreshToken, "xero-refresh")
+		const refreshed = await refreshOAuthCredentials("xero", exchanged.credentials)
+		assert.equal(tokenRequestAuthorization, `Basic ${Buffer.from("xero-public-client:").toString("base64")}`)
+		assert.equal(new URLSearchParams(tokenRequestBody).get("grant_type"), "refresh_token")
+		assert.equal(new URLSearchParams(tokenRequestBody).get("refresh_token"), "xero-refresh")
+		assert.equal(refreshed.refreshToken, "xero-refresh")
 		assert.throws(() => consumeOAuthState(state, "xero"), /already used/)
 	} finally {
 		global.fetch = previousFetch
 		if (previousClientId === undefined) delete process.env.XERO_CLIENT_ID
 		else process.env.XERO_CLIENT_ID = previousClientId
+	}
+})
+
+test("QuickBooks token refresh is serialized and the rotated refresh token is persisted before sync", async () => {
+	const db = getCorridorDb()
+	const previousFetch = global.fetch
+	const previousClientId = process.env.QUICKBOOKS_CLIENT_ID
+	const previousClientSecret = process.env.QUICKBOOKS_CLIENT_SECRET
+	process.env.QUICKBOOKS_CLIENT_ID = "qbo-client-test"
+	process.env.QUICKBOOKS_CLIENT_SECRET = "qbo-client-secret-test"
+	db.upsertIntegration({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider: "quickbooks",
+		category: "accounting",
+		authMode: "oauth2",
+		status: "connected",
+		credentials: {
+			accessToken: "expired-access",
+			refreshToken: "old-refresh-token",
+			expiresAt: new Date(Date.now() - 1000).toISOString(),
+		},
+		config: { realmId: "realm-refresh-test" },
+	})
+	let tokenRequests = 0
+	let apiRequests = 0
+	global.fetch = (async (input, init) => {
+		if (String(input).includes("oauth.platform.intuit.com")) {
+			tokenRequests += 1
+			assert.equal(new Headers(init?.headers).get("authorization"), `Basic ${Buffer.from("qbo-client-test:qbo-client-secret-test").toString("base64")}`)
+			assert.equal(new URLSearchParams(String(init?.body)).get("refresh_token"), "old-refresh-token")
+			return new Response(JSON.stringify({ access_token: "new-access-token", refresh_token: "rotated-refresh-token", expires_in: 3600 }), { status: 200 })
+		}
+		if (String(input).includes("quickbooks.api.intuit.com")) {
+			apiRequests += 1
+			assert.equal(new Headers(init?.headers).get("authorization"), "Bearer new-access-token")
+			return new Response(JSON.stringify({ QueryResponse: { Invoice: [] } }), { status: 200 })
+		}
+		throw new Error(`Unexpected QuickBooks request: ${String(input)}`)
+	}) as typeof fetch
+	const orchestrator = { state: { casesById: new Map() } } as unknown as Parameters<typeof runIntegrationSync>[0]["orchestrator"]
+	try {
+		const results = await Promise.all([
+			runIntegrationSync({ provider: "quickbooks", trigger: "manual", workspaceId: DEFAULT_WORKSPACE_ID, orchestrator }),
+			runIntegrationSync({ provider: "quickbooks", trigger: "manual", workspaceId: DEFAULT_WORKSPACE_ID, orchestrator }),
+		])
+		assert.ok(results.every((result) => result.status === "success"))
+		assert.equal(tokenRequests, 1)
+		assert.equal(apiRequests, 2)
+		assert.equal(db.getDecryptedCredentials(DEFAULT_WORKSPACE_ID, "quickbooks")?.accessToken, "new-access-token")
+		assert.equal(db.getDecryptedCredentials(DEFAULT_WORKSPACE_ID, "quickbooks")?.refreshToken, "rotated-refresh-token")
+	} finally {
+		global.fetch = previousFetch
+		if (previousClientId === undefined) delete process.env.QUICKBOOKS_CLIENT_ID
+		else process.env.QUICKBOOKS_CLIENT_ID = previousClientId
+		if (previousClientSecret === undefined) delete process.env.QUICKBOOKS_CLIENT_SECRET
+		else process.env.QUICKBOOKS_CLIENT_SECRET = previousClientSecret
+		db.disconnectIntegration(DEFAULT_WORKSPACE_ID, "quickbooks")
 	}
 })
 
