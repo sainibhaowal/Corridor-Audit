@@ -12,7 +12,7 @@ This is the live delivery record for production-readiness engineering. A row is 
 | 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Versioned tax and review policies plus durable approval records implemented locally; approval UI and production workflow controls remain |
 | 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Local SQLite queue recovery and webhook deduplication slices complete; production queue not started |
 | 5 | Raw evidence object storage, encryption/key lifecycle, retention, backup, restore, and deletion | Local SQLite raw-payload encryption complete; managed storage and lifecycle not started |
-| 6 | Provider adapters with pagination, cursors, token refresh/revocation, event security, and reconciliation | Local raw-response retention and currency-unit fixes for Stripe, Wise, QuickBooks, and Xero; connector completeness remains in progress |
+| 6 | Provider adapters with pagination, cursors, token refresh/revocation, event security, and reconciliation | Bounded pagination and raw-response retention implemented for Stripe, Wise, QuickBooks, and Xero. Incremental cursors, refresh/revocation, matching, and provider conformance remain open |
 | 7 | Monitoring, audit logs, deployment configuration, threat review, and operational runbooks | Not started |
 | 8 | Provider and security validation evidence, controlled pilot release gates | Not started |
 
@@ -136,6 +136,14 @@ Update this section per milestone with the exact command, result, environment, a
 - Their source references now identify accounting-platform records rather than bank CSV evidence.
 - Automated mocked connector coverage checks that both mappings preserve the provider response and do not imply that the invoice was paid. No provider credentials or live account data were used.
 - `npm run typecheck`: passed. `npm test`: passed, 35 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 bounded provider pagination
+
+- Stripe payout sync follows `has_more` using the last payout ID as `starting_after`. Wise transfer sync uses `limit` and `offset`. QuickBooks invoice queries use `STARTPOSITION` and `MAXRESULTS`; Xero invoice sync uses `page` and `pageSize`.
+- Each connector stops after at most 100 pages and fails visibly if another page is indicated beyond the safety bound. The original response bodies for every fetched page are retained together in the raw ingestion payload. Wise profile discovery response is also retained when the connector discovers the profile automatically.
+- Mocked tests exercise multi-page results for all four connectors and assert the provider cursor or page parameter. Existing tests verify currency conversion and that invoice-only accounting records do not imply payment evidence. No live provider calls were made.
+- This is bounded page traversal only. It does not yet persist incremental sync cursors, handle changing records consistently across pages, refresh or revoke OAuth tokens, retry rate limits, or reconcile invoices with independent bank settlement records.
+- `npm run typecheck`: passed. `npm test`: passed, 36 tests, 0 failures. `git diff --check`: passed. Verification ran locally on Windows.
 
 ### 2026-11-27 local raw-payload encryption slice
 

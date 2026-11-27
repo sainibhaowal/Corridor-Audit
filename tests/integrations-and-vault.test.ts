@@ -289,7 +289,7 @@ test("provider sync retains original API payloads and converts Wise currencies t
 			},
 			credentials: { apiKey: "wise_test" },
 		})
-		assert.equal(wise.rawPayload, wiseResponses[1])
+		assert.deepEqual(JSON.parse(wise.rawPayload || "{}").pageResponses, wiseResponses)
 		assert.equal(wise.cases[0]?.wire.instructedAmount?.amountMinor, 1200)
 		assert.equal(wise.cases[0]?.wire.settledAmount.amountMinor, 4321)
 
@@ -327,6 +327,85 @@ test("provider sync retains original API payloads and converts Wise currencies t
 			assert.equal(result.cases[0]?.wire.settledAmount.amountMinor, 0)
 			assert.match(result.cases[0]?.evidenceGap || "", /did not fetch a matching payment/)
 		}
+	} finally {
+		global.fetch = previousFetch
+	}
+})
+
+test("provider sync follows Stripe, Wise, QuickBooks, and Xero page cursors", async () => {
+	const previousFetch = global.fetch
+	const requests: string[] = []
+	const stripeFirst = JSON.stringify({
+		data: Array.from({ length: 100 }, (_, index) => ({
+			id: `po_${index}`,
+			amount: 100,
+			currency: "usd",
+			arrival_date: 1795737600,
+			created: 1795737600,
+		})),
+		has_more: true,
+	})
+	const stripeLast = JSON.stringify({ data: [{ id: "po_last", amount: 200, currency: "usd", arrival_date: 1795737600, created: 1795737600 }], has_more: false })
+	const wiseFirst = JSON.stringify(Array.from({ length: 100 }, (_, index) => ({
+		id: index + 1,
+		sourceCurrency: "USD",
+		sourceValue: 10,
+		targetCurrency: "EUR",
+		targetValue: 9,
+		rate: 0.9,
+		created: "2026-11-27T10:00:00Z",
+	})))
+	const wiseLast = JSON.stringify([{ id: 101, sourceCurrency: "USD", sourceValue: 10, targetCurrency: "EUR", targetValue: 9, rate: 0.9, created: "2026-11-27T10:00:00Z" }])
+	const qboInvoices = Array.from({ length: 1000 }, (_, index) => ({ Id: `qbo-${index}`, TotalAmt: 10, CurrencyRef: { value: "USD" } }))
+	const xeroInvoices = Array.from({ length: 1000 }, (_, index) => ({ InvoiceID: `xero-${index}`, Total: 10, CurrencyCode: "EUR" }))
+	global.fetch = (async (input) => {
+		const url = String(input)
+		requests.push(url)
+		if (url.includes("stripe.com")) return new Response(requests.filter((item) => item.includes("stripe.com")).length === 1 ? stripeFirst : stripeLast, { status: 200 })
+		if (url.includes("transferwise.com")) return new Response(requests.filter((item) => item.includes("transferwise.com")).length === 1 ? wiseFirst : wiseLast, { status: 200 })
+		if (url.includes("quickbooks.api.intuit.com")) {
+			const firstPage = decodeURIComponent(url).includes("STARTPOSITION 1 MAXRESULTS")
+			return new Response(JSON.stringify({ QueryResponse: { Invoice: firstPage ? qboInvoices : [{ Id: "qbo-last", TotalAmt: 20, CurrencyRef: { value: "USD" } }] } }), { status: 200 })
+		}
+		if (url.includes("api.xero.com")) {
+			return new Response(JSON.stringify({ Invoices: url.includes("page=1&") ? xeroInvoices : [{ InvoiceID: "xero-last", Total: 20, CurrencyCode: "EUR" }] }), { status: 200 })
+		}
+		throw new Error(`Unexpected provider request: ${url}`)
+	}) as typeof fetch
+
+	const integration = (provider: "stripe" | "wise" | "quickbooks" | "xero", config: Record<string, string> = {}) => ({
+		id: `int_${provider}_paging`,
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider,
+		category: provider === "quickbooks" || provider === "xero" ? "accounting" as const : "payouts" as const,
+		authMode: provider === "quickbooks" || provider === "xero" ? "oauth2" as const : "api_token" as const,
+		status: "connected" as const,
+		config,
+		createdAt: new Date().toISOString(),
+		updatedAt: new Date().toISOString(),
+	})
+
+	try {
+		const stripe = await fetchCasesFromIntegration({ integration: integration("stripe"), credentials: { apiKey: "stripe-test" } })
+		assert.equal(stripe.recordsFetched, 101)
+		assert.equal(stripe.cases.length, 101)
+		assert.equal(requests.filter((url) => url.includes("stripe.com")).length, 2)
+		assert.ok(requests.some((url) => url.includes("starting_after=po_99")))
+
+		const wise = await fetchCasesFromIntegration({ integration: integration("wise", { profileId: "profile-1" }), credentials: { apiKey: "wise-test" } })
+		assert.equal(wise.recordsFetched, 101)
+		assert.equal(wise.cases.length, 101)
+		assert.ok(requests.some((url) => url.includes("offset=100")))
+
+		const quickBooks = await fetchCasesFromIntegration({ integration: integration("quickbooks", { realmId: "realm-1" }), credentials: { accessToken: "qbo-test" } })
+		assert.equal(quickBooks.recordsFetched, 1001)
+		assert.equal(requests.filter((url) => url.includes("quickbooks.api.intuit.com")).length, 2)
+		assert.ok(requests.some((url) => decodeURIComponent(url).includes("STARTPOSITION 1001")))
+
+		const xero = await fetchCasesFromIntegration({ integration: integration("xero", { tenantId: "tenant-1" }), credentials: { accessToken: "xero-test" } })
+		assert.equal(xero.recordsFetched, 1001)
+		assert.equal(requests.filter((url) => url.includes("api.xero.com")).length, 2)
+		assert.ok(requests.some((url) => url.includes("page=2&pageSize=1000")))
 	} finally {
 		global.fetch = previousFetch
 	}

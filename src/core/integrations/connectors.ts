@@ -11,6 +11,15 @@ export interface ConnectorFetchResult {
 	rawPayload?: string
 }
 
+const MAX_PROVIDER_SYNC_PAGES = 100
+const STRIPE_PAGE_SIZE = 100
+const WISE_PAGE_SIZE = 100
+const ACCOUNTING_PAGE_SIZE = 1000
+
+function combineRawPages(pages: string[]): string {
+	return pages.length === 1 ? pages[0]! : JSON.stringify({ pageResponses: pages })
+}
+
 function authHeader(credentials: IntegrationCredentials): string {
 	const token = credentials.accessToken || credentials.apiKey
 	if (!token) {
@@ -20,15 +29,7 @@ function authHeader(credentials: IntegrationCredentials): string {
 }
 
 async function fetchStripeCases(credentials: IntegrationCredentials): Promise<ConnectorFetchResult> {
-	const res = await fetch("https://api.stripe.com/v1/payouts?limit=20", {
-		headers: { Authorization: authHeader(credentials) },
-	})
-	if (!res.ok) {
-		throw new Error(`Stripe API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
-	}
-	const rawPayload = await res.text()
-	const payload = JSON.parse(rawPayload) as {
-		data?: Array<{
+	const payouts: Array<{
 			id: string
 			amount: number
 			currency: string
@@ -36,9 +37,37 @@ async function fetchStripeCases(credentials: IntegrationCredentials): Promise<Co
 			created: number
 			description?: string
 			status?: string
-		}>
+		}> = []
+	const rawPages: string[] = []
+	let startingAfter: string | undefined
+	for (let page = 0; page < MAX_PROVIDER_SYNC_PAGES; page += 1) {
+		const url = new URL("https://api.stripe.com/v1/payouts")
+		url.searchParams.set("limit", String(STRIPE_PAGE_SIZE))
+		if (startingAfter) url.searchParams.set("starting_after", startingAfter)
+		const res = await fetch(url, { headers: { Authorization: authHeader(credentials) } })
+		if (!res.ok) throw new Error(`Stripe API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
+		const rawPage = await res.text()
+		rawPages.push(rawPage)
+		const payload = JSON.parse(rawPage) as {
+			data?: Array<{
+				id: string
+				amount: number
+				currency: string
+				arrival_date: number
+				created: number
+				description?: string
+				status?: string
+			}>
+			has_more?: boolean
+		}
+		const pagePayouts = payload.data ?? []
+		payouts.push(...pagePayouts)
+		if (!payload.has_more) break
+		const lastId = pagePayouts.at(-1)?.id
+		if (!lastId) throw new Error("Stripe indicated another page but returned no payout cursor.")
+		startingAfter = lastId
+		if (page === MAX_PROVIDER_SYNC_PAGES - 1) throw new Error(`Stripe payout sync exceeded the ${MAX_PROVIDER_SYNC_PAGES}-page safety limit.`)
 	}
-	const payouts = payload.data ?? []
 	const cases: SettlementCase[] = payouts.map((p) => {
 		const ccy = p.currency.toUpperCase()
 		const valueDate = new Date((p.arrival_date || p.created) * 1000).toISOString().slice(0, 10)
@@ -71,7 +100,7 @@ async function fetchStripeCases(credentials: IntegrationCredentials): Promise<Co
 			},
 		}
 	})
-	return { recordsFetched: payouts.length, cases, rawPayload }
+	return { recordsFetched: payouts.length, cases, rawPayload: combineRawPages(rawPages) }
 }
 
 async function fetchWiseCases(
@@ -80,13 +109,16 @@ async function fetchWiseCases(
 ): Promise<ConnectorFetchResult> {
 	const headers = { Authorization: authHeader(credentials) }
 	let profileId: string | undefined = config.profileId?.trim() || undefined
+	const rawPages: string[] = []
 
 	if (!profileId) {
 		const pRes = await fetch("https://api.transferwise.com/v1/profiles", { headers })
 		if (!pRes.ok) {
 			throw new Error(`Wise Profiles API error (${pRes.status}): ${(await pRes.text()).slice(0, 200)}`)
 		}
-		const profiles = (await pRes.json()) as Array<{ id: number }>
+		const rawProfiles = await pRes.text()
+		rawPages.push(rawProfiles)
+		const profiles = JSON.parse(rawProfiles) as Array<{ id: number }>
 		profileId = profiles[0]?.id ? String(profiles[0].id) : undefined
 	}
 
@@ -94,14 +126,7 @@ async function fetchWiseCases(
 		return { recordsFetched: 0, cases: [] }
 	}
 
-	const tRes = await fetch(`https://api.transferwise.com/v1/transfers?profile=${encodeURIComponent(profileId!)}&limit=20`, {
-		headers,
-	})
-	if (!tRes.ok) {
-		throw new Error(`Wise Transfers API error (${tRes.status}): ${(await tRes.text()).slice(0, 200)}`)
-	}
-	const rawPayload = await tRes.text()
-	const transfers = JSON.parse(rawPayload) as Array<{
+	const transfers: Array<{
 		id: number
 		sourceCurrency: string
 		sourceValue: number
@@ -110,7 +135,21 @@ async function fetchWiseCases(
 		rate: number
 		created: string
 		reference?: string
-	}>
+	}> = []
+	for (let page = 0; page < MAX_PROVIDER_SYNC_PAGES; page += 1) {
+		const url = new URL("https://api.transferwise.com/v1/transfers")
+		url.searchParams.set("profile", profileId)
+		url.searchParams.set("limit", String(WISE_PAGE_SIZE))
+		url.searchParams.set("offset", String(page * WISE_PAGE_SIZE))
+		const tRes = await fetch(url, { headers })
+		if (!tRes.ok) throw new Error(`Wise Transfers API error (${tRes.status}): ${(await tRes.text()).slice(0, 200)}`)
+		const rawPage = await tRes.text()
+		rawPages.push(rawPage)
+		const pageTransfers = JSON.parse(rawPage) as typeof transfers
+		transfers.push(...pageTransfers)
+		if (pageTransfers.length < WISE_PAGE_SIZE) break
+		if (page === MAX_PROVIDER_SYNC_PAGES - 1) throw new Error(`Wise transfer sync exceeded the ${MAX_PROVIDER_SYNC_PAGES}-page safety limit.`)
+	}
 
 	const cases: SettlementCase[] = transfers.map((t) => ({
 		caseId: `WISE-${t.id}`,
@@ -143,7 +182,7 @@ async function fetchWiseCases(
 		},
 	}))
 
-	return { recordsFetched: transfers.length, cases, rawPayload }
+	return { recordsFetched: transfers.length, cases, rawPayload: combineRawPages(rawPages) }
 }
 
 async function fetchQuickBooksCases(
@@ -154,27 +193,34 @@ async function fetchQuickBooksCases(
 	if (!realmId) {
 		throw new Error("QuickBooks integration requires a Company Realm ID.")
 	}
-	const query = encodeURIComponent("SELECT * FROM Invoice ORDERBY MetaData.LastUpdatedTime DESC MAXRESULTS 20")
-	const res = await fetch(`https://quickbooks.api.intuit.com/v3/company/${realmId}/query?query=${query}`, {
-		headers: { Authorization: authHeader(credentials), Accept: "application/json" },
-	})
-	if (!res.ok) {
-		throw new Error(`QuickBooks API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
-	}
-	const rawPayload = await res.text()
-	const json = JSON.parse(rawPayload) as {
-		QueryResponse?: {
-			Invoice?: Array<{
-				Id: string
-				DocNumber?: string
-				TotalAmt: number
-				TxnDate?: string
-				CurrencyRef?: { value?: string }
-				CustomerRef?: { name?: string }
-			}>
+	const invoices: Array<{
+		Id: string
+		DocNumber?: string
+		TotalAmt: number
+		TxnDate?: string
+		CurrencyRef?: { value?: string }
+		CustomerRef?: { name?: string }
+	}> = []
+	const rawPages: string[] = []
+	for (let page = 0; page < MAX_PROVIDER_SYNC_PAGES; page += 1) {
+		const startPosition = page * ACCOUNTING_PAGE_SIZE + 1
+		const query = encodeURIComponent(`SELECT * FROM Invoice ORDERBY MetaData.LastUpdatedTime DESC STARTPOSITION ${startPosition} MAXRESULTS ${ACCOUNTING_PAGE_SIZE}`)
+		const res = await fetch(`https://quickbooks.api.intuit.com/v3/company/${encodeURIComponent(realmId)}/query?query=${query}`, {
+			headers: { Authorization: authHeader(credentials), Accept: "application/json" },
+		})
+		if (!res.ok) throw new Error(`QuickBooks API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
+		const rawPage = await res.text()
+		rawPages.push(rawPage)
+		const json = JSON.parse(rawPage) as {
+			QueryResponse?: {
+				Invoice?: typeof invoices
+			}
 		}
+		const pageInvoices = json.QueryResponse?.Invoice ?? []
+		invoices.push(...pageInvoices)
+		if (pageInvoices.length < ACCOUNTING_PAGE_SIZE) break
+		if (page === MAX_PROVIDER_SYNC_PAGES - 1) throw new Error(`QuickBooks invoice sync exceeded the ${MAX_PROVIDER_SYNC_PAGES}-page safety limit.`)
 	}
-	const invoices = json.QueryResponse?.Invoice ?? []
 	const cases: SettlementCase[] = invoices.map((inv) => {
 		const ccy = (inv.CurrencyRef?.value || "USD").toUpperCase()
 		const minor = parseDecimalStringToMinor(String(inv.TotalAmt), ccy)
@@ -216,7 +262,7 @@ async function fetchQuickBooksCases(
 			},
 		}
 	})
-	return { recordsFetched: invoices.length, cases, rawPayload }
+	return { recordsFetched: invoices.length, cases, rawPayload: combineRawPages(rawPages) }
 }
 
 async function fetchXeroCases(
@@ -227,28 +273,32 @@ async function fetchXeroCases(
 	if (!tenantId) {
 		throw new Error("Xero integration requires a Xero Tenant ID.")
 	}
-	const res = await fetch("https://api.xero.com/api.xro/2.0/Invoices?page=1", {
-		headers: {
-			Authorization: authHeader(credentials),
-			"Xero-tenant-id": tenantId,
-			Accept: "application/json",
-		},
-	})
-	if (!res.ok) {
-		throw new Error(`Xero API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
+	const invoices: Array<{
+		InvoiceID: string
+		InvoiceNumber?: string
+		CurrencyCode?: string
+		Total?: number
+		DateString?: string
+		Contact?: { Name?: string }
+	}> = []
+	const rawPages: string[] = []
+	for (let page = 1; page <= MAX_PROVIDER_SYNC_PAGES; page += 1) {
+		const res = await fetch(`https://api.xero.com/api.xro/2.0/Invoices?page=${page}&pageSize=${ACCOUNTING_PAGE_SIZE}`, {
+			headers: {
+				Authorization: authHeader(credentials),
+				"Xero-tenant-id": tenantId,
+				Accept: "application/json",
+			},
+		})
+		if (!res.ok) throw new Error(`Xero API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
+		const rawPage = await res.text()
+		rawPages.push(rawPage)
+		const json = JSON.parse(rawPage) as { Invoices?: typeof invoices }
+		const pageInvoices = json.Invoices ?? []
+		invoices.push(...pageInvoices)
+		if (pageInvoices.length < ACCOUNTING_PAGE_SIZE) break
+		if (page === MAX_PROVIDER_SYNC_PAGES) throw new Error(`Xero invoice sync exceeded the ${MAX_PROVIDER_SYNC_PAGES}-page safety limit.`)
 	}
-	const rawPayload = await res.text()
-	const json = JSON.parse(rawPayload) as {
-		Invoices?: Array<{
-			InvoiceID: string
-			InvoiceNumber?: string
-			CurrencyCode?: string
-			Total?: number
-			DateString?: string
-			Contact?: { Name?: string }
-		}>
-	}
-	const invoices = json.Invoices ?? []
 	const cases: SettlementCase[] = invoices.map((inv) => {
 		const ccy = (inv.CurrencyCode || "USD").toUpperCase()
 		const minor = parseDecimalStringToMinor(String(inv.Total ?? 0), ccy)
@@ -290,7 +340,7 @@ async function fetchXeroCases(
 			},
 		}
 	})
-	return { recordsFetched: invoices.length, cases, rawPayload }
+	return { recordsFetched: invoices.length, cases, rawPayload: combineRawPages(rawPages) }
 }
 
 function fetchHotFolderCases(config: Record<string, string>): ConnectorFetchResult {
