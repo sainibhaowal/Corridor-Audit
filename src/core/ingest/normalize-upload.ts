@@ -75,8 +75,9 @@ export function normalizeInboundPayloadToCases(input: UploadPayload, options?: N
 	}
 
 	// 1. JSON payload (single SettlementCase, { cases: [...] }, or webhook { invoice, wire })
-	const looksLikeMt103Header = /^\{[1-5]:/.test(trimmed)
-	if (fmt === "json" || name.endsWith(".json") || (trimmed.startsWith("{") && !looksLikeMt103Header) || trimmed.startsWith("[")) {
+	// Note: SWIFT MT103 messages also start with "{1:...", so exclude MT103 block headers from JSON sniffing.
+	const looksLikeMt103Header = /^\{1:[A-Z0-9]+\}/.test(trimmed)
+	if (fmt === "json" || name.endsWith(".json") || (!looksLikeMt103Header && (trimmed.startsWith("{") || trimmed.startsWith("[")))) {
 		const parsed = JSON.parse(trimmed) as unknown
 		if (Array.isArray(parsed)) {
 			return markSuppliedWireEvidence(parseJsonSettlementCases(parsed))
