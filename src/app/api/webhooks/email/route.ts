@@ -36,9 +36,14 @@ export async function POST(request: Request) {
 		const eventIdentity = deriveWebhookEventId(raw, "email_inbound", true)
 		const identity = { provider: "email_inbound", eventId: eventIdentity.eventId }
 		receiptIdentity = identity
-		const payload = JSON.parse(raw) as InboundEmailPayload
-		const sender = payload.from || payload.From || "unknown-sender"
-		const subject = payload.subject || payload.Subject || "Inbound Email"
+		let payload: InboundEmailPayload | undefined
+		try {
+			payload = JSON.parse(raw) as InboundEmailPayload
+		} catch {
+			payload = undefined
+		}
+		const sender = payload?.from || payload?.From || "unknown-sender"
+		const subject = payload?.subject || payload?.Subject || "Inbound Email"
 		const receipt = db.recordWebhookReceipt({
 			workspaceId: DEFAULT_WORKSPACE_ID,
 			...identity,
@@ -56,8 +61,28 @@ export async function POST(request: Request) {
 		}
 		const rec = receipt.ingestion
 		ingestionId = rec.id
+		if (!payload) {
+			const message = "Email webhook body is not valid JSON. The raw payload was retained for inspection."
+			db.updateRawIngestionOutcome({ id: rec.id, parseStatus: "failed", parseError: message })
+			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
+			return NextResponse.json({ ok: false, error: message, ingestionId: rec.id }, { status: 422 })
+		}
 
-		const cases = parseInboundEmailToCases(payload)
+		let cases: ReturnType<typeof parseInboundEmailToCases>
+		try {
+			cases = parseInboundEmailToCases(payload)
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Email payload could not be parsed."
+			db.updateRawIngestionOutcome({ id: rec.id, parseStatus: "failed", parseError: message })
+			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
+			return NextResponse.json({ ok: false, error: message, ingestionId: rec.id }, { status: 422 })
+		}
+		if (cases.length === 0) {
+			const message = "Email payload was stored, but it contained no supported settlement cases."
+			db.updateRawIngestionOutcome({ id: rec.id, parseStatus: "failed", parseError: message })
+			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
+			return NextResponse.json({ ok: false, error: message, ingestionId: rec.id }, { status: 422 })
+		}
 		db.updateRawIngestionOutcome({
 			id: rec.id,
 			parseStatus: "parsed",

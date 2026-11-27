@@ -67,8 +67,22 @@ export async function POST(request: Request) {
 		const rec = receipt.ingestion
 		ingestionId = rec.id
 
+		let cases: ReturnType<typeof normalizeInboundPayloadToCases>
+		try {
+			cases = normalizeInboundPayloadToCases({ content: raw, format: "auto" })
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Webhook payload could not be parsed."
+			db.updateRawIngestionOutcome({ id: rec.id, parseStatus: "failed", parseError: message })
+			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
+			return NextResponse.json({ ok: false, error: message, ingestionId: rec.id }, { status: 422 })
+		}
+		if (cases.length === 0) {
+			const message = "Webhook payload was stored, but it contained no supported settlement cases."
+			db.updateRawIngestionOutcome({ id: rec.id, parseStatus: "failed", parseError: message })
+			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
+			return NextResponse.json({ ok: false, error: message, ingestionId: rec.id }, { status: 422 })
+		}
 		const orchestrator = initCorridorOrchestrator()
-		const cases = normalizeInboundPayloadToCases({ content: raw, format: "auto" })
 		db.updateRawIngestionOutcome({
 			id: rec.id,
 			parseStatus: "parsed",

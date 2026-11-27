@@ -1002,27 +1002,27 @@ export class CorridorDatabase {
 	}): WebhookReceiptResult {
 		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
 		const sha256 = createHash("sha256").update(params.rawContent, "utf8").digest("hex")
-		const select = this.db.prepare(`SELECT payload_sha256, ingestion_id, status FROM webhook_receipts
-			WHERE workspace_id = ? AND provider = ? AND event_id = ?`)
-		const existing = select.get(workspaceId, params.provider, params.eventId) as {
-			payload_sha256: string
-			ingestion_id: string
-			status: WebhookReceiptResult["status"]
-		} | undefined
-
-		if (existing) {
-			const ingestion = this.getRawIngestion(existing.ingestion_id, true, workspaceId)
-			if (!ingestion) throw new Error("Webhook receipt references a missing raw ingestion record.")
-			return {
-				duplicate: true,
-				conflict: existing.payload_sha256 !== sha256,
-				status: existing.status,
-				ingestion,
-			}
-		}
-
 		this.db.exec("BEGIN IMMEDIATE")
 		try {
+			const existing = this.db.prepare(`SELECT payload_sha256, ingestion_id, status FROM webhook_receipts
+				WHERE workspace_id = ? AND provider = ? AND event_id = ?`)
+				.get(workspaceId, params.provider, params.eventId) as {
+					payload_sha256: string
+					ingestion_id: string
+					status: WebhookReceiptResult["status"]
+				} | undefined
+			if (existing) {
+				const ingestion = this.getRawIngestion(existing.ingestion_id, true, workspaceId)
+				if (!ingestion) throw new Error("Webhook receipt references a missing raw ingestion record.")
+				this.db.exec("COMMIT")
+				return {
+					duplicate: true,
+					conflict: existing.payload_sha256 !== sha256,
+					status: existing.status,
+					ingestion,
+				}
+			}
+
 			const ingestion = this.saveRawIngestion({
 				workspaceId,
 				sourceChannel: params.sourceChannel,

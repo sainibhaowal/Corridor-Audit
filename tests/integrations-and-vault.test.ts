@@ -257,6 +257,42 @@ test("local case queue uses exclusive claims and recovers expired work", async (
 	db.close()
 })
 
+test("webhook receipt creation is idempotent and preserves payload conflicts", () => {
+	const db = new CorridorDatabase(":memory:")
+	const original = db.recordWebhookReceipt({
+		provider: "corridor",
+		eventId: "evt-idempotency-01",
+		sourceChannel: "webhook",
+		filename: "event.json",
+		format: "json",
+		rawContent: "{\"amount\":100}",
+	})
+	const repeated = db.recordWebhookReceipt({
+		provider: "corridor",
+		eventId: "evt-idempotency-01",
+		sourceChannel: "webhook",
+		filename: "event.json",
+		format: "json",
+		rawContent: "{\"amount\":100}",
+	})
+	assert.equal(original.duplicate, false)
+	assert.equal(repeated.duplicate, true)
+	assert.equal(repeated.conflict, false)
+	assert.equal(repeated.ingestion.id, original.ingestion.id)
+	const conflict = db.recordWebhookReceipt({
+		provider: "corridor",
+		eventId: "evt-idempotency-01",
+		sourceChannel: "webhook",
+		filename: "event.json",
+		format: "json",
+		rawContent: "{\"amount\":101}",
+	})
+	assert.equal(conflict.duplicate, true)
+	assert.equal(conflict.conflict, true)
+	assert.equal(db.listRawIngestions({ channel: "webhook" }).length, 1)
+	db.close()
+})
+
 test("case IDs and raw-ingestion lookups cannot cross workspace boundaries", () => {
 	const db = new CorridorDatabase(":memory:")
 	const internal = db as unknown as { db: DatabaseSync }
@@ -1094,6 +1130,16 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 		}),
 	)
 	assert.equal(conflictingWebhookRes.status, 409, "reused event IDs with changed payloads must be rejected")
+	const unsupportedPayload = JSON.stringify({ id: "evt-WH-UNSUPPORTED-01", type: "customer.updated" })
+	const unsupportedSig = createHmac("sha256", secret).update(unsupportedPayload, "utf8").digest("hex")
+	const unsupportedWebhookRes = await inboundWebhookRoute(
+		new Request("http://127.0.0.1/api/webhooks/inbound", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", "x-corridor-signature": `sha256=${unsupportedSig}` },
+			body: unsupportedPayload,
+		}),
+	)
+	assert.equal(unsupportedWebhookRes.status, 422, "unsupported signed events are stored as failed evidence, not acknowledged as queued")
 
 	// 3. Signed Email Webhook
 	const emailBody = JSON.stringify({
@@ -1124,6 +1170,16 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 		}),
 	)
 	assert.equal(duplicateEmailRes.status, 200)
+	const malformedEmail = "{not-json"
+	const malformedEmailSig = createHmac("sha256", secret).update(malformedEmail, "utf8").digest("hex")
+	const malformedEmailRes = await emailWebhookRoute(
+		new Request("http://127.0.0.1/api/webhooks/email", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", "x-corridor-signature": `sha256=${malformedEmailSig}` },
+			body: malformedEmail,
+		}),
+	)
+	assert.equal(malformedEmailRes.status, 422, "signed malformed email payloads are retained and reported as parse failures")
 
 	// Reset requireWebhookSignature back to false so other tests remain unaffected
 	await postWorkspaceRoute(
@@ -1151,7 +1207,7 @@ test("Raw Data Vault persists raw payloads and supports inspect, download, and r
 	assert.ok(listJson.stats.webhook >= 1)
 	assert.ok(listJson.stats.email >= 1)
 
-	const targetId = listJson.ingestions[0]!.id
+	const targetId = listJson.ingestions.find((ingestion) => ingestion.caseIds.length > 0)!.id
 	const detailRes = await getIngestionRoute(
 		new Request(`http://127.0.0.1/api/ingestions/${targetId}`),
 		{ params: Promise.resolve({ id: targetId }) },
