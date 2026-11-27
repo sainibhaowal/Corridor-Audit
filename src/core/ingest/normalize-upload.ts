@@ -11,6 +11,13 @@ export interface UploadPayload {
 	format?: "auto" | "json" | "mt103" | "csv" | "xml" | "pdf" | "text"
 }
 
+function markSuppliedWireEvidence(cases: SettlementCase[]): SettlementCase[] {
+	return cases.map((settlementCase) => ({
+		...settlementCase,
+		settlementEvidence: settlementCase.settlementEvidence ?? "observed",
+	}))
+}
+
 export function normalizeInboundPayloadToCases(input: UploadPayload): SettlementCase[] {
 	const name = (input.filename || "").toLowerCase()
 	const fmt = input.format || "auto"
@@ -30,14 +37,14 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 	if (fmt === "json" || name.endsWith(".json") || trimmed.startsWith("{") || trimmed.startsWith("[")) {
 		const parsed = JSON.parse(trimmed) as unknown
 		if (Array.isArray(parsed)) {
-			return parsed as SettlementCase[]
+			return markSuppliedWireEvidence(parsed as SettlementCase[])
 		}
 		const obj = parsed as Record<string, unknown>
 		if (Array.isArray(obj.cases)) {
-			return obj.cases as SettlementCase[]
+			return markSuppliedWireEvidence(obj.cases as SettlementCase[])
 		}
 		if (obj.caseId && obj.wire) {
-			return [obj as unknown as SettlementCase]
+			return markSuppliedWireEvidence([obj as unknown as SettlementCase])
 		}
 		if (obj.wire || obj.invoice) {
 			const id = String(obj.caseId || `WH-${Date.now().toString().slice(-5)}`)
@@ -46,11 +53,12 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 					caseId: id,
 					title: String(obj.title || `Inbound Webhook (${id})`),
 					channelLabel: String(obj.channelLabel || "Inbound Webhook JSON"),
+					settlementEvidence: obj.wire ? "observed" : "estimated",
 					invoice: obj.invoice as InvoiceInput | undefined,
 					wire: (obj.wire as WireOrBankInput) ?? {
 						wireId: `WIRE-${id}`,
 						format: "bank_csv",
-						valueDate: "2026-11-24",
+						valueDate: String((obj.invoice as InvoiceInput | undefined)?.dueDate || new Date().toISOString().slice(0, 10)),
 						settledAmount: (obj.invoice as InvoiceInput).expectedAmount,
 						senderCharges: [],
 						receiverCharges: [],
@@ -70,6 +78,7 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 				caseId: id,
 				title: `ISO 20022 Entry (${w.transactionRef || w.wireId})`,
 				channelLabel: "ISO 20022 camt.053 XML",
+				settlementEvidence: "observed",
 				wire: w,
 				invoice: w.instructedAmount
 					? {
@@ -99,6 +108,7 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 				caseId: id,
 				title: `SWIFT MT103 Wire (${w.transactionRef || w.wireId})`,
 				channelLabel: "SWIFT MT103 Upload",
+				settlementEvidence: "observed",
 				wire: w,
 				invoice: w.instructedAmount
 					? {
@@ -129,6 +139,7 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 					caseId: id,
 					title: `${w.platformName?.toUpperCase() || "CSV"} Payout (${w.wireId})`,
 					channelLabel: w.platformName && w.platformName !== "direct_bank" ? `Platform CSV (${w.platformName})` : "Bank CSV Upload",
+					settlementEvidence: "observed",
 					wire: w,
 					invoice: w.instructedAmount
 						? {
@@ -155,11 +166,12 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 				caseId: id,
 				title: `Uploaded Invoice (${inv.invoiceId})`,
 				channelLabel: "Invoice CSV Upload",
+				settlementEvidence: "estimated",
 				invoice: inv,
 				wire: {
 					wireId: `WIRE-${inv.invoiceId}`,
 					format: "bank_csv",
-					valueDate: "2026-11-24",
+					valueDate: inv.dueDate,
 					instructedAmount: inv.expectedAmount,
 					settledAmount: inv.expectedAmount,
 					chargeBearer: inv.contractedChargeBearer,
@@ -181,12 +193,13 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 			caseId: id,
 			title: `Extracted Notice (${inv.invoiceId})`,
 			channelLabel: name.endsWith(".pdf") ? "PDF Document Extract" : "Raw Text / Email Advice",
+			settlementEvidence: "estimated",
 			invoice: inv,
 			wire: {
 				wireId: `WIRE-${inv.invoiceId}`,
 				format: "bank_csv",
 				rawText: trimmed,
-				valueDate: "2026-11-24",
+				valueDate: inv.dueDate,
 				instructedAmount: inv.expectedAmount,
 				settledAmount: inv.expectedAmount,
 				chargeBearer: inv.contractedChargeBearer,

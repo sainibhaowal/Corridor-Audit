@@ -43,6 +43,7 @@ async function fetchStripeCases(credentials: IntegrationCredentials): Promise<Co
 			caseId: `STRIPE-${p.id}`,
 			title: `Stripe Payout ${p.id}`,
 			channelLabel: "Stripe Payouts API",
+			settlementEvidence: "observed",
 			createdAt: new Date().toISOString(),
 			wire: {
 				wireId: p.id,
@@ -110,6 +111,7 @@ async function fetchWiseCases(
 		caseId: `WISE-${t.id}`,
 		title: `Wise Transfer #${t.id} (${t.sourceCurrency} → ${t.targetCurrency})`,
 		channelLabel: "Wise Transfers API",
+		settlementEvidence: "observed",
 		createdAt: new Date().toISOString(),
 		wire: {
 			wireId: String(t.id),
@@ -173,6 +175,7 @@ async function fetchQuickBooksCases(
 			caseId: `QBO-${inv.DocNumber || inv.Id}`,
 			title: `QuickBooks Invoice ${inv.DocNumber || inv.Id}`,
 			channelLabel: "QuickBooks Online",
+			settlementEvidence: "estimated",
 			createdAt: new Date().toISOString(),
 			invoice: {
 				invoiceId: inv.DocNumber || inv.Id,
@@ -247,6 +250,7 @@ async function fetchXeroCases(
 			caseId: `XERO-${inv.InvoiceNumber || inv.InvoiceID.slice(0, 8)}`,
 			title: `Xero Invoice ${inv.InvoiceNumber || inv.InvoiceID}`,
 			channelLabel: "Xero Accounting",
+			settlementEvidence: "estimated",
 			createdAt: new Date().toISOString(),
 			invoice: {
 				invoiceId: inv.InvoiceNumber || inv.InvoiceID,

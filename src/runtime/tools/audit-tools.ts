@@ -7,6 +7,7 @@ import {
 	convertMinorUnits,
 	formatMoney,
 } from "../../core/money"
+import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "../../core/db/database"
 import type { AuditStatus, AuditVerdict, SourceRef } from "../../core/types"
 import { type CorridorState, resolveRuntime } from "../corridor-runtime"
 
@@ -308,14 +309,17 @@ export const finalizeSettlementActionTool: Tool = {
 			totalLeakBps,
 		} = calc
 
-		const overriddenClean = args.actionType === "CLOSE_CLEAN" || Boolean(args.humanOverrideNote)
+		const overriddenClean = Boolean(args.humanOverrideNote)
 		const recoverableFeeMinor = overriddenClean ? 0 : recoverableOurViolationMinor
+		const evidenceIncomplete = c.settlementEvidence !== "observed"
+		const varianceThresholdMinor = getCorridorDb().getWorkspace(DEFAULT_WORKSPACE_ID).varianceThresholdMinor
 
 		let status: AuditStatus = "CLEAN"
-		if (overriddenClean) status = "CLEAN"
+		if (evidenceIncomplete) status = "EVIDENCE_INCOMPLETE"
 		else if (anomaly?.classification === "TRUE_DUPLICATE") status = "DUPLICATE_WIRE"
 		else if (recoverableFeeMinor > 0) status = "RECOVERABLE_FEE_VIOLATION"
-		else if (varianceMinor !== 0) status = "VARIANCE_DETECTED"
+		else if (Math.abs(varianceMinor) > varianceThresholdMinor) status = "VARIANCE_DETECTED"
+		else if (varianceMinor !== 0) status = "VARIANCE_WITHIN_THRESHOLD"
 		else if (wire.isOrphan && wire.matchedInvoiceId) status = "ORPHAN_MATCHED"
 		else if (fx.fxSpreadBps >= 150) status = "FX_MARKUP_ALERT"
 
@@ -327,21 +331,24 @@ export const finalizeSettlementActionTool: Tool = {
 		])
 
 		const defaultSummary =
-			args.summary ||
+			(!evidenceIncomplete ? args.summary : undefined) ||
 			(() => {
-				const parts: string[] = [
-					`Invoice ${wire.matchedInvoiceId ?? terms.invoiceId} (${formatMoney(terms.expectedGrossMinor, terms.expectedCurrency)}, ${terms.contractedChargeBearer}) settled at ${formatMoney(c.wire.settledAmount.amountMinor, to)}.`,
-				]
+				const parts: string[] = evidenceIncomplete
+					? [`Invoice ${terms.invoiceId} was received without bank or payout evidence. The settlement amount is an estimate based on the invoice and must not be treated as a completed payment or reconciliation.`]
+					: [`Invoice ${wire.matchedInvoiceId ?? terms.invoiceId} (${formatMoney(terms.expectedGrossMinor, terms.expectedCurrency)}, ${terms.contractedChargeBearer}) settled at ${formatMoney(c.wire.settledAmount.amountMinor, to)}.`]
 				if (fx.fxSpreadLossMinor > 0) {
 					parts.push(`Bank FX spread cost ${formatMoney(fx.fxSpreadLossMinor, to)} (${(fx.fxSpreadBps / 100).toFixed(2)}%) vs ECB ${fx.rateRecord.midMarketRate}.`)
 				}
 				if (recoverableFeeMinor > 0) {
 					parts.push(`Wrongful :71A:OUR deduction of ${formatMoney(recoverableFeeMinor, to)} is recoverable.`)
 				}
-				if (varianceMinor !== 0) {
+				if (varianceMinor !== 0 && !evidenceIncomplete) {
 					parts.push(`Unexplained short-pay variance: ${formatMoney(varianceMinor, to)}.`)
-				} else {
-					parts.push(`Cent-proof variance: ${formatMoney(0, to)}.`)
+				} else if (!evidenceIncomplete) {
+					parts.push(`Calculated variance: ${formatMoney(0, to)}. This reflects supplied records and is not independent bank confirmation.`)
+				}
+				if (!evidenceIncomplete && varianceMinor !== 0 && Math.abs(varianceMinor) <= varianceThresholdMinor) {
+					parts.push(`The difference is within the configured tolerance of ${formatMoney(varianceThresholdMinor, to)}; the measured difference remains recorded.`)
 				}
 				if (args.humanOverrideNote) {
 					parts.push(`Operator note applied: "${args.humanOverrideNote}".`)
@@ -350,7 +357,7 @@ export const finalizeSettlementActionTool: Tool = {
 			})()
 
 		const disputeNotice =
-			recoverableFeeMinor > 0
+			!evidenceIncomplete && recoverableFeeMinor > 0
 				? args.disputeDraft ||
 					buildDisputeLetter({
 						caseId: args.caseId,

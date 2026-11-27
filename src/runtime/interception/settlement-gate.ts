@@ -7,6 +7,7 @@ import {
 	ModelMessageItem,
 } from "@mozaik-ai/core"
 import { createInterface } from "node:readline/promises"
+import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "../../core/db/database"
 import { formatMoney } from "../../core/money"
 import { BUILD_PROVENANCE } from "../../core/build-info"
 import type { AuditVerdict, PendingBreakpointDecision } from "../../core/types"
@@ -61,10 +62,11 @@ export class SettlementGateInterceptionHandler implements InterceptionHandler {
 		if (!calc) return false
 
 		const { recoverableOurViolationMinor: recoverableMinor, varianceMinor, anomaly } = calc
+		const varianceThresholdMinor = getCorridorDb().getWorkspace(DEFAULT_WORKSPACE_ID).varianceThresholdMinor
 
 		const isRisky =
 			recoverableMinor > 0 ||
-			varianceMinor !== 0 ||
+			Math.abs(varianceMinor) > varianceThresholdMinor ||
 			anomaly?.classification === "TRUE_DUPLICATE" ||
 			Boolean(anomaly?.vendorBankChanged)
 
@@ -103,7 +105,7 @@ export class SettlementGateInterceptionHandler implements InterceptionHandler {
 				riskLabel = `High Risk · Duplicate Wire`
 				question = `Two identical wires (${anomaly.duplicateWireIds.join(", ")}) matched ${terms?.invoiceId}. Hold settlement and flag duplicate alert?`
 				proofLine = `Duplicate wires detected within window · Amount: ${formatMoney(c?.wire.settledAmount.amountMinor ?? 0, currency)}`
-			} else if (varianceMinor !== 0) {
+			} else if (Math.abs(varianceMinor) > getCorridorDb().getWorkspace(DEFAULT_WORKSPACE_ID).varianceThresholdMinor) {
 				riskLabel = `High Risk · Missing Money`
 				question = `There is an unexplained ${formatMoney(varianceMinor, currency)} short-pay variance on ${terms?.invoiceId}. Escalate variance alert?`
 				proofLine = `Expected ${formatMoney(fx?.midMarketExpectedMinor ?? 0, currency)} vs Net ${formatMoney(c?.wire.settledAmount.amountMinor ?? 0, currency)} · Variance: ${formatMoney(varianceMinor, currency)}`

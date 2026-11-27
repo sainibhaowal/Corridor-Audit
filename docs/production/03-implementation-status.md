@@ -6,8 +6,8 @@ This is the live delivery record for production-readiness engineering. A row is 
 
 | Phase | Scope | Status |
 | --- | --- | --- |
-| 0 | Baseline and code-backed production record | In progress |
-| 1 | Canonical evidence completeness, provider mapping correctness, upload validation, and accurate states | Not started |
+| 0 | Baseline and code-backed production record | Complete |
+| 1 | Canonical evidence completeness, provider mapping correctness, upload validation, and accurate states | In progress |
 | 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | Not started |
 | 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Not started |
 | 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Not started |
@@ -45,3 +45,14 @@ No code-only change can activate production identity or managed services without
 ## Verification record
 
 Update this section per milestone with the exact command, result, environment, and date. Do not claim tests, provider certification, security review, or recovery exercises that were not actually performed.
+
+### 2026-11-27 local milestone
+
+- Invoice-only JSON, invoice CSV, plain-text, and PDF normalized cases now carry `settlementEvidence: "estimated"`; the generated comparison date comes from the invoice due date or current date instead of a fixed example date.
+- QuickBooks and Xero invoice-only mappings are marked estimated. A supplied wire in inbound JSON is marked observed.
+- Estimated records finalize as `EVIDENCE_INCOMPLETE`, cannot generate a fee-dispute draft, and cannot be promoted to a clean result by the model's `CLOSE_CLEAN` action. Human overrides remain recorded, while missing payment evidence stays visible.
+- The saved variance threshold now controls Risk Only gate pauses and verdict classification. Above-threshold differences are `VARIANCE_DETECTED`; nonzero differences within tolerance remain recorded as `VARIANCE_WITHIN_THRESHOLD`. The setting is interpreted in minor units of the case settlement currency.
+- Corridor summary wording now describes calculated flags and estimates, excludes evidence-incomplete records from FX and fee totals, and separates above-threshold cases from cases still awaiting payment evidence.
+- `npm run typecheck`: passed on the local Windows development environment.
+- `npm test`: passed, 19 tests, 0 failures. Three tests cover invoice-only JSON, explicit payment evidence, and invoice CSV evidence status.
+- Remaining Phase 1 work: strict schema validation, request-size limits, validation of all provider and webhook inputs, and source-specific tests for live connector mappings. No external provider was contacted or certified in this milestone.

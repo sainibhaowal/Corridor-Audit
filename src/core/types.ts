@@ -88,6 +88,8 @@ export interface SettlementCase {
 	caseId: string
 	title: string
 	channelLabel: string
+	/** Invoice-only records use an estimated comparison amount, not observed payment evidence. */
+	settlementEvidence?: "observed" | "estimated"
 	invoice?: InvoiceInput
 	wire: WireOrBankInput
 	candidateWires?: WireOrBankInput[]
@@ -166,6 +168,8 @@ export type AuditStatus =
 	| "CLEAN"
 	| "RECOVERABLE_FEE_VIOLATION"
 	| "VARIANCE_DETECTED"
+	| "VARIANCE_WITHIN_THRESHOLD"
+	| "EVIDENCE_INCOMPLETE"
 	| "DUPLICATE_WIRE"
 	| "ORPHAN_MATCHED"
 	| "FX_MARKUP_ALERT"

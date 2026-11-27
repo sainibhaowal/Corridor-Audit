@@ -23,9 +23,12 @@ interface CorridorSummaryViewProps {
 }
 
 export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryViewProps) {
-	const recoverLabel = formatBreakdown(verdicts, (v) => v.numbers.recoverableFeeMinor)
-	const fxLabel = formatBreakdown(verdicts, (v) => v.numbers.fxSpreadLossMinor)
-	const varianceCount = verdicts.filter((v) => v.numbers.unexplainedVarianceMinor !== 0).length
+	const evidenceBackedVerdicts = verdicts.filter((v) => v.status !== "EVIDENCE_INCOMPLETE")
+	const recoverLabel = formatBreakdown(evidenceBackedVerdicts, (v) => v.numbers.recoverableFeeMinor)
+	const fxLabel = formatBreakdown(evidenceBackedVerdicts, (v) => v.numbers.fxSpreadLossMinor)
+	const varianceCount = verdicts.filter((v) => v.status === "VARIANCE_DETECTED").length
+	const withinThresholdCount = verdicts.filter((v) => v.status === "VARIANCE_WITHIN_THRESHOLD").length
+	const incompleteCount = verdicts.filter((v) => v.status === "EVIDENCE_INCOMPLETE").length
 
 	return (
 		<div className="space-y-4">
@@ -34,36 +37,36 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 					Cross-Border Corridor Leak Summary
 				</h1>
 				<p className="mt-1 text-xs text-[#81949a]">
-					Aggregated cents-verified totals across all completed audits and corridor channels.
+					Calculated from saved case verdicts. Estimates without payment evidence are excluded from fee and FX totals.
 				</p>
 			</div>
 
 			<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
 				<Card className="flex min-h-[100px] flex-col justify-between p-4">
 					<div className="text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
-						Cases Audited
+						Cases Processed
 					</div>
 					<div className="tabular text-2xl font-extrabold tracking-tight text-[#e3edef]">
 						{verdicts.length}
 					</div>
 					<div className="text-[11px] text-[#71858c]">
-						{verdicts.length === 0 ? "Awaiting batch or upload" : "Cent-proof complete"}
+						{incompleteCount} awaiting payment evidence
 					</div>
 				</Card>
 
 				<Card className="flex min-h-[100px] flex-col justify-between p-4">
 					<div className="text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
-						Recoverable Fees
+						Potential OUR Fee Claims
 					</div>
 					<div className="tabular text-2xl font-extrabold tracking-tight text-[#62e1c3]">
 						{recoverLabel}
 					</div>
-					<div className="text-[11px] text-[#71858c]">Wrongful :71A:OUR deductions</div>
+					<div className="text-[11px] text-[#71858c]">Calculated flags, not confirmed recoveries</div>
 				</Card>
 
 				<Card className="flex min-h-[100px] flex-col justify-between p-4">
 					<div className="text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
-						Hidden FX Spread
+						Estimated FX Spread
 					</div>
 					<div className="tabular text-2xl font-extrabold tracking-tight text-amber-700">
 						{fxLabel}
@@ -73,7 +76,7 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 
 				<Card className="flex min-h-[100px] flex-col justify-between p-4">
 					<div className="text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
-						Open Variances
+						Above Threshold
 					</div>
 					<div
 						className={`tabular text-2xl font-extrabold tracking-tight ${
@@ -83,7 +86,7 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 						{varianceCount}
 					</div>
 					<div className="text-[11px] text-[#71858c]">
-						{varianceCount > 0 ? "Unexplained short-pay flagged" : "Zero unexplained drift"}
+						{withinThresholdCount} within threshold · {incompleteCount} need evidence
 					</div>
 				</Card>
 			</div>

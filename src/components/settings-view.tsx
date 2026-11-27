@@ -677,7 +677,7 @@ export function SettingsView({
 							</div>
 							<div>
 								<label className="mb-1 block text-xs font-semibold text-[#c7d3d6]">
-									Variance Alert Threshold (Minor Units / Cents, e.g. 500 = $5.00)
+									Variance review threshold (minor units, applied in each case settlement currency)
 								</label>
 								<input
 									type="number"
@@ -688,6 +688,9 @@ export function SettingsView({
 									}
 									className="h-9 w-full rounded-md border border-[#32454d] bg-[#080d12] px-3 font-mono text-xs text-[#e3edef]"
 								/>
+								<p className="mt-1 text-[11px] text-[#81949a]">
+									Differences above this amount pause in Risk Only mode. Smaller nonzero differences remain visible in the verdict.
+								</p>
 							</div>
 							{workspaceNotice && (
 								<div className="rounded-md border border-[#225b51] bg-[#0d2725] px-3 py-2 text-xs text-[#75e4c7]">
