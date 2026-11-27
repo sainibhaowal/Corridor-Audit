@@ -48,6 +48,11 @@ export interface StoredReviewDecision {
 	approvalId: string
 }
 
+export type ResolvePendingApprovalResult =
+	| { status: "resolved"; approvalId: string }
+	| { status: "not_found" }
+	| { status: "same_reviewer" }
+
 export interface DeadLetterCaseRecord {
 	caseId: string
 	title: string
@@ -245,6 +250,7 @@ export class CorridorDatabase {
 		if (!existing.has("last_error")) this.db.exec("ALTER TABLE cases ADD COLUMN last_error TEXT")
 		if (!existing.has("worker_id")) this.db.exec("ALTER TABLE cases ADD COLUMN worker_id TEXT")
 		if (!existing.has("lease_expires_at")) this.db.exec("ALTER TABLE cases ADD COLUMN lease_expires_at TEXT")
+		if (!existing.has("submitted_by_sub")) this.db.exec("ALTER TABLE cases ADD COLUMN submitted_by_sub TEXT")
 		this.db.prepare("UPDATE cases SET lease_expires_at = ? WHERE status = 'running' AND lease_expires_at IS NULL")
 			.run(new Date(0).toISOString())
 		this.db.exec(`UPDATE cases SET status = 'dead_letter', last_error = COALESCE(last_error, 'Migrated terminal failure for operator review.')
@@ -396,18 +402,27 @@ export class CorridorDatabase {
 		reviewerEmail: string
 		reviewerRole: string
 		workspaceId?: string
-	}): string | null {
+		requireIndependentReviewer?: boolean
+	}): ResolvePendingApprovalResult {
 		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
 		this.db.exec("BEGIN IMMEDIATE")
 		try {
 			const row = params.approvalId
-				? this.db.prepare(`SELECT id FROM review_approvals WHERE workspace_id = ? AND case_id = ? AND id = ? AND status = 'pending'`)
-					.get(workspaceId, params.caseId, params.approvalId) as { id: string } | undefined
-				: this.db.prepare(`SELECT id FROM review_approvals WHERE workspace_id = ? AND case_id = ? AND status = 'pending'
-					ORDER BY requested_at DESC, rowid DESC LIMIT 1`).get(workspaceId, params.caseId) as { id: string } | undefined
+				? this.db.prepare(`SELECT a.id, c.submitted_by_sub FROM review_approvals a
+					LEFT JOIN cases c ON c.case_id = a.case_id AND c.workspace_id = a.workspace_id
+					WHERE a.workspace_id = ? AND a.case_id = ? AND a.id = ? AND a.status = 'pending'`)
+					.get(workspaceId, params.caseId, params.approvalId) as { id: string; submitted_by_sub: string | null } | undefined
+				: this.db.prepare(`SELECT a.id, c.submitted_by_sub FROM review_approvals a
+					LEFT JOIN cases c ON c.case_id = a.case_id AND c.workspace_id = a.workspace_id
+					WHERE a.workspace_id = ? AND a.case_id = ? AND a.status = 'pending'
+					ORDER BY a.requested_at DESC, a.rowid DESC LIMIT 1`).get(workspaceId, params.caseId) as { id: string; submitted_by_sub: string | null } | undefined
 			if (!row) {
 				this.db.exec("COMMIT")
-				return null
+				return { status: "not_found" }
+			}
+			if (params.decision === "approve" && params.requireIndependentReviewer && row.submitted_by_sub === params.reviewerSub) {
+				this.db.exec("COMMIT")
+				return { status: "same_reviewer" }
 			}
 			const decidedAt = new Date().toISOString()
 			const updated = this.db.prepare(`UPDATE review_approvals SET status = ?, decision = ?, reason = ?, reviewer_sub = ?,
@@ -416,11 +431,11 @@ export class CorridorDatabase {
 					params.decision, params.reason ?? null, params.reviewerSub, params.reviewerEmail, params.reviewerRole, decidedAt, row.id)
 			if (Number(updated.changes) !== 1) {
 				this.db.exec("COMMIT")
-				return null
+				return { status: "not_found" }
 			}
 			this.appendWorkspaceAuditEvent({ workspaceId, actorType: params.reviewerSub === "local-operator" ? "local" : "user", actorId: params.reviewerSub, actorEmail: params.reviewerEmail, actorRole: params.reviewerRole, action: "review.decision", targetType: "case", targetId: params.caseId, metadata: { decision: params.decision, approvalId: row.id } })
 			this.db.exec("COMMIT")
-			return row.id
+			return { status: "resolved", approvalId: row.id }
 		} catch (error) {
 			this.db.exec("ROLLBACK")
 			throw error
@@ -1122,16 +1137,17 @@ export class CorridorDatabase {
 		return "queued"
 	}
 
-	saveCase(settlementCase: SettlementCase, workspaceId = DEFAULT_WORKSPACE_ID): void {
+	saveCase(settlementCase: SettlementCase, workspaceId = DEFAULT_WORKSPACE_ID, submittedBySub?: string): void {
 		const now = new Date().toISOString()
 		const result = this.db
 			.prepare(
-				`INSERT INTO cases (case_id, workspace_id, source_type, title, payload_json, payload_json_encrypted, status, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 1, 'queued', ?, ?)
+				`INSERT INTO cases (case_id, workspace_id, source_type, title, payload_json, payload_json_encrypted, status, submitted_by_sub, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, 1, 'queued', ?, ?, ?)
 				ON CONFLICT(case_id) DO UPDATE SET
 					title = excluded.title,
 					payload_json = excluded.payload_json,
 					payload_json_encrypted = 1,
+					submitted_by_sub = COALESCE(cases.submitted_by_sub, excluded.submitted_by_sub),
 					updated_at = excluded.updated_at
 				WHERE cases.workspace_id = excluded.workspace_id`,
 			)
@@ -1141,6 +1157,7 @@ export class CorridorDatabase {
 				settlementCase.channelLabel || settlementCase.wire.format || "inbound",
 				settlementCase.title,
 				encryptSecret(JSON.stringify(settlementCase)),
+				submittedBySub ?? null,
 				now,
 				now,
 			)

@@ -257,6 +257,7 @@ CREATE TABLE IF NOT EXISTS cases (
 	last_error TEXT,
 	worker_id TEXT,
 	lease_expires_at TEXT,
+	submitted_by_sub TEXT,
 	created_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL
 );

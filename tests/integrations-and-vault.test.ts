@@ -19,6 +19,7 @@ import { GET as getWorkspaceRoute, POST as postWorkspaceRoute } from "../src/app
 import { POST as emailWebhookRoute } from "../src/app/api/webhooks/email/route"
 import { POST as inboundWebhookRoute } from "../src/app/api/webhooks/inbound/route"
 import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/core/db/database"
+import { CORRIDOR_SCHEMA_SQL } from "../src/core/db/schema"
 import { parseInboundEmailToCases } from "../src/core/integrations/email-parser"
 import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
 import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublicly, fetchProvider, validateProviderEndpointUrl } from "../src/core/integrations/http"
@@ -191,6 +192,25 @@ test("CorridorDatabase persists workspaces, team members, encrypted integrations
 	assert.equal(db.getIntegration(DEFAULT_WORKSPACE_ID, "wise")?.status, "disconnected")
 	assert.equal(db.getDecryptedCredentials(DEFAULT_WORKSPACE_ID, "wise"), null)
 	db.close()
+})
+
+test("existing SQLite databases add the manual submitter column without replacing case data", () => {
+	const dbPath = resolve(tmpdir(), `corridor-submitter-migration-${process.pid}-${Date.now()}.db`)
+	const legacySchema = CORRIDOR_SCHEMA_SQL.replace("\tsubmitted_by_sub TEXT,\n", "")
+	assert.notEqual(legacySchema, CORRIDOR_SCHEMA_SQL, "the fixture must represent the schema before the new column")
+	const legacyDb = new DatabaseSync(dbPath)
+	legacyDb.exec(legacySchema)
+	legacyDb.close()
+	const upgradedDb = new CorridorDatabase(dbPath)
+	try {
+		const columns = (upgradedDb as unknown as { db: DatabaseSync }).db.prepare("PRAGMA table_info(cases)").all() as Array<{ name: string }>
+		assert.ok(columns.some((column) => column.name === "submitted_by_sub"))
+	} finally {
+		upgradedDb.close()
+		rmSync(dbPath, { force: true })
+		rmSync(`${dbPath}-wal`, { force: true })
+		rmSync(`${dbPath}-shm`, { force: true })
+	}
 })
 
 test("team member removal preserves the final active owner", () => {
@@ -901,6 +921,25 @@ test("normalized cases, verdicts, and approval payloads encrypt at rest and migr
 
 test("review decisions persist against the exact breakpoint call and retain human override provenance", () => {
 	const db = new CorridorDatabase(":memory:")
+	const settlementCase = {
+		caseId: "CASE-APPROVAL-01",
+		title: "Review maker checker case",
+		channelLabel: "manual_upload",
+		settlementEvidence: "incomplete" as const,
+		wire: {
+			wireId: "WIRE-APPROVAL-01",
+			format: "bank_csv" as const,
+			valueDate: "2026-11-27",
+			settledAmount: { amountMinor: 125, currency: "USD" },
+			senderCharges: [],
+			receiverCharges: [],
+		},
+		createdAt: new Date().toISOString(),
+	}
+	db.saveCase(settlementCase, DEFAULT_WORKSPACE_ID, "submitter-123")
+	db.saveCase(settlementCase)
+	assert.equal((db as unknown as { db: DatabaseSync }).db.prepare("SELECT submitted_by_sub FROM cases WHERE case_id = ?")
+		.get(settlementCase.caseId)?.submitted_by_sub, "submitter-123", "case updates preserve the original authenticated submitter")
 	const pending = {
 		caseId: "CASE-APPROVAL-01",
 		agentName: "AuditorAgent",
@@ -917,15 +956,25 @@ test("review decisions persist against the exact breakpoint call and retain huma
 	const approvalId = db.createPendingApproval(pending)
 	assert.equal(db.createPendingApproval(pending), approvalId, "replaying the same paused call reuses its pending approval")
 	assert.deepEqual(db.listPendingApprovals(DEFAULT_WORKSPACE_ID), [{ ...pending, approvalId }])
-	assert.equal(db.resolvePendingApproval({
+	assert.deepEqual(db.resolvePendingApproval({
 		caseId: pending.caseId,
 		approvalId: "approval-for-another-request",
 		decision: "approve",
 		reviewerSub: "wrong-reviewer",
 		reviewerEmail: "wrong@example.test",
 		reviewerRole: "controller",
-	}), null, "a decision cannot resolve a different approval for the same case")
+	}), { status: "not_found" }, "a decision cannot resolve a different approval for the same case")
 	assert.equal(db.listPendingApprovals(DEFAULT_WORKSPACE_ID).length, 1)
+	assert.deepEqual(db.resolvePendingApproval({
+		caseId: pending.caseId,
+		approvalId,
+		decision: "approve",
+		reviewerSub: "submitter-123",
+		reviewerEmail: "maker@acme.test",
+		reviewerRole: "controller",
+		requireIndependentReviewer: true,
+	}), { status: "same_reviewer" }, "an authenticated submitter cannot approve their own case")
+	assert.equal(db.listPendingApprovals(DEFAULT_WORKSPACE_ID).length, 1, "rejected self-approval leaves the request pending")
 	const rejected = db.resolvePendingApproval({
 		caseId: pending.caseId,
 		approvalId,
@@ -935,20 +984,30 @@ test("review decisions persist against the exact breakpoint call and retain huma
 		reviewerEmail: "controller@acme.test",
 		reviewerRole: "controller",
 	})
-	assert.ok(rejected)
+	assert.deepEqual(rejected, { status: "resolved", approvalId })
 	assert.deepEqual(db.listPendingApprovals(DEFAULT_WORKSPACE_ID), [])
 	const reviewEvent = db.listWorkspaceAuditEvents(DEFAULT_WORKSPACE_ID).find((event) => event.action === "review.decision")
 	assert.equal(reviewEvent?.actorEmail, "controller@acme.test")
 	assert.equal(reviewEvent?.metadata.decision, "reject")
 	assert.equal(JSON.stringify(reviewEvent).includes("Keep the relationship"), false)
 	assert.deepEqual(db.findStoredReviewDecision(pending.caseId, pending.argsJson), {
-		approvalId: rejected,
+		approvalId: rejected.approvalId,
 		decision: "reject",
 		reason: "Keep the relationship, treat this as SHA.",
 	})
 	assert.equal(db.findStoredReviewDecision(pending.caseId, `${pending.argsJson} `), null)
 	assert.equal(db.findStoredHumanOverride(pending.caseId, "Keep the relationship, treat this as SHA."), true)
 	assert.equal(db.findStoredHumanOverride(pending.caseId, "model-invented note"), false)
+	const secondApproval = db.createPendingApproval({ ...pending, createdAt: new Date().toISOString() })
+	assert.deepEqual(db.resolvePendingApproval({
+		caseId: pending.caseId,
+		approvalId: secondApproval,
+		decision: "approve",
+		reviewerSub: "independent-controller",
+		reviewerEmail: "checker@acme.test",
+		reviewerRole: "controller",
+		requireIndependentReviewer: true,
+	}), { status: "resolved", approvalId: secondApproval }, "an independent authenticated reviewer can approve")
 	db.close()
 })
 

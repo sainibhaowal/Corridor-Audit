@@ -43,8 +43,12 @@ export async function POST(
 			reviewerSub: actor.sub,
 			reviewerEmail: actor.email,
 			reviewerRole: actor.role,
+			requireIndependentReviewer: Boolean(session),
 		})
-		if (!approvalId) {
+		if (approvalId.status === "same_reviewer") {
+			return NextResponse.json({ error: "A different authenticated team member must approve a case they did not submit." }, { status: 403 })
+		}
+		if (approvalId.status === "not_found") {
 			return NextResponse.json({ error: `No pending durable breakpoint for ${caseId}` }, { status: 404 })
 		}
 		if (pending) pending.resolve({ decision: body.decision, reason: body.reason })
@@ -54,7 +58,7 @@ export async function POST(
 				console.error(`[CaseQueue] Review decision replay failed for ${caseId}:`, error)
 			})
 		}
-		return NextResponse.json({ ok: true, caseId, approvalId, decision: body.decision, resumedInProcess: Boolean(pending), replayedDeadLetter: Boolean(replay) }, {
+		return NextResponse.json({ ok: true, caseId, approvalId: approvalId.approvalId, decision: body.decision, resumedInProcess: Boolean(pending), replayedDeadLetter: Boolean(replay) }, {
 			status: pending ? 200 : 202,
 		})
 	} catch (err) {

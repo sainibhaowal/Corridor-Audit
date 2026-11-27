@@ -4,6 +4,7 @@ import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
 import { normalizeInboundPayloadToCases, type UploadPayload } from "@/core/ingest/normalize-upload"
 import { readRequestTextLimited, RequestBodyTooLargeError } from "@/core/security/request-body"
 import { authorizeCorridorRequest } from "@/core/security/authorization"
+import { authEnabled, requestCorridorSession } from "@/core/security/auth"
 import { MalwareDetectedError, MalwareScannerUnavailableError, MalwareScanLimitError, scanFileBytes } from "@/core/security/malware-scan"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 
@@ -25,6 +26,7 @@ const UploadPayloadSchema = z
 export async function POST(request: Request) {
 	const denied = await authorizeCorridorRequest(request, "analyst")
 	if (denied) return denied
+	const session = authEnabled() ? await requestCorridorSession(request) : null
 	const db = getCorridorDb()
 	let ingestionId: string | undefined
 
@@ -66,13 +68,16 @@ export async function POST(request: Request) {
 
 		const orchestrator = initCorridorOrchestrator()
 		const cases = normalizeInboundPayloadToCases(body)
-		if (ingestionId) {
-			db.updateRawIngestionOutcome({
-				id: ingestionId,
-				parseStatus: "parsed",
-				caseIds: cases.map((c) => c.caseId),
-			})
-		}
+		db.transaction(() => {
+			for (const settlementCase of cases) db.saveCase(settlementCase, DEFAULT_WORKSPACE_ID, session?.sub)
+			if (ingestionId) {
+				db.updateRawIngestionOutcome({
+					id: ingestionId,
+					parseStatus: "parsed",
+					caseIds: cases.map((c) => c.caseId),
+				})
+			}
+		})
 
 		void orchestrator.enqueueBatch(cases).catch((err) => {
 			console.error(`Queued upload ${ingestionId || "without raw record"} failed during audit processing:`, err)

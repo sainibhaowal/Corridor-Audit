@@ -140,6 +140,7 @@ export function CorridorWorkspace() {
 	const [terminalOpen, setTerminalOpen] = useState(true)
 	const [terminalHeight, setTerminalHeight] = useState(164)
 	const [terminalEvents, setTerminalEvents] = useState<RuntimeConsoleEvent[]>([])
+	const [reviewActionError, setReviewActionError] = useState<string | null>(null)
 
 	useEffect(() => {
 		const savedTheme = localStorage.getItem("corridor-theme")
@@ -542,10 +543,14 @@ export function CorridorWorkspace() {
 				body: JSON.stringify({ approvalId, decision, reason }),
 			})
 			if (response.ok) {
+				setReviewActionError(null)
 				setCasesMap((prev) => {
 					const current = prev[caseId]
 					return current ? { ...prev, [caseId]: { ...current, pending: null } } : prev
 				})
+			} else {
+				const payload = await response.json().catch(() => null) as { error?: string } | null
+				setReviewActionError(payload?.error || `Review action failed (${response.status}).`)
 			}
 		},
 		[],
@@ -1165,6 +1170,11 @@ export function CorridorWorkspace() {
 									<p className="mb-2.5 text-sm font-semibold text-[#c7d3d6]">
 										&ldquo;{activeEntry.pending.question}&rdquo;
 									</p>
+									{reviewActionError && (
+										<p role="alert" className="mb-3 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+											{reviewActionError}
+										</p>
+									)}
 									<div className="mb-3 rounded-md border border-[#1c2a33] bg-[#080d12] px-3 py-2 font-mono text-[11.5px] text-[#c7d3d6]">
 										{activeEntry.pending.proofLine}
 									</div>
