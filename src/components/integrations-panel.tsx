@@ -421,6 +421,11 @@ export function IntegrationsPanel({ onCasesQueued }: { onCasesQueued: () => void
 								<span className={run.auditStatus === "completed" ? "text-[#75e4c7]" : run.auditStatus === "failed" || run.auditStatus === "partial" ? "text-amber-300" : "text-[#91a5ad]"}>
 									Audit {run.auditStatus === "not_queued" ? "no new cases" : run.auditStatus ?? "status unavailable"}
 								</span>
+								{run.error && (
+									<div className={cn("basis-full text-[11px]", run.status === "success" ? "text-amber-300" : "text-red-400")}>
+										{run.status === "success" ? "Mapping warning: " : "Error: "}{run.error}
+									</div>
+								)}
 							</div>
 						))}
 					</div>

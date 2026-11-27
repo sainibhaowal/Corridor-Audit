@@ -187,6 +187,7 @@ export async function runIntegrationSync(params: {
 					provider: integration.provider,
 					recordsFetched: String(fetched.recordsFetched),
 					mappingCaseCount: String(fetched.cases.length),
+					...(fetched.warnings?.length ? { mappingWarnings: JSON.stringify(fetched.warnings) } : {}),
 				},
 				parseStatus: "parsed",
 				caseIds: freshCases.map((c) => c.caseId),
@@ -218,6 +219,7 @@ export async function runIntegrationSync(params: {
 			recordsFetched: fetched.recordsFetched,
 			casesQueued: freshCases.length,
 			caseIds: freshCases.map((settlementCase) => settlementCase.caseId),
+			error: fetched.warnings?.join(" "),
 		})
 		db.markIntegrationSyncState({
 			integrationId: integration.id,
@@ -233,6 +235,7 @@ export async function runIntegrationSync(params: {
 			auditStatus: freshCases.length === 0 ? "not_queued" : "queued",
 			recordsFetched: fetched.recordsFetched,
 			casesQueued: freshCases.length,
+			error: fetched.warnings?.join(" "),
 			finishedAt: now,
 		}
 	} catch (err) {

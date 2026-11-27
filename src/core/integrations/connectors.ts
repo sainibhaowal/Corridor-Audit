@@ -10,12 +10,15 @@ export interface ConnectorFetchResult {
 	recordsFetched: number
 	cases: SettlementCase[]
 	rawPayload?: string
+	warnings?: string[]
 }
 
 const MAX_PROVIDER_SYNC_PAGES = 100
 const STRIPE_PAGE_SIZE = 100
 const WISE_PAGE_SIZE = 100
 const ACCOUNTING_PAGE_SIZE = 1000
+const LINKED_INVOICE_LOOKUP_BATCH_SIZE = 40
+const MAX_LINKED_INVOICE_LOOKUP_BATCHES = 20
 const SYNC_CURSOR_OVERLAP_MS = 5 * 60 * 1000
 
 function accountingPaymentGap(providerName: string, applications: AccountingPaymentApplication[]): string {
@@ -297,8 +300,30 @@ async function fetchQuickBooksCases(
 	}
 	await fetchQuickBooksPages("Invoice", invoices)
 	await fetchQuickBooksPages("Payment", payments)
-	const invoicesById = new Map(invoices.map((invoice) => [invoice.Id, invoice]))
 	const priorCasesByInvoice = existingAccountingInvoiceCases(existingCases, "quickbooks.invoice")
+	const linkedInvoiceIds = [...new Set(payments.flatMap((payment) =>
+		(payment.Line ?? []).flatMap((line) =>
+			(line.LinkedTxn ?? []).filter((linked) => linked.TxnType === "Invoice" && linked.TxnId).map((linked) => linked.TxnId!),
+		),
+	))]
+	const currentInvoiceIds = new Set(invoices.map((invoice) => invoice.Id))
+	const missingInvoiceIds = linkedInvoiceIds.filter((id) => !currentInvoiceIds.has(id) && !priorCasesByInvoice.has(id))
+	for (let offset = 0; offset < missingInvoiceIds.length && offset / LINKED_INVOICE_LOOKUP_BATCH_SIZE < MAX_LINKED_INVOICE_LOOKUP_BATCHES; offset += LINKED_INVOICE_LOOKUP_BATCH_SIZE) {
+		const batch = missingInvoiceIds.slice(offset, offset + LINKED_INVOICE_LOOKUP_BATCH_SIZE)
+		const idList = batch.map((id) => `'${id.replace(/'/g, "''")}'`).join(", ")
+		const query = encodeURIComponent(`SELECT * FROM Invoice WHERE Id IN (${idList})`)
+		const res = await fetchProvider(`https://quickbooks.api.intuit.com/v3/company/${encodeURIComponent(realmId)}/query?query=${query}`, {
+			headers: { Authorization: authHeader(credentials), Accept: "application/json" },
+		})
+		if (!res.ok) throw new Error(`QuickBooks linked invoice lookup error (${res.status}): ${(await res.text()).slice(0, 200)}`)
+		const rawPage = await res.text()
+		rawPages.push(rawPage)
+		const json = JSON.parse(rawPage) as { QueryResponse?: { Invoice?: typeof invoices } }
+		invoices.push(...(json.QueryResponse?.Invoice ?? []))
+	}
+	const invoicesById = new Map(invoices.map((invoice) => [invoice.Id, invoice]))
+	const foundInvoiceIds = new Set(invoices.map((invoice) => invoice.Id))
+	const unresolvedInvoiceCount = linkedInvoiceIds.filter((id) => !foundInvoiceIds.has(id) && !priorCasesByInvoice.has(id)).length
 	const applicationsByInvoice = new Map<string, AccountingPaymentApplication[]>()
 	const truncatedPaymentApplications = new Set<string>()
 	for (const payment of payments) {
@@ -399,7 +424,14 @@ async function fetchQuickBooksCases(
 			evidenceGap: `${accountingPaymentGap("QuickBooks", merged.applications)} The linked invoice record was loaded from an earlier local sync because it was outside this incremental invoice window.${merged.truncated ? " More than 1,000 applications are linked; the displayed list is capped and the full provider responses remain in the raw vault." : ""}`,
 		})
 	}
-	return { recordsFetched: invoices.length + payments.length, cases, rawPayload: combineRawPages(rawPages) }
+	return {
+		recordsFetched: invoices.length + payments.length,
+		cases,
+		rawPayload: combineRawPages(rawPages),
+		warnings: unresolvedInvoiceCount > 0
+			? [`${unresolvedInvoiceCount} QuickBooks payment link(s) referenced invoice records that were not retrieved within the ${LINKED_INVOICE_LOOKUP_BATCH_SIZE * MAX_LINKED_INVOICE_LOOKUP_BATCHES}-invoice lookup limit. The linked IDs remain in the raw provider response and were not mapped into cases.`]
+			: undefined,
+	}
 }
 
 async function fetchXeroCases(
@@ -452,8 +484,32 @@ async function fetchXeroCases(
 	}
 	await fetchXeroPages("Invoices", invoices)
 	await fetchXeroPages("Payments", payments)
-	const invoicesById = new Map(invoices.map((invoice) => [invoice.InvoiceID, invoice]))
 	const priorCasesByInvoice = existingAccountingInvoiceCases(existingCases, "xero.invoice")
+	const linkedInvoiceIds = [...new Set(payments.map((payment) => payment.Invoice?.InvoiceID).filter((id): id is string => Boolean(id)))]
+	const currentInvoiceIds = new Set(invoices.map((invoice) => invoice.InvoiceID))
+	const missingInvoiceIds = linkedInvoiceIds.filter((id) => !currentInvoiceIds.has(id) && !priorCasesByInvoice.has(id))
+	for (let offset = 0; offset < missingInvoiceIds.length && offset / LINKED_INVOICE_LOOKUP_BATCH_SIZE < MAX_LINKED_INVOICE_LOOKUP_BATCHES; offset += LINKED_INVOICE_LOOKUP_BATCH_SIZE) {
+		const batch = missingInvoiceIds.slice(offset, offset + LINKED_INVOICE_LOOKUP_BATCH_SIZE)
+		const url = new URL("https://api.xero.com/api.xro/2.0/Invoices")
+		url.searchParams.set("IDs", batch.join(","))
+		url.searchParams.set("page", "1")
+		url.searchParams.set("pageSize", String(batch.length))
+		const res = await fetchProvider(url, {
+			headers: {
+				Authorization: authHeader(credentials),
+				"Xero-tenant-id": tenantId,
+				Accept: "application/json",
+			},
+		})
+		if (!res.ok) throw new Error(`Xero linked invoice lookup error (${res.status}): ${(await res.text()).slice(0, 200)}`)
+		const rawPage = await res.text()
+		rawPages.push(rawPage)
+		const json = JSON.parse(rawPage) as { Invoices?: typeof invoices }
+		invoices.push(...(json.Invoices ?? []))
+	}
+	const invoicesById = new Map(invoices.map((invoice) => [invoice.InvoiceID, invoice]))
+	const foundInvoiceIds = new Set(invoices.map((invoice) => invoice.InvoiceID))
+	const unresolvedInvoiceCount = linkedInvoiceIds.filter((id) => !foundInvoiceIds.has(id) && !priorCasesByInvoice.has(id)).length
 	const applicationsByInvoice = new Map<string, AccountingPaymentApplication[]>()
 	const truncatedPaymentApplications = new Set<string>()
 	for (const payment of payments) {
@@ -548,7 +604,14 @@ async function fetchXeroCases(
 			evidenceGap: `${accountingPaymentGap("Xero", merged.applications)} The linked invoice record was loaded from an earlier local sync because it was outside this incremental invoice window.${merged.truncated ? " More than 1,000 applications are linked; the displayed list is capped and the full provider responses remain in the raw vault." : ""}`,
 		})
 	}
-	return { recordsFetched: invoices.length + payments.length, cases, rawPayload: combineRawPages(rawPages) }
+	return {
+		recordsFetched: invoices.length + payments.length,
+		cases,
+		rawPayload: combineRawPages(rawPages),
+		warnings: unresolvedInvoiceCount > 0
+			? [`${unresolvedInvoiceCount} Xero payment link(s) referenced invoice records that were not retrieved within the ${LINKED_INVOICE_LOOKUP_BATCH_SIZE * MAX_LINKED_INVOICE_LOOKUP_BATCHES}-invoice lookup limit. The linked IDs remain in the raw provider response and were not mapped into cases.`]
+			: undefined,
+	}
 }
 
 function fetchHotFolderCases(config: Record<string, string>): ConnectorFetchResult {

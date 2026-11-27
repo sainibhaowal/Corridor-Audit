@@ -1261,10 +1261,19 @@ test("provider sync follows Stripe, Wise, QuickBooks, and Xero page cursors", as
 test("QuickBooks and Xero payment applications stay separate from bank settlement evidence", async () => {
 	const previousFetch = global.fetch
 	let includeInvoicePages = true
+	let resolveLinkedInvoiceLookups = false
 	global.fetch = (async (input) => {
 		const url = String(input)
 		if (url.includes("quickbooks.api.intuit.com")) {
 			const query = decodeURIComponent(new URL(url).searchParams.get("query") || "")
+			if (resolveLinkedInvoiceLookups && query.includes("Id IN")) {
+				return new Response(JSON.stringify({ QueryResponse: { Invoice: [{
+					Id: "qbo-invoice-1", DocNumber: "QBO-INV-1", TotalAmt: 250, CurrencyRef: { value: "USD" }, TxnDate: "2026-11-20",
+				}, {
+					Id: "other-invoice", DocNumber: "QBO-INV-2", TotalAmt: 20, CurrencyRef: { value: "USD" }, TxnDate: "2026-11-21",
+				}] } }), { status: 200 })
+			}
+			if (query.includes("Id IN")) return new Response(JSON.stringify({ QueryResponse: { Invoice: [] } }), { status: 200 })
 			if (query.includes("FROM Invoice")) {
 				return new Response(JSON.stringify({ QueryResponse: { Invoice: includeInvoicePages ? [{
 					Id: "qbo-invoice-1",
@@ -1288,6 +1297,11 @@ test("QuickBooks and Xero payment applications stay separate from bank settlemen
 		}
 		if (url.includes("api.xero.com")) {
 			if (url.includes("/Invoices?")) {
+				if (resolveLinkedInvoiceLookups && new URL(url).searchParams.has("IDs")) {
+					return new Response(JSON.stringify({ Invoices: [{
+						InvoiceID: "xero-invoice-1", InvoiceNumber: "XERO-INV-1", Total: 120, CurrencyCode: "EUR", DateString: "2026-11-20",
+					}] }), { status: 200 })
+				}
 				return new Response(JSON.stringify({ Invoices: includeInvoicePages ? [{
 					InvoiceID: "xero-invoice-1",
 					InvoiceNumber: "XERO-INV-1",
@@ -1330,6 +1344,7 @@ test("QuickBooks and Xero payment applications stay separate from bank settlemen
 			credentials: { accessToken: "qbo-test" },
 		})
 		assert.equal(quickBooks.recordsFetched, 3)
+		assert.match(quickBooks.warnings?.[0] || "", /invoice records that were not retrieved/)
 		assert.equal(quickBooks.cases[0]?.settlementEvidence, "incomplete")
 		assert.equal(quickBooks.cases[0]?.wire.settledAmount.amountMinor, 0)
 		assert.equal(quickBooks.cases[0]?.accountingPayments?.[0]?.amount?.amountMinor, 10025)
@@ -1349,6 +1364,30 @@ test("QuickBooks and Xero payment applications stay separate from bank settlemen
 		assert.match(xero.cases[0]?.accountingPayments?.[1]?.mappingIssue || "", /DELETED/)
 		assert.equal(xero.cases[0]?.accountingPayments?.[1]?.amount, undefined)
 		assert.match(xero.cases[0]?.evidenceGap || "", /do not independently confirm bank settlement/)
+
+		includeInvoicePages = false
+		resolveLinkedInvoiceLookups = true
+		const lookedUpQuickBooks = await fetchCasesFromIntegration({
+			integration: integration("quickbooks", { realmId: "realm-payment-test" }),
+			credentials: { accessToken: "qbo-test" },
+			lastSuccessfulSyncAt: "2026-11-27T12:00:00.000Z",
+		})
+		assert.equal(lookedUpQuickBooks.cases.length, 2)
+		assert.equal(lookedUpQuickBooks.warnings, undefined)
+		assert.equal(lookedUpQuickBooks.cases.find((item) => item.caseId === "QBO-QBO-INV-2")?.accountingPayments?.length, 1)
+		assert.match(lookedUpQuickBooks.rawPayload || "", /other-invoice/)
+
+		const lookedUpXero = await fetchCasesFromIntegration({
+			integration: integration("xero", { tenantId: "tenant-payment-test" }),
+			credentials: { accessToken: "xero-test" },
+			lastSuccessfulSyncAt: "2026-11-27T12:00:00.000Z",
+		})
+		assert.equal(lookedUpXero.cases.length, 1)
+		assert.equal(lookedUpXero.warnings, undefined)
+		assert.equal(lookedUpXero.cases[0]?.accountingPayments?.length, 2)
+		assert.match(lookedUpXero.rawPayload || "", /xero-invoice-1/)
+		includeInvoicePages = true
+		resolveLinkedInvoiceLookups = false
 		const db = getCorridorDb()
 		db.saveCase(quickBooks.cases[0]!)
 		assert.equal(db.getPersistedCase(quickBooks.cases[0]!.caseId)?.accountingPayments?.[1]?.mappingIssue, quickBooks.cases[0]?.accountingPayments?.[1]?.mappingIssue)
