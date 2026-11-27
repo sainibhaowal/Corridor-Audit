@@ -2,6 +2,17 @@
 
 CorridorAudit release history. Versions follow the policy in [docs/VERSIONING.md](docs/VERSIONING.md). Each release entry records the application scope and verified behavior at that release; it is not limited to files changed in the release commit.
 
+## [Unreleased]
+
+### Added
+- **Multi-Format Export & In-Built Preview:** Added zero-dependency PDF 1.4 (`?format=pdf`), RFC-4180 CSV with formula-injection neutralization (`?format=csv`), TXT, and JSON exports on `/api/report/[caseId]` and batch `/api/report`, plus `?preview=1` inline preview in the Case Inspector (live PDF `<iframe>`, parsed CSV table, TXT, JSON).
+- **Interactive Analytics Dashboard & Trace Waterfall:** Added `CorridorAnalyticsPanel` (Line/Area/Bar Trend chart, Stacked/Pie Leak Breakdown, Model & Agent Usage Meter, Case Risk Heat-Graph, Trust & Accuracy Proof) and `TraceWaterfall` parallel Gantt chart in the Case Inspector.
+- **Hybrid Vision LLM + `tesseract.js` OCR Fallback:** Added receipt image support (`.png`, `.jpg`, `.jpeg`, `.webp`) using the active Vision LLM when capable and automatic fallback to local `tesseract.js` OCR for text-only models or Vision failures.
+- **Persistent Case Sequences, Checkpoints & Deduplication:** Added SQLite `case_sequences` (`MT103-0001`, ...), AES-256-GCM encrypted `case_checkpoints` so retries/restarts skip already-finished specialists, and SHA-256 upload deduplication.
+- **Model-Decided Single-Specialist Re-Run:** Added `rerun_specialist_agent` (`specialist.rerun`) with feedback history (`previousFeedbacks`, no hard cap) and parent wait-and-stop discipline on `AuditorAgent`.
+- **Sidebar Quick-Upload & Multi-Tab Live Sync:** Added drag-and-drop / click upload on the sidebar `Upload source` button with inline progress stages, top toast notification, SSE reconnect catch-up, `visibilitychange` resync, and `BroadcastChannel` cross-tab sync.
+- **Documentation:** Added `docs/developer/` (`README.md`, `api-reference.md`, `database-schema.md`, `module-map.md`, `env-and-security.md`), `docs/DEMO-GUIDE.md`, and Case Study Module `07`.
+
 ## [0.2.0] - 2026-11-27
 
 Feature release for local persistence, ingestion records, integration setup, and the expanded review workbench. This remains a local preview; connector coverage and production safeguards are limited as described in the README and architecture documents.

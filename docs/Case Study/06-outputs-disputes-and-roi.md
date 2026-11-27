@@ -6,8 +6,9 @@
 | :--- | :--- | :--- |
 | **1. Audit Verdict & Summary** | JSON + UI Card | Supported statuses include `CLEAN`, `RECOVERABLE_FEE_VIOLATION`, `VARIANCE_DETECTED`, `DUPLICATE_WIRE`, `ORPHAN_MATCHED`, `FX_MARKUP_ALERT`, and `ABORTED_BY_OPERATOR`. |
 | **2. Reconciliation Breakdown** | Integer Minor Units | Review the benchmark, estimated FX difference, supplied fees/tax, and computed residual. A zero residual is arithmetic, not independent proof. |
-| **3. Conditional Dispute Draft** | `.txt` & `.json` (`GET /api/report/[caseId]`) | Generated for an indicated fee review using available case fields. It is a draft for human verification, not a sent claim or promise of recovery. |
-| **4. Source References & Raw Ingestion** | SHA-256 + stored payload | References link assessment fields to supplied excerpts. The digest is a fingerprint, not an immutable ledger or source authentication. |
+| **3. Multi-Format Export & In-Built Preview** | `.pdf`, `.csv`, `.txt` & `.json` (`GET /api/report/[caseId]` + `GET /api/report`) | In-built UI preview (`?preview=1` inline PDF viewer, parsed CSV table, TXT draft, JSON) plus 1-click downloads for bank review drafts, spreadsheets, and full audit trails. |
+| **4. Interactive Analytics & Trace Waterfall** | Live UI Dashboard & Gantt | Real-data Trend Chart (Line/Area/Bar), Stacked/Pie Leak Breakdown, Model & Agent Usage Meter, Case Risk Heat-Graph, Trust Proof card, and millisecond parallel Trace Waterfall. |
+| **5. Source References & Raw Ingestion** | SHA-256 + AES-256-GCM vault | References link assessment fields to supplied excerpts (`raw_ingestions`). The digest is a fingerprint, not an immutable ledger or source authentication. |
 
 ---
 
