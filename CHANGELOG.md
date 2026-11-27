@@ -2,22 +2,37 @@
 
 CorridorAudit release history. Versions follow the policy in [docs/VERSIONING.md](docs/VERSIONING.md). Each release entry records the application scope and verified behavior at that release; it is not limited to files changed in the release commit.
 
-## [Unreleased]
+## [0.2.0] - 2026-11-27
+
+Feature release for local persistence, ingestion records, integration setup, and the expanded review workbench. This remains a local preview; connector coverage and production safeguards are limited as described in the README and architecture documents.
+
+### Added
+
+- Added local SQLite persistence for cases, verdicts, integrations, sync runs, and raw-ingestion records across the implemented input paths.
+- Added a data-source catalog, integration setup and OAuth flows, provider model discovery, configurable LLM settings, and an in-process integration sync worker. Stripe, Wise, QuickBooks Online, and Xero have provider-specific polling/mapping code; catalog entries do not imply complete provider-certified connectors.
+- Added signed-webhook verification options for supported providers and AES-256-GCM encryption for integration credentials and webhook secrets.
+- Added raw-ingestion inspection, download, and reprocessing views, plus an allowlisted in-app runtime console.
+- Added the responsive three-panel workbench, case inspection, light/dark themes with reduced-motion-aware transitions, and compact panel controls.
 
 ### Changed
 
-- Reworked the application workspace into a compact three-panel workbench with collapsible navigation and inspection rails, persistent layout preferences, keyboard shortcuts, and a responsive case-inspector drawer.
-- Added an integrated runtime console backed by an allowlisted Next.js API route. Supported operations cover runtime status, loaded cases, bundled demo execution, individual sample cases, case inspection, and review-gate mode. Live Mozaik agent, tool, breakpoint, and verdict events are forwarded into the console. The command surface does not execute operating-system shell commands.
-- Added a resizable, hideable terminal panel and a focused ready state for the settlement review workspace.
-- Added a header theme switch for the light and dark workbench appearances. The selected theme is stored in browser local storage and applied before the page renders; palette mappings cover navigation, case panels, inspectors, dialogs, and the integrated terminal.
-- Added a circular theme reveal anchored to the theme control, with a reduced-motion path, and tightened responsive top-bar sizing so mode and panel controls remain visible on narrower screens.
+- Removed bundled synthetic demo scenarios and demo execution controls. Running an agent workflow now requires a configured LLM provider; the CLI requires an input file.
+- Updated generated dispute text to request a review based on supplied records without asserting that a charge is unlawful or recoverable.
+- Clarified that citation checks validate SourceRef structure and do not authenticate source documents or figures.
+- Rewrote the README, architecture notes, case study, and diagrams to distinguish implemented behavior from incomplete connector coverage and deployment requirements.
+
+### Known limitations
+
+- This release is for local evaluation with synthetic or public data. It has no user authentication, authorization, tenant isolation, distributed durable queue, encrypted raw-payload storage, or production backup/monitoring controls.
+- Integration coverage, OAuth lifecycle, provider mappings, webhook enforcement, and operational error handling require provider-specific setup and validation.
+- Financial figures depend on submitted data and implemented approximations; they are not legal determinations or guarantees of recovery.
 
 ### Verification
 
+- `npm test` passed: 16 tests.
 - `npm run typecheck` passed.
-- `npm test` passed: 10 tests, including the terminal runtime command and rejection of unsupported commands.
-- `npm run build` passed for application version `0.1.1`.
-- `npm start -- --no-open` started the production build; `/` returned HTTP 200 and `/api/health` reported Mozaik core `6.0.0`, demo provider mode, and audit-rules version `0.1.0`.
+- `npm run build` passed for application version `0.2.0`.
+- `npm start -- --no-open` started the built app; `/` and `/api/health` returned HTTP 200, with health reporting app version `0.2.0` and Mozaik core `6.0.0`.
 
 ## [0.1.1] - 2026-11-26
 
