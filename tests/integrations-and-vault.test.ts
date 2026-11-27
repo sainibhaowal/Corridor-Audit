@@ -24,7 +24,7 @@ import { parseInboundEmailToCases } from "../src/core/integrations/email-parser"
 import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
 import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublicly, fetchProvider, validateProviderEndpointUrl } from "../src/core/integrations/http"
 import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode, refreshOAuthCredentials } from "../src/core/integrations/oauth"
-import { runIntegrationSync } from "../src/runtime/workers/sync-worker"
+import { runIntegrationSync, shouldRunFullProviderReconciliation } from "../src/runtime/workers/sync-worker"
 import { runWithDurableCaseRetries } from "../src/runtime/workers/durable-case-queue"
 import { CorridorState } from "../src/runtime/corridor-runtime"
 import { backupCorridorDatabase } from "../src/core/db/backup"
@@ -205,6 +205,25 @@ test("existing SQLite databases add the manual submitter column without replacin
 	try {
 		const columns = (upgradedDb as unknown as { db: DatabaseSync }).db.prepare("PRAGMA table_info(cases)").all() as Array<{ name: string }>
 		assert.ok(columns.some((column) => column.name === "submitted_by_sub"))
+	} finally {
+		upgradedDb.close()
+		rmSync(dbPath, { force: true })
+		rmSync(`${dbPath}-wal`, { force: true })
+		rmSync(`${dbPath}-shm`, { force: true })
+	}
+})
+
+test("existing SQLite integrations gain a durable full-reconciliation timestamp", () => {
+	const dbPath = resolve(tmpdir(), `corridor-integration-reconcile-migration-${process.pid}-${Date.now()}.db`)
+	const legacySchema = CORRIDOR_SCHEMA_SQL.replace("\tlast_full_synced_at TEXT,\n", "")
+	assert.notEqual(legacySchema, CORRIDOR_SCHEMA_SQL, "the fixture must represent the previous integrations schema")
+	const legacyDb = new DatabaseSync(dbPath)
+	legacyDb.exec(legacySchema)
+	legacyDb.close()
+	const upgradedDb = new CorridorDatabase(dbPath)
+	try {
+		const columns = (upgradedDb as unknown as { db: DatabaseSync }).db.prepare("PRAGMA table_info(integrations)").all() as Array<{ name: string }>
+		assert.ok(columns.some((column) => column.name === "last_full_synced_at"))
 	} finally {
 		upgradedDb.close()
 		rmSync(dbPath, { force: true })
@@ -1460,6 +1479,54 @@ test("Stripe, Wise, and Xero incremental sync cursors use a five-minute overlap"
 		assert.equal(requests[2]?.headers.get("If-Modified-Since"), stripeSince.toISOString().slice(0, 19))
 	} finally {
 		global.fetch = previousFetch
+	}
+})
+
+test("cursor providers perform a durable full reconciliation before resuming incremental sync", async () => {
+	const db = getCorridorDb()
+	const previousFetch = global.fetch
+	const previousInterval = process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS
+	const requestedUrls: URL[] = []
+	process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS = "168"
+	global.fetch = (async (input) => {
+		const url = new URL(String(input))
+		requestedUrls.push(url)
+		return new Response(JSON.stringify([]), { status: 200 })
+	}) as typeof fetch
+	const integration = db.upsertIntegration({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider: "wise",
+		category: "payouts",
+		authMode: "api_token",
+		status: "connected",
+		credentials: { apiKey: "wise-reconcile-test" },
+		config: { profileId: "profile-reconcile-test" },
+	})
+	const oldSyncAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
+	db.markIntegrationSyncState({
+		integrationId: integration.id,
+		status: "connected",
+		lastSyncStatus: "success",
+		lastSyncedAt: oldSyncAt,
+		lastFullSyncedAt: oldSyncAt,
+	})
+	const orchestrator = { state: { casesById: new Map() } } as unknown as Parameters<typeof runIntegrationSync>[0]["orchestrator"]
+	try {
+		const fullRun = await runIntegrationSync({ provider: "wise", workspaceId: DEFAULT_WORKSPACE_ID, orchestrator })
+		assert.equal(fullRun.status, "success")
+		assert.equal(requestedUrls[0]?.searchParams.has("createdDateStart"), false)
+		const fullSyncAt = db.getIntegration(DEFAULT_WORKSPACE_ID, "wise")?.lastFullSyncedAt
+		assert.ok(fullSyncAt && Date.parse(fullSyncAt) > Date.parse(oldSyncAt))
+
+		const incrementalRun = await runIntegrationSync({ provider: "wise", workspaceId: DEFAULT_WORKSPACE_ID, orchestrator })
+		assert.equal(incrementalRun.status, "success")
+		assert.ok(requestedUrls[1]?.searchParams.has("createdDateStart"))
+		assert.equal(db.getIntegration(DEFAULT_WORKSPACE_ID, "wise")?.lastFullSyncedAt, fullSyncAt)
+	} finally {
+		global.fetch = previousFetch
+		if (previousInterval === undefined) delete process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS
+		else process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS = previousInterval
+		db.disconnectIntegration(DEFAULT_WORKSPACE_ID, "wise")
 	}
 })
 

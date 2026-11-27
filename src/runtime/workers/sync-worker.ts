@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "../../core/db/database"
-import type { SyncRunRecord } from "../../core/db/schema"
+import type { IntegrationRecord, SyncRunRecord } from "../../core/db/schema"
 import type { IntegrationCredentials } from "../../core/db/schema"
 import { fetchCasesFromIntegration } from "../../core/integrations/connectors"
 import { refreshOAuthCredentials } from "../../core/integrations/oauth"
@@ -14,6 +14,21 @@ const globalWorkerStore = globalThis as typeof globalThis & {
 
 const SYNC_LEASE_MS = 60_000
 const SYNC_LEASE_RENEW_MS = 15_000
+const CURSOR_RECONCILIATION_PROVIDERS = new Set(["stripe", "wise", "xero"])
+
+export function shouldRunFullProviderReconciliation(
+	integration: Pick<IntegrationRecord, "provider" | "lastFullSyncedAt">,
+	nowMs = Date.now(),
+): boolean {
+	if (!CURSOR_RECONCILIATION_PROVIDERS.has(integration.provider)) return false
+	const hours = Number(process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS || "168")
+	if (!Number.isSafeInteger(hours) || hours < 24 || hours > 720) {
+		throw new Error("PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS must be an integer from 24 to 720.")
+	}
+	if (!integration.lastFullSyncedAt) return true
+	const lastFullSyncMs = Date.parse(integration.lastFullSyncedAt)
+	return !Number.isFinite(lastFullSyncMs) || nowMs - lastFullSyncMs >= hours * 60 * 60 * 1000
+}
 
 export class IntegrationSyncBusyError extends Error {
 	constructor(provider: string) {
@@ -116,11 +131,12 @@ export async function runIntegrationSync(params: {
 }): Promise<SyncRunRecord> {
 	const db = getCorridorDb()
 	const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
-	const integration = db.getIntegration(workspaceId, params.provider)
+	const initialIntegration = db.getIntegration(workspaceId, params.provider)
 
-	if (!integration || integration.status === "disconnected") {
+	if (!initialIntegration || initialIntegration.status === "disconnected") {
 		throw new Error(`Integration "${params.provider}" is not connected.`)
 	}
+	let integration: IntegrationRecord = initialIntegration
 
 	const leaseOwnerId = `sync-${randomUUID()}`
 	await acquireIntegrationSyncLease({ db, workspaceId, provider: integration.provider, ownerId: leaseOwnerId })
@@ -139,6 +155,11 @@ export async function runIntegrationSync(params: {
 	}
 	let run: SyncRunRecord | undefined
 	try {
+		const latestIntegration = db.getIntegration(workspaceId, params.provider)
+		if (!latestIntegration || latestIntegration.status === "disconnected") {
+			throw new Error(`Integration "${params.provider}" was disconnected before sync started.`)
+		}
+		integration = latestIntegration
 		db.failInterruptedIntegrationSyncRuns(workspaceId, integration.provider)
 		run = db.createSyncRun({
 			integrationId: integration.id,
@@ -153,6 +174,7 @@ export async function runIntegrationSync(params: {
 		})
 		const credentials = await credentialsForSync({ db, workspaceId, provider: integration.provider })
 		assertLease()
+		const fullReconciliation = shouldRunFullProviderReconciliation(integration)
 		const invoiceSourceField = integration.provider === "quickbooks"
 			? "quickbooks.invoice"
 			: integration.provider === "xero"
@@ -166,7 +188,7 @@ export async function runIntegrationSync(params: {
 		const fetched = await fetchCasesFromIntegration({
 			integration,
 			credentials,
-			lastSuccessfulSyncAt: integration.lastSyncedAt,
+			lastSuccessfulSyncAt: fullReconciliation ? undefined : integration.lastSyncedAt,
 			existingCases,
 		})
 		assertLease()
@@ -187,6 +209,7 @@ export async function runIntegrationSync(params: {
 					provider: integration.provider,
 					recordsFetched: String(fetched.recordsFetched),
 					mappingCaseCount: String(fetched.cases.length),
+					reconciliationMode: fullReconciliation ? "full" : "incremental",
 					...(fetched.warnings?.length ? { mappingWarnings: JSON.stringify(fetched.warnings) } : {}),
 				},
 				parseStatus: "parsed",
@@ -227,6 +250,7 @@ export async function runIntegrationSync(params: {
 			lastSyncStatus: "success",
 			lastError: null,
 			lastSyncedAt: now,
+			lastFullSyncedAt: fullReconciliation ? now : undefined,
 		})
 
 		return {

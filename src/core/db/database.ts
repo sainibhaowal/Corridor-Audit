@@ -125,6 +125,7 @@ export class CorridorDatabase {
 		this.ensureTeamIdentityColumn()
 		this.ensureCaseQueueColumns()
 		this.ensureSyncRunCaseIdsColumn()
+		this.ensureIntegrationFullSyncColumn()
 		this.ensureSensitiveJsonEncryptionColumns()
 		this.encryptLegacySensitiveJson()
 		this.ensureRawContentEncryptionColumn()
@@ -263,6 +264,13 @@ export class CorridorDatabase {
 		const columns = this.db.prepare("PRAGMA table_info(sync_runs)").all() as Array<{ name: string }>
 		if (!columns.some((column) => column.name === "case_ids_json")) {
 			this.db.exec("ALTER TABLE sync_runs ADD COLUMN case_ids_json TEXT NOT NULL DEFAULT '[]'")
+		}
+	}
+
+	private ensureIntegrationFullSyncColumn(): void {
+		const columns = this.db.prepare("PRAGMA table_info(integrations)").all() as Array<{ name: string }>
+		if (!columns.some((column) => column.name === "last_full_synced_at")) {
+			this.db.exec("ALTER TABLE integrations ADD COLUMN last_full_synced_at TEXT")
 		}
 	}
 
@@ -775,6 +783,7 @@ export class CorridorDatabase {
 			externalAccountId: row.external_account_id ? String(row.external_account_id) : undefined,
 			config: JSON.parse(String(row.config_json || "{}")) as Record<string, string>,
 			lastSyncedAt: row.last_synced_at ? String(row.last_synced_at) : undefined,
+			lastFullSyncedAt: row.last_full_synced_at ? String(row.last_full_synced_at) : undefined,
 			lastSyncStatus: row.last_sync_status ? (String(row.last_sync_status) as "success" | "failed") : undefined,
 			lastError: row.last_error ? String(row.last_error) : undefined,
 			createdAt: String(row.created_at),
@@ -1013,12 +1022,14 @@ export class CorridorDatabase {
 		lastSyncStatus?: "success" | "failed"
 		lastError?: string | null
 		lastSyncedAt?: string
+		lastFullSyncedAt?: string
 	}): void {
 		this.db
 			.prepare(
 				`UPDATE integrations
 				SET status = ?, last_sync_status = COALESCE(?, last_sync_status),
-					last_error = ?, last_synced_at = COALESCE(?, last_synced_at), updated_at = ?
+					last_error = ?, last_synced_at = COALESCE(?, last_synced_at),
+					last_full_synced_at = COALESCE(?, last_full_synced_at), updated_at = ?
 				WHERE id = ?`,
 			)
 			.run(
@@ -1026,6 +1037,7 @@ export class CorridorDatabase {
 				params.lastSyncStatus ?? null,
 				params.lastError ?? null,
 				params.lastSyncedAt ?? null,
+				params.lastFullSyncedAt ?? null,
 				new Date().toISOString(),
 				params.integrationId,
 			)

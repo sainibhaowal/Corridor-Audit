@@ -77,6 +77,7 @@ export interface IntegrationRecord {
 	externalAccountId?: string
 	config: Record<string, string>
 	lastSyncedAt?: string
+	lastFullSyncedAt?: string
 	lastSyncStatus?: "success" | "failed"
 	lastError?: string
 	createdAt: string
@@ -195,6 +196,7 @@ CREATE TABLE IF NOT EXISTS integrations (
 	credentials_enc TEXT,
 	config_json TEXT NOT NULL DEFAULT '{}',
 	last_synced_at TEXT,
+	last_full_synced_at TEXT,
 	last_sync_status TEXT,
 	last_error TEXT,
 	created_at TEXT NOT NULL,
