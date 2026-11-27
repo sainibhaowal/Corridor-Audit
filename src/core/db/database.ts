@@ -38,7 +38,7 @@ function parseJsonStringArray(value: unknown): string[] {
 export interface WebhookReceiptResult {
 	duplicate: boolean
 	conflict: boolean
-	status: "received" | "queued" | "failed"
+	status: "received" | "processing" | "queued" | "failed"
 	ingestion: RawIngestionRecord
 }
 
@@ -126,6 +126,7 @@ export class CorridorDatabase {
 		this.ensureCaseQueueColumns()
 		this.ensureSyncRunCaseIdsColumn()
 		this.ensureIntegrationFullSyncColumn()
+		this.ensureWebhookReceiptLeaseColumns()
 		this.ensureSensitiveJsonEncryptionColumns()
 		this.encryptLegacySensitiveJson()
 		this.ensureRawContentEncryptionColumn()
@@ -272,6 +273,13 @@ export class CorridorDatabase {
 		const existing = new Set(columns.map((column) => column.name))
 		if (!existing.has("last_full_synced_at")) this.db.exec("ALTER TABLE integrations ADD COLUMN last_full_synced_at TEXT")
 		if (!existing.has("last_full_sync_attempt_at")) this.db.exec("ALTER TABLE integrations ADD COLUMN last_full_sync_attempt_at TEXT")
+	}
+
+	private ensureWebhookReceiptLeaseColumns(): void {
+		const columns = this.db.prepare("PRAGMA table_info(webhook_receipts)").all() as Array<{ name: string }>
+		const existing = new Set(columns.map((column) => column.name))
+		if (!existing.has("processing_owner")) this.db.exec("ALTER TABLE webhook_receipts ADD COLUMN processing_owner TEXT")
+		if (!existing.has("processing_lease_expires_at")) this.db.exec("ALTER TABLE webhook_receipts ADD COLUMN processing_lease_expires_at TEXT")
 	}
 
 	private ensureTeamIdentityColumn(): void {
@@ -1606,15 +1614,79 @@ export class CorridorDatabase {
 		workspaceId?: string
 		provider: string
 		eventId: string
-		status: WebhookReceiptResult["status"]
-	}): void {
+		ownerId: string
+		status: "queued" | "failed"
+	}): boolean {
 		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
-		this.inTransaction(() => {
-			const updated = this.db.prepare(`UPDATE webhook_receipts SET status = ?, updated_at = ?
-				WHERE workspace_id = ? AND provider = ? AND event_id = ? RETURNING event_id`)
-				.get(params.status, new Date().toISOString(), workspaceId, params.provider, params.eventId)
+		return this.inTransaction(() => {
+			const updated = this.db.prepare(`UPDATE webhook_receipts
+				SET status = ?, updated_at = ?, processing_owner = NULL, processing_lease_expires_at = NULL
+				WHERE workspace_id = ? AND provider = ? AND event_id = ? AND status = 'processing' AND processing_owner = ? RETURNING event_id`)
+				.get(params.status, new Date().toISOString(), workspaceId, params.provider, params.eventId, params.ownerId)
+			if (!updated) return false
 			if (updated) this.appendWorkspaceAuditEvent({ workspaceId, actorType: "system", action: `webhook.status.${params.status}`, targetType: "webhook_event", targetId: params.eventId, outcome: params.status === "failed" ? "failure" : "success", metadata: { provider: params.provider } })
+			return true
 		})
+	}
+
+	failWebhookReceipt(params: {
+		workspaceId?: string
+		provider: string
+		eventId: string
+		ownerId: string
+		ingestionId: string
+		parseError: string
+	}): boolean {
+		return this.inTransaction(() => {
+			const transitioned = this.markWebhookReceiptStatus({ ...params, status: "failed" })
+			if (!transitioned) return false
+			this.updateRawIngestionOutcome({ id: params.ingestionId, workspaceId: params.workspaceId, parseStatus: "failed", parseError: params.parseError })
+			return true
+		})
+	}
+
+	claimWebhookReceipt(params: {
+		workspaceId?: string
+		provider: string
+		eventId: string
+		ownerId: string
+		leaseMs?: number
+	}): boolean {
+		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
+		const nowMs = Date.now()
+		const now = new Date(nowMs).toISOString()
+		const leaseExpiresAt = new Date(nowMs + Math.max(1_000, params.leaseMs ?? 60_000)).toISOString()
+		return this.inTransaction(() => {
+			const claimed = this.db.prepare(`UPDATE webhook_receipts
+				SET status = 'processing', processing_owner = ?, processing_lease_expires_at = ?, updated_at = ?
+				WHERE workspace_id = ? AND provider = ? AND event_id = ?
+				AND (status IN ('received', 'failed') OR (status = 'processing' AND processing_lease_expires_at <= ?))
+				RETURNING event_id`).get(
+				params.ownerId, leaseExpiresAt, now, workspaceId, params.provider, params.eventId, now,
+			)
+			return Boolean(claimed)
+		})
+	}
+
+	renewWebhookReceiptLease(params: {
+		workspaceId?: string
+		provider: string
+		eventId: string
+		ownerId: string
+		leaseMs?: number
+	}): boolean {
+		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
+		const nowMs = Date.now()
+		const updated = this.db.prepare(`UPDATE webhook_receipts
+			SET processing_lease_expires_at = ?, updated_at = ?
+			WHERE workspace_id = ? AND provider = ? AND event_id = ?
+			AND status = 'processing' AND processing_owner = ? AND processing_lease_expires_at > ?
+			RETURNING event_id`).get(
+			new Date(nowMs + Math.max(1_000, params.leaseMs ?? 60_000)).toISOString(),
+			new Date(nowMs).toISOString(), workspaceId, params.provider, params.eventId, params.ownerId,
+			new Date(nowMs).toISOString(),
+		)
+		return Boolean(updated)
 	}
 
 	listRawIngestions(params?: {

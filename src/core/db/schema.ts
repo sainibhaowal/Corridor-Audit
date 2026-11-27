@@ -304,6 +304,8 @@ CREATE TABLE IF NOT EXISTS webhook_receipts (
 	payload_sha256 TEXT NOT NULL,
 	ingestion_id TEXT NOT NULL REFERENCES raw_ingestions(id) ON DELETE CASCADE,
 	status TEXT NOT NULL DEFAULT 'received',
+	processing_owner TEXT,
+	processing_lease_expires_at TEXT,
 	received_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL,
 	PRIMARY KEY (workspace_id, provider, event_id)

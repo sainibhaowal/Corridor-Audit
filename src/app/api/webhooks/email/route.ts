@@ -6,6 +6,7 @@ import { readRequestTextLimited, RequestBodyTooLargeError } from "@/core/securit
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 import { deriveWebhookEventId } from "@/core/security/webhook-event-id"
 import { MalwareDetectedError, MalwareScannerUnavailableError, MalwareScanLimitError, scanFileBytes } from "@/core/security/malware-scan"
+import { randomUUID } from "node:crypto"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -15,6 +16,8 @@ export async function POST(request: Request) {
 	const db = getCorridorDb()
 	let ingestionId: string | undefined
 	let receiptIdentity: { provider: string; eventId: string } | undefined
+	let receiptOwnerId: string | undefined
+	let leaseHeartbeat: NodeJS.Timeout | undefined
 
 	try {
 		const raw = await readRequestTextLimited(request, MAX_EMAIL_WEBHOOK_BODY_BYTES)
@@ -81,14 +84,21 @@ export async function POST(request: Request) {
 		if (receipt.duplicate && receipt.status === "queued") {
 			return NextResponse.json({ ok: true, duplicate: true, ingestionId: receipt.ingestion.id, eventId: eventIdentity.eventId }, { status: 200 })
 		}
+		receiptOwnerId = randomUUID()
+		const claimed = db.claimWebhookReceipt({ ...identity, ownerId: receiptOwnerId })
+		if (!claimed) {
+			return NextResponse.json({ ok: true, duplicate: true, processing: true, ingestionId: receipt.ingestion.id, eventId: eventIdentity.eventId }, { status: 202 })
+		}
+		leaseHeartbeat = setInterval(() => {
+			try { db.renewWebhookReceiptLease({ ...identity, ownerId: receiptOwnerId! }) } catch { /* Lease expiry permits safe redelivery recovery. */ }
+		}, 15_000)
 		const rec = receipt.ingestion
 		ingestionId = rec.id
 		if (!payload || payloadValidationFailed) {
 			const message = payloadValidationFailed
 				? "Email webhook JSON does not match the supported email payload structure. The signed raw payload was retained for inspection."
 				: "Email webhook body is not valid JSON. The signed raw payload was retained for inspection."
-			db.updateRawIngestionOutcome({ id: rec.id, parseStatus: "failed", parseError: message })
-			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
+			db.failWebhookReceipt({ ...identity, ownerId: receiptOwnerId!, ingestionId: rec.id, parseError: message })
 			return NextResponse.json({ ok: false, error: message, ingestionId: rec.id }, { status: 422 })
 		}
 
@@ -97,14 +107,12 @@ export async function POST(request: Request) {
 			cases = parseInboundEmailToCases(payload)
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Email payload could not be parsed."
-			db.updateRawIngestionOutcome({ id: rec.id, parseStatus: "failed", parseError: message })
-			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
+			db.failWebhookReceipt({ ...identity, ownerId: receiptOwnerId!, ingestionId: rec.id, parseError: message })
 			return NextResponse.json({ ok: false, error: message, ingestionId: rec.id }, { status: 422 })
 		}
 		if (cases.length === 0) {
 			const message = "Email payload was stored, but it contained no supported settlement cases."
-			db.updateRawIngestionOutcome({ id: rec.id, parseStatus: "failed", parseError: message })
-			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
+			db.failWebhookReceipt({ ...identity, ownerId: receiptOwnerId!, ingestionId: rec.id, parseError: message })
 			return NextResponse.json({ ok: false, error: message, ingestionId: rec.id }, { status: 422 })
 		}
 		const orchestrator = initCorridorOrchestrator()
@@ -115,11 +123,12 @@ export async function POST(request: Request) {
 				parseStatus: "parsed",
 				caseIds: cases.map((c) => c.caseId),
 			})
-			db.markWebhookReceiptStatus({ ...identity, status: "queued" })
+			if (!db.markWebhookReceiptStatus({ ...identity, ownerId: receiptOwnerId!, status: "queued" })) {
+				throw new Error("Email processing lease expired before the event could be queued.")
+			}
 		})
 		const execution = orchestrator.enqueueBatch(cases)
 		void execution.catch((err) => {
-			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
 			console.error(`Email ingestion ${rec.id} failed during audit processing:`, err)
 		})
 
@@ -136,15 +145,12 @@ export async function POST(request: Request) {
 		)
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err)
-		if (ingestionId) {
-			db.updateRawIngestionOutcome({
-				id: ingestionId,
-				parseStatus: "failed",
-				parseError: msg,
-			})
+		if (receiptIdentity && receiptOwnerId && ingestionId) {
+			db.failWebhookReceipt({ ...receiptIdentity, ownerId: receiptOwnerId, ingestionId, parseError: msg })
 		}
-		if (receiptIdentity) db.markWebhookReceiptStatus({ ...receiptIdentity, status: "failed" })
 		const status = err instanceof RequestBodyTooLargeError || err instanceof MalwareScanLimitError ? 413 : err instanceof MalwareDetectedError ? 422 : err instanceof MalwareScannerUnavailableError ? 503 : 400
 		return NextResponse.json({ ok: false, error: msg, ingestionId }, { status })
+	} finally {
+		if (leaseHeartbeat) clearInterval(leaseHeartbeat)
 	}
 }

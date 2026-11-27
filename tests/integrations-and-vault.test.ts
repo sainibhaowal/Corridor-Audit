@@ -376,6 +376,20 @@ test("webhook receipt creation is idempotent and preserves payload conflicts", (
 	assert.equal(repeated.duplicate, true)
 	assert.equal(repeated.conflict, false)
 	assert.equal(repeated.ingestion.id, original.ingestion.id)
+	assert.equal(db.claimWebhookReceipt({ provider: "corridor", eventId: "evt-idempotency-01", ownerId: "webhook-worker-a" }), true)
+	assert.equal(db.renewWebhookReceiptLease({ provider: "corridor", eventId: "evt-idempotency-01", ownerId: "webhook-worker-a" }), true)
+	assert.equal(db.claimWebhookReceipt({ provider: "corridor", eventId: "evt-idempotency-01", ownerId: "webhook-worker-b" }), false)
+	assert.equal(db.markWebhookReceiptStatus({ provider: "corridor", eventId: "evt-idempotency-01", ownerId: "webhook-worker-a", status: "failed" }), true)
+	assert.equal(db.claimWebhookReceipt({ provider: "corridor", eventId: "evt-idempotency-01", ownerId: "webhook-worker-b" }), true, "failed deliveries can be retried with a new processing claim")
+	const dbInternal = db as unknown as { db: DatabaseSync }
+	dbInternal.db.prepare("UPDATE webhook_receipts SET processing_lease_expires_at = ? WHERE provider = ? AND event_id = ?")
+		.run(new Date(0).toISOString(), "corridor", "evt-idempotency-01")
+	assert.equal(db.claimWebhookReceipt({ provider: "corridor", eventId: "evt-idempotency-01", ownerId: "webhook-worker-c" }), true, "an expired claim can be recovered")
+	assert.equal(db.renewWebhookReceiptLease({ provider: "corridor", eventId: "evt-idempotency-01", ownerId: "webhook-worker-b" }), false, "a stale owner cannot renew after takeover")
+	assert.equal(db.failWebhookReceipt({ provider: "corridor", eventId: "evt-idempotency-01", ownerId: "webhook-worker-b", ingestionId: original.ingestion.id, parseError: "stale owner" }), false, "a stale owner cannot overwrite parse state")
+	assert.equal(db.getRawIngestion(original.ingestion.id)?.parseStatus, "received")
+	assert.equal(db.markWebhookReceiptStatus({ provider: "corridor", eventId: "evt-idempotency-01", ownerId: "webhook-worker-b", status: "queued" }), false, "a stale owner cannot finalize a reclaimed event")
+	assert.equal(db.markWebhookReceiptStatus({ provider: "corridor", eventId: "evt-idempotency-01", ownerId: "webhook-worker-c", status: "queued" }), true)
 	const conflict = db.recordWebhookReceipt({
 		provider: "corridor",
 		eventId: "evt-idempotency-01",
@@ -390,6 +404,26 @@ test("webhook receipt creation is idempotent and preserves payload conflicts", (
 	db.close()
 })
 
+test("existing webhook receipt tables gain processing lease columns", () => {
+	const dbPath = resolve(tmpdir(), `corridor-webhook-lease-migration-${process.pid}-${Date.now()}.db`)
+	const legacySchema = CORRIDOR_SCHEMA_SQL
+		.replace("\tprocessing_owner TEXT,\n", "")
+		.replace("\tprocessing_lease_expires_at TEXT,\n", "")
+	assert.notEqual(legacySchema, CORRIDOR_SCHEMA_SQL, "the fixture must represent the earlier webhook receipt schema")
+	const legacyDb = new DatabaseSync(dbPath)
+	legacyDb.exec(legacySchema)
+	legacyDb.close()
+	const upgradedDb = new CorridorDatabase(dbPath)
+	try {
+		const columns = (upgradedDb as unknown as { db: DatabaseSync }).db.prepare("PRAGMA table_info(webhook_receipts)").all() as Array<{ name: string }>
+		assert.ok(columns.some((column) => column.name === "processing_owner"))
+		assert.ok(columns.some((column) => column.name === "processing_lease_expires_at"))
+	} finally {
+		upgradedDb.close()
+		rmSync(dbPath, { force: true })
+	}
+})
+
 test("webhook receipt, normalized cases, parse result, and queued state commit atomically", () => {
 	const db = new CorridorDatabase(":memory:")
 	const event = {
@@ -402,6 +436,8 @@ test("webhook receipt, normalized cases, parse result, and queued state commit a
 		rawContent: '{"caseId":"CASE-ATOMIC-01"}',
 	}
 	const receipt = db.recordWebhookReceipt(event)
+	const receiptOwnerId = "atomic-webhook-worker"
+	assert.equal(db.claimWebhookReceipt({ provider: event.provider, eventId: event.eventId, ownerId: receiptOwnerId }), true)
 	const settlementCase = {
 		caseId: "CASE-ATOMIC-01",
 		title: "Atomic webhook case",
@@ -420,18 +456,22 @@ test("webhook receipt, normalized cases, parse result, and queued state commit a
 	assert.throws(() => db.transaction(() => {
 		db.saveCase(settlementCase)
 		db.updateRawIngestionOutcome({ id: receipt.ingestion.id, parseStatus: "parsed", caseIds: [settlementCase.caseId] })
-		db.markWebhookReceiptStatus({ provider: event.provider, eventId: event.eventId, status: "queued" })
+		db.markWebhookReceiptStatus({ provider: event.provider, eventId: event.eventId, ownerId: receiptOwnerId, status: "queued" })
 		throw new Error("simulated crash before webhook acceptance commit")
 	}), /simulated crash/)
 	const retry = db.recordWebhookReceipt(event)
 	assert.equal(retry.duplicate, true)
-	assert.equal(retry.status, "received")
+	assert.equal(retry.status, "processing")
 	assert.equal(retry.ingestion.parseStatus, "received")
 	assert.equal(db.getCaseQueueState(settlementCase.caseId), null)
+	const retryOwnerId = "atomic-webhook-retry"
+	;(db as unknown as { db: DatabaseSync }).db.prepare("UPDATE webhook_receipts SET processing_lease_expires_at = ? WHERE provider = ? AND event_id = ?")
+		.run(new Date(0).toISOString(), event.provider, event.eventId)
+	assert.equal(db.claimWebhookReceipt({ provider: event.provider, eventId: event.eventId, ownerId: retryOwnerId }), true)
 	db.transaction(() => {
 		db.saveCase(settlementCase)
 		db.updateRawIngestionOutcome({ id: receipt.ingestion.id, parseStatus: "parsed", caseIds: [settlementCase.caseId] })
-		db.markWebhookReceiptStatus({ provider: event.provider, eventId: event.eventId, status: "queued" })
+		db.markWebhookReceiptStatus({ provider: event.provider, eventId: event.eventId, ownerId: retryOwnerId, status: "queued" })
 	})
 	assert.equal(db.recordWebhookReceipt(event).status, "queued")
 	assert.equal(db.getCaseQueueState(settlementCase.caseId)?.status, "queued")
