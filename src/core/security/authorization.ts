@@ -3,13 +3,21 @@ import { NextResponse } from "next/server"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "../db/database"
 import { authEnabled, requestCorridorSession, type CorridorRole } from "./auth"
 
+const authorizedWorkspaceByRequest = new WeakMap<Request, string>()
+
+export function authorizedRequestWorkspaceId(request: Request): string {
+	const workspaceId = authorizedWorkspaceByRequest.get(request)
+	if (!workspaceId) throw new Error("Workspace context is unavailable before request authorization.")
+	return workspaceId
+}
+
 export async function isCurrentCorridorViewerSession(request: Request): Promise<boolean> {
 	if (!authEnabled()) return true
 	try {
 		const session = await requestCorridorSession(request)
 		if (!session) return false
 		const db = getCorridorDb()
-		const member = db.getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, session.sub)
+		const member = db.getTeamMemberByIdentitySub(session.workspaceId, session.sub)
 		return Boolean(member && member.role === session.role && db.isAuthSessionActive(session.sessionId, session.sub))
 	} catch {
 		return false
@@ -19,6 +27,7 @@ export async function isCurrentCorridorViewerSession(request: Request): Promise<
 export async function authorizeCorridorRequest(
 	request: Request,
 	minimumRole: CorridorRole = "viewer",
+	options: { workspaceScoped?: boolean } = {},
 ): Promise<NextResponse | null> {
 	const isMutation = request.method !== "GET" && request.method !== "HEAD" && request.method !== "OPTIONS"
 	if (isMutation) {
@@ -29,7 +38,10 @@ export async function authorizeCorridorRequest(
 			return NextResponse.json({ error: "Cross-origin request rejected." }, { status: 403 })
 		}
 	}
-	if (!authEnabled()) return null
+	if (!authEnabled()) {
+		authorizedWorkspaceByRequest.set(request, DEFAULT_WORKSPACE_ID)
+		return null
+	}
 	let session
 	try {
 		session = await requestCorridorSession(request)
@@ -39,14 +51,18 @@ export async function authorizeCorridorRequest(
 	if (!session) return NextResponse.json({ error: "Authentication required." }, { status: 401 })
 
 	const db = getCorridorDb()
-	const member = db.getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, session.sub)
+	const member = db.getTeamMemberByIdentitySub(session.workspaceId, session.sub)
 	if (!member || member.role !== session.role || !db.isAuthSessionActive(session.sessionId, session.sub)) {
 		return NextResponse.json({ error: "Workspace membership changed. Sign in again." }, { status: 401 })
+	}
+	if (session.workspaceId !== DEFAULT_WORKSPACE_ID && !options.workspaceScoped) {
+		return NextResponse.json({ error: "This API route is not yet enabled for the selected workspace." }, { status: 503 })
 	}
 	const rank: Record<CorridorRole, number> = { viewer: 0, analyst: 1, controller: 2, owner: 3 }
 	if (rank[session.role] < rank[minimumRole]) {
 		return NextResponse.json({ error: "This workspace role cannot perform that action." }, { status: 403 })
 	}
+	authorizedWorkspaceByRequest.set(request, session.workspaceId)
 
 	const pathname = new URL(request.url).pathname
 	const bucketClass = pathname === "/api/audit/upload"
@@ -57,7 +73,7 @@ export async function authorizeCorridorRequest(
 				? "read"
 				: "mutation"
 	const limit = bucketClass === "upload" ? 10 : bucketClass === "provider_sync" ? 6 : bucketClass === "read" ? 120 : 30
-	const subjectKey = createHash("sha256").update(`${DEFAULT_WORKSPACE_ID}:${session.sub}:${bucketClass}`).digest("hex")
+	const subjectKey = createHash("sha256").update(`${session.workspaceId}:${session.sub}:${bucketClass}`).digest("hex")
 	try {
 		const rate = db.consumeApiRateLimit({ bucketKey: subjectKey, limit, windowMs: 60_000 })
 		if (!rate.allowed) {

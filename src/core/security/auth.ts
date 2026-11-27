@@ -4,6 +4,7 @@ export type CorridorRole = "owner" | "controller" | "analyst" | "viewer"
 
 export interface CorridorSession {
 	sessionId: string
+	workspaceId: string
 	sub: string
 	email: string
 	name: string
@@ -12,7 +13,7 @@ export interface CorridorSession {
 	expiresAt: number
 }
 
-export type CorridorSessionInput = Pick<CorridorSession, "sub" | "email" | "name" | "role">
+export type CorridorSessionInput = Pick<CorridorSession, "workspaceId" | "sub" | "email" | "name" | "role">
 
 export function authEnabled(): boolean {
 	return process.env.NODE_ENV === "production" || process.env.CORRIDOR_AUTH_MODE === "cognito"
@@ -47,7 +48,7 @@ export function sessionSigningKey(): Uint8Array {
 }
 
 export async function issueCorridorSession(session: CorridorSessionInput): Promise<string> {
-	return new SignJWT({ email: session.email, name: session.name, role: session.role })
+	return new SignJWT({ workspaceId: session.workspaceId, email: session.email, name: session.name, role: session.role })
 		.setProtectedHeader({ alg: "HS256", typ: "JWT" })
 		.setJti(globalThis.crypto.randomUUID())
 		.setSubject(session.sub)
@@ -72,6 +73,7 @@ export async function verifyCorridorSession(token: string): Promise<CorridorSess
 	const { payload } = await jwtVerify(token, sessionSigningKey(), { algorithms: ["HS256"] })
 	if (
 		typeof payload.sub !== "string" ||
+		(typeof payload.workspaceId !== "string" || !payload.workspaceId.trim()) ||
 		typeof payload.jti !== "string" ||
 		typeof payload.email !== "string" ||
 		typeof payload.name !== "string" ||
@@ -83,6 +85,7 @@ export async function verifyCorridorSession(token: string): Promise<CorridorSess
 	}
 	return {
 		sessionId: payload.jti,
+		workspaceId: payload.workspaceId,
 		sub: payload.sub,
 		email: payload.email,
 		name: payload.name,

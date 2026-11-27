@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
-import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
+import { getCorridorDb } from "@/core/db/database"
 import type { IntegrationAuthMode } from "@/core/db/schema"
 import { getCatalogItem } from "@/core/integrations/catalog"
 import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublicly, validateProviderEndpointUrl } from "@/core/integrations/http"
 import { createOAuthAuthorizationUrl } from "@/core/integrations/oauth"
-import { authorizeCorridorRequest } from "@/core/security/authorization"
+import { authorizeCorridorRequest, authorizedRequestWorkspaceId } from "@/core/security/authorization"
 import { getCorridorPublicOrigin } from "@/core/security/public-origin"
 import { authEnabled, requestCorridorSession } from "@/core/security/auth"
 
@@ -15,14 +15,15 @@ export async function GET(
 	request: Request,
 	context: { params: Promise<{ provider: string }> },
 ) {
-	const denied = await authorizeCorridorRequest(request, "controller")
+	const denied = await authorizeCorridorRequest(request, "controller", { workspaceScoped: true })
 	if (denied) return denied
+	const workspaceId = authorizedRequestWorkspaceId(request)
 	try {
 		const { provider } = await context.params
 		const origin = getCorridorPublicOrigin(request)
 		const { url } = createOAuthAuthorizationUrl({
 			provider,
-			workspaceId: DEFAULT_WORKSPACE_ID,
+			workspaceId,
 			origin,
 		})
 		return NextResponse.json({ ok: true, authorizationUrl: url })
@@ -38,8 +39,9 @@ export async function POST(
 	request: Request,
 	context: { params: Promise<{ provider: string }> },
 ) {
-	const denied = await authorizeCorridorRequest(request, "controller")
+	const denied = await authorizeCorridorRequest(request, "controller", { workspaceScoped: true })
 	if (denied) return denied
+	const workspaceId = authorizedRequestWorkspaceId(request)
 	try {
 		const { provider } = await context.params
 		const spec = getCatalogItem(provider)
@@ -86,7 +88,7 @@ export async function POST(
 		const session = authEnabled() ? await requestCorridorSession(request) : null
 		const record = db.transaction(() => {
 			const connected = db.upsertIntegration({
-				workspaceId: DEFAULT_WORKSPACE_ID,
+				workspaceId,
 				provider,
 				category: spec.category,
 				authMode: resolvedMode,
@@ -102,7 +104,7 @@ export async function POST(
 						: undefined,
 				config: body.config ?? {},
 			})
-			db.appendWorkspaceAuditEvent({ workspaceId: DEFAULT_WORKSPACE_ID, actorType: session ? "user" : "local", actorId: session?.sub, actorEmail: session?.email, actorRole: session?.role, action: "integration.connect", targetType: "integration", targetId: provider, requestId: request.headers.get("x-request-id") || undefined, metadata: { authMode: resolvedMode } })
+			db.appendWorkspaceAuditEvent({ workspaceId, actorType: session ? "user" : "local", actorId: session?.sub, actorEmail: session?.email, actorRole: session?.role, action: "integration.connect", targetType: "integration", targetId: provider, requestId: request.headers.get("x-request-id") || undefined, metadata: { authMode: resolvedMode } })
 			return connected
 		})
 

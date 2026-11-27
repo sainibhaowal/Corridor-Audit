@@ -80,7 +80,7 @@ export async function GET(request: Request) {
 			bootstrapOwner: Boolean(bootstrapOwnerEmail && bootstrapOwnerEmail === email),
 		})
 		if (!member) return fail("This verified account has no active workspace invitation.")
-		const sessionToken = await issueCorridorSession({ sub: payload.sub, email, name: member.name, role: member.role })
+		const sessionToken = await issueCorridorSession({ workspaceId: member.workspaceId, sub: payload.sub, email, name: member.name, role: member.role })
 		const session = await verifyCorridorSession(sessionToken)
 		getCorridorDb().createAuthSession({
 			sessionId: session.sessionId,

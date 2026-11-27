@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server"
-import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
+import { getCorridorDb } from "@/core/db/database"
 import { authEnabled, requestCorridorSession } from "@/core/security/auth"
-import { authorizeCorridorRequest } from "@/core/security/authorization"
+import { authorizeCorridorRequest, authorizedRequestWorkspaceId } from "@/core/security/authorization"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function GET(request: Request) {
-	const denied = await authorizeCorridorRequest(request, "viewer")
+	const denied = await authorizeCorridorRequest(request, "viewer", { workspaceScoped: true })
 	if (denied) return denied
+	const workspaceId = authorizedRequestWorkspaceId(request)
 	const session = authEnabled() ? await requestCorridorSession(request) : null
 	if (session && !["owner", "controller"].includes(session.role)) {
 		return NextResponse.json({ ok: false, error: "Only workspace owners and controllers can inspect the audit log." }, { status: 403 })
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
 	const db = getCorridorDb()
 	return NextResponse.json({
 		ok: true,
-		events: db.listWorkspaceAuditEvents(DEFAULT_WORKSPACE_ID, requestedLimit),
-		chain: db.verifyWorkspaceAuditChain(DEFAULT_WORKSPACE_ID),
+		events: db.listWorkspaceAuditEvents(workspaceId, requestedLimit),
+		chain: db.verifyWorkspaceAuditChain(workspaceId),
 	})
 }

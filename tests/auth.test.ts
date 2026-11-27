@@ -7,9 +7,11 @@ import test from "node:test"
 import { NextRequest } from "next/server"
 import { GET as runtimeStatusRoute } from "../src/app/api/runtime/status/route"
 import { POST as logoutRoute } from "../src/app/api/auth/logout/route"
+import { GET as integrationsRoute } from "../src/app/api/integrations/route"
+import { GET as historyRoute } from "../src/app/api/history/route"
 import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/core/db/database"
 import { issueCorridorSession, verifyCorridorSession } from "../src/core/security/auth"
-import { authorizeCorridorRequest, isCurrentCorridorViewerSession } from "../src/core/security/authorization"
+import { authorizeCorridorRequest, authorizedRequestWorkspaceId, isCurrentCorridorViewerSession } from "../src/core/security/authorization"
 import { middleware } from "../src/middleware"
 import { isHumanOverrideAuthorized } from "../src/runtime/interception/human-override"
 import { CORRIDOR_SCHEMA_SQL } from "../src/core/db/schema"
@@ -83,9 +85,10 @@ test("signed sessions validate claims and reject tampering", async () => {
 	const previousSecret = process.env.CORRIDOR_SESSION_SECRET
 	process.env.CORRIDOR_SESSION_SECRET = "test-session-secret-with-at-least-32-bytes"
 	try {
-		const token = await issueCorridorSession({ sub: "user-1", email: "user@example.test", name: "User", role: "analyst" })
+		const token = await issueCorridorSession({ workspaceId: DEFAULT_WORKSPACE_ID, sub: "user-1", email: "user@example.test", name: "User", role: "analyst" })
 		const session = await verifyCorridorSession(token)
 		assert.equal(session.sub, "user-1")
+		assert.equal(session.workspaceId, DEFAULT_WORKSPACE_ID)
 		assert.equal(session.email, "user@example.test")
 		assert.equal(session.name, "User")
 		assert.equal(session.role, "analyst")
@@ -109,7 +112,7 @@ test("production-mode middleware rejects unauthenticated API requests and enforc
 		const unauthenticated = await middleware(new NextRequest("http://localhost/api/history"))
 		assert.equal(unauthenticated.status, 401)
 
-		const analystToken = await issueCorridorSession({ sub: "analyst-1", email: "analyst@example.test", name: "Analyst", role: "analyst" })
+		const analystToken = await issueCorridorSession({ workspaceId: DEFAULT_WORKSPACE_ID, sub: "analyst-1", email: "analyst@example.test", name: "Analyst", role: "analyst" })
 		const denied = await middleware(new NextRequest("http://localhost/api/settings/provider", {
 			method: "POST",
 			headers: { cookie: `ca_session=${analystToken}`, origin: "http://localhost" },
@@ -141,7 +144,7 @@ test("API authorization checks current team membership on every request", async 
 		const db = getCorridorDb()
 		const invited = db.addTeamMember({ email: "viewer@example.test", name: "Viewer", role: "viewer" })
 		db.activateVerifiedTeamMember({ email: invited.email, name: invited.name, identitySub: "viewer-1" })
-		const token = await issueCorridorSession({ sub: "viewer-1", email: invited.email, name: invited.name, role: "viewer" })
+		const token = await issueCorridorSession({ workspaceId: DEFAULT_WORKSPACE_ID, sub: "viewer-1", email: invited.email, name: invited.name, role: "viewer" })
 		const claims = await verifyCorridorSession(token)
 		db.createAuthSession({
 			sessionId: claims.sessionId,
@@ -160,7 +163,7 @@ test("API authorization checks current team membership on every request", async 
 		assert.equal((await authorizeCorridorRequest(request, "viewer"))?.status, 401)
 		assert.equal(await isCurrentCorridorViewerSession(request), false)
 
-		const activeToken = await issueCorridorSession({ sub: "viewer-1", email: invited.email, name: invited.name, role: "viewer" })
+		const activeToken = await issueCorridorSession({ workspaceId: DEFAULT_WORKSPACE_ID, sub: "viewer-1", email: invited.email, name: invited.name, role: "viewer" })
 		const activeClaims = await verifyCorridorSession(activeToken)
 		db.createAuthSession({
 			sessionId: activeClaims.sessionId,
@@ -170,6 +173,42 @@ test("API authorization checks current team membership on every request", async 
 		})
 		const activeRequest = new Request("http://localhost/api/history", { headers: { cookie: `ca_session=${activeToken}` } })
 		assert.equal(await isCurrentCorridorViewerSession(activeRequest), true)
+
+		const otherWorkspaceId = "ws-auth-isolation"
+		const rawDb = (db as unknown as { db: DatabaseSync }).db
+		const defaultSecret = rawDb.prepare("SELECT webhook_signing_secret_enc FROM workspaces WHERE id = ?")
+			.get(DEFAULT_WORKSPACE_ID) as { webhook_signing_secret_enc: string }
+		rawDb.prepare(`INSERT INTO workspaces (id, name, inbound_email_address, webhook_signing_secret_enc, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?)`).run(
+			otherWorkspaceId,
+			"Isolated Workspace",
+			"inbox+isolated@example.test",
+			defaultSecret.webhook_signing_secret_enc,
+			new Date().toISOString(),
+			new Date().toISOString(),
+		)
+		const otherMember = db.addTeamMember({ workspaceId: otherWorkspaceId, email: "other@example.test", name: "Other", role: "viewer" })
+		db.activateVerifiedTeamMember({ workspaceId: otherWorkspaceId, email: otherMember.email, name: otherMember.name, identitySub: "other-workspace-viewer" })
+		db.upsertIntegration({ workspaceId: otherWorkspaceId, provider: "stripe", category: "payouts", authMode: "api_token", status: "connected", accountLabel: "Only Workspace B" })
+		const otherToken = await issueCorridorSession({ workspaceId: otherWorkspaceId, sub: "other-workspace-viewer", email: otherMember.email, name: otherMember.name, role: "viewer" })
+		const otherClaims = await verifyCorridorSession(otherToken)
+		db.createAuthSession({
+			sessionId: otherClaims.sessionId,
+			identitySub: otherClaims.sub,
+			issuedAt: new Date(otherClaims.issuedAt * 1000).toISOString(),
+			expiresAt: new Date(otherClaims.expiresAt * 1000).toISOString(),
+		})
+		const otherRequest = new Request("http://localhost/api/integrations", { headers: { cookie: `ca_session=${otherToken}` } })
+		assert.equal(await authorizeCorridorRequest(otherRequest, "viewer", { workspaceScoped: true }), null)
+		assert.equal(authorizedRequestWorkspaceId(otherRequest), otherWorkspaceId)
+		const scopedIntegrations = await integrationsRoute(otherRequest)
+		assert.equal(scopedIntegrations.status, 200)
+		const scopedPayload = await scopedIntegrations.json() as { workspace: { id: string; name: string }; integrations: Array<{ provider: string; connection: { accountLabel?: string } }> }
+		assert.equal(scopedPayload.workspace.id, otherWorkspaceId)
+		assert.equal(scopedPayload.workspace.name, "Isolated Workspace")
+		assert.equal(scopedPayload.integrations.find((entry) => entry.provider === "stripe")?.connection.accountLabel, "Only Workspace B")
+		const unscopedHistory = await historyRoute(new Request("http://localhost/api/history", { headers: { cookie: `ca_session=${otherToken}` } }))
+		assert.equal(unscopedHistory.status, 503, "workspace B cannot reach API routes until their data and runtime state are tenant-scoped")
 
 		db.removeTeamMember(DEFAULT_WORKSPACE_ID, invited.id)
 		const denied = await authorizeCorridorRequest(activeRequest, "viewer")

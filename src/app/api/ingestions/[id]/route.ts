@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getCorridorDb } from "@/core/db/database"
-import { authorizeCorridorRequest } from "@/core/security/authorization"
+import { authorizeCorridorRequest, authorizedRequestWorkspaceId } from "@/core/security/authorization"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -9,14 +9,15 @@ export async function GET(
 	request: Request,
 	context: { params: Promise<{ id: string }> },
 ) {
-	const denied = await authorizeCorridorRequest(request, "viewer")
+	const denied = await authorizeCorridorRequest(request, "viewer", { workspaceScoped: true })
 	if (denied) return denied
+	const workspaceId = authorizedRequestWorkspaceId(request)
 	const { id } = await context.params
 	const url = new URL(request.url)
 	const download = url.searchParams.get("download") === "1"
 
 	const db = getCorridorDb()
-	const ingestion = db.getRawIngestion(id, true)
+	const ingestion = db.getRawIngestion(id, true, workspaceId)
 	if (!ingestion) {
 		return NextResponse.json({ ok: false, error: `Raw ingestion "${id}" not found.` }, { status: 404 })
 	}
