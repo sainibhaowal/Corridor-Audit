@@ -1288,8 +1288,13 @@ export function CorridorWorkspace() {
 													{provider?.mode === "live" ? "Operations workspace · LLM Live" : "Operations workspace · ready"}
 												</div>
 												{provider?.mode === "live" ? (
-													<div className="inline-flex items-center gap-2 rounded-lg border border-[#225b51] bg-[#081312]/90 px-3 py-1 font-mono text-[11px] text-[#62e1c3]">
-														<span className="h-2 w-2 animate-ping rounded-full bg-[#62e1c3] opacity-75" />
+													<div className={cn(
+														"inline-flex items-center gap-2 rounded-lg border px-3 py-1 font-mono text-[11px]",
+														theme === "light"
+															? "border-emerald-300 bg-emerald-50 text-emerald-800"
+															: "border-[#225b51] bg-[#081312]/90 text-[#62e1c3]"
+													)}>
+														<span className={cn("h-2 w-2 animate-ping rounded-full opacity-75", theme === "light" ? "bg-emerald-600" : "bg-[#62e1c3]")} />
 														<span>&gt; Waiting for Data</span>
 														<span className="inline-flex gap-0.5">
 															<span className="animate-bounce [animation-delay:0ms]">.</span>
@@ -1298,7 +1303,12 @@ export function CorridorWorkspace() {
 														</span>
 													</div>
 												) : (
-													<div className="inline-flex items-center gap-1.5 rounded-lg border border-amber-800/60 bg-amber-950/30 px-2.5 py-1 font-mono text-[11px] text-amber-300">
+													<div className={cn(
+														"inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-[11px]",
+														theme === "light"
+															? "border-amber-300 bg-amber-50 text-amber-800"
+															: "border-amber-800/60 bg-amber-950/30 text-amber-300"
+													)}>
 														<span>&gt; Waiting for LLM Key...</span>
 													</div>
 												)}
@@ -1310,7 +1320,7 @@ export function CorridorWorkspace() {
 													: "Follow each specialist as it checks invoice terms, FX, wire fees, and exceptions. Tool results and the final cent reconciliation appear here as the run progresses."}
 											</p>
 											<div className="mt-5 flex flex-wrap items-center gap-2">
-												<Button className="h-9 px-3.5" onClick={() => quickFileInputRef.current?.click()}>
+												<Button variant="emerald" className="h-9 px-3.5" onClick={() => quickFileInputRef.current?.click()}>
 													<FileUp className="h-3.5 w-3.5" />
 													Upload source
 												</Button>

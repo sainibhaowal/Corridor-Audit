@@ -98,13 +98,12 @@ html[data-theme="light"] [class~="hover:bg-[#12342e]"]:hover {
 }
 
 html[data-theme="light"] [class~="text-[#e3edef]"],
-html[data-theme="light"] [class~="text-white"]:not([class*="bg-emerald-"]):not([class~="bg-[#121c24]"]),
+html[data-theme="light"] [class~="text-white"]:not([class*="bg-emerald-"]),
 html[data-theme="light"] [class~="hover:text-[#e3edef]"]:hover {
 	color: #17252c !important;
 }
 
-html[data-theme="light"] [class*="bg-emerald-"][class~="text-white"],
-html[data-theme="light"] [class~="bg-[#121c24]"][class~="text-white"] {
+html[data-theme="light"] [class*="bg-emerald-"][class~="text-white"] {
 	color: #ffffff !important;
 }
 
