@@ -21,6 +21,7 @@ import { POST as inboundWebhookRoute } from "../src/app/api/webhooks/inbound/rou
 import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/core/db/database"
 import { parseInboundEmailToCases } from "../src/core/integrations/email-parser"
 import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
+import { fetchProvider } from "../src/core/integrations/http"
 import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode, refreshOAuthCredentials } from "../src/core/integrations/oauth"
 import { runIntegrationSync } from "../src/runtime/workers/sync-worker"
 import { runWithDurableCaseRetries } from "../src/runtime/workers/durable-case-queue"
@@ -543,6 +544,23 @@ test("provider sync leases serialize separate SQLite connections and are owner-r
 		first.close()
 		second.close()
 		rmSync(dbPath, { force: true })
+	}
+})
+
+test("provider HTTP helper aborts a stalled request at its configured timeout", async () => {
+	const previousFetch = global.fetch
+	let receivedSignal: AbortSignal | undefined
+	global.fetch = ((_input, init) => new Promise((_resolve, reject) => {
+		receivedSignal = init?.signal as AbortSignal
+		receivedSignal.addEventListener("abort", () => reject(receivedSignal?.reason), { once: true })
+	})) as typeof fetch
+	try {
+		await assert.rejects(fetchProvider("https://provider.test/resource", undefined, 5), (error: unknown) => {
+			return error instanceof DOMException && error.name === "TimeoutError"
+		})
+		assert.ok(receivedSignal?.aborted)
+	} finally {
+		global.fetch = previousFetch
 	}
 })
 

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto"
 import { getCorridorDb } from "../db/database"
 import type { IntegrationCredentials } from "../db/schema"
+import { fetchProvider } from "./http"
 
 interface OAuthProviderSpec {
 	authUrl: string
@@ -126,7 +127,7 @@ export async function exchangeOAuthCode(params: {
 	if (params.codeVerifier) bodyParams.code_verifier = params.codeVerifier
 	const body = new URLSearchParams(bodyParams)
 
-	const res = await fetch(spec.tokenUrl, {
+	const res = await fetchProvider(spec.tokenUrl, {
 		method: "POST",
 		headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
 		body: body.toString(),
@@ -176,7 +177,7 @@ export async function refreshOAuthCredentials(
 		refresh_token: credentials.refreshToken,
 	})
 	const basicSecret = clientSecret ?? ""
-	const response = await fetch(spec.tokenUrl, {
+	const response = await fetchProvider(spec.tokenUrl, {
 		method: "POST",
 		headers: {
 			Authorization: `Basic ${Buffer.from(`${clientId}:${basicSecret}`).toString("base64")}`,

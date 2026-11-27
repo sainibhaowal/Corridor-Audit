@@ -94,6 +94,9 @@ test("Next.js App Router API routes serve health, terminal, upload ingestion, we
 	assert.equal(uploadJson.ok, true)
 	assert.equal(uploadJson.queuedCount, 1)
 	assert.equal(uploadJson.caseIds.length, 1)
+	if (runtimePayload.provider.mode === "unconfigured") {
+		assert.equal(getCorridorDb().getCaseQueueState(uploadJson.caseIds[0] || "")?.status, "queued", "without an LLM key, durable work must wait instead of invoking Mozaik")
+	}
 
 	const whRes = await inboundWebhookRoute(
 		new Request("http://127.0.0.1/api/webhooks/inbound", {

@@ -4,6 +4,7 @@ import type { IntegrationCredentials, IntegrationRecord } from "../db/schema"
 import { normalizeInboundPayloadToCases } from "../ingest/normalize-upload"
 import type { SettlementCase } from "../types"
 import { parseDecimalStringToMinor } from "../money"
+import { fetchProvider } from "./http"
 
 export interface ConnectorFetchResult {
 	recordsFetched: number
@@ -54,7 +55,7 @@ async function fetchStripeCases(credentials: IntegrationCredentials, lastSuccess
 		url.searchParams.set("limit", String(STRIPE_PAGE_SIZE))
 		if (since) url.searchParams.set("created[gte]", String(Math.floor(since.getTime() / 1000)))
 		if (startingAfter) url.searchParams.set("starting_after", startingAfter)
-		const res = await fetch(url, { headers: { Authorization: authHeader(credentials) } })
+		const res = await fetchProvider(url, { headers: { Authorization: authHeader(credentials) } })
 		if (!res.ok) throw new Error(`Stripe API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
 		const rawPage = await res.text()
 		rawPages.push(rawPage)
@@ -122,7 +123,7 @@ async function fetchWiseCases(
 	const rawPages: string[] = []
 
 	if (!profileId) {
-		const pRes = await fetch("https://api.transferwise.com/v1/profiles", { headers })
+		const pRes = await fetchProvider("https://api.transferwise.com/v1/profiles", { headers })
 		if (!pRes.ok) {
 			throw new Error(`Wise Profiles API error (${pRes.status}): ${(await pRes.text()).slice(0, 200)}`)
 		}
@@ -151,7 +152,7 @@ async function fetchWiseCases(
 		url.searchParams.set("profile", profileId)
 		url.searchParams.set("limit", String(WISE_PAGE_SIZE))
 		url.searchParams.set("offset", String(page * WISE_PAGE_SIZE))
-		const tRes = await fetch(url, { headers })
+		const tRes = await fetchProvider(url, { headers })
 		if (!tRes.ok) throw new Error(`Wise Transfers API error (${tRes.status}): ${(await tRes.text()).slice(0, 200)}`)
 		const rawPage = await tRes.text()
 		rawPages.push(rawPage)
@@ -219,7 +220,7 @@ async function fetchQuickBooksCases(
 		const startPosition = page * ACCOUNTING_PAGE_SIZE + 1
 		const modifiedFilter = since ? ` WHERE MetaData.LastUpdatedTime > '${since.toISOString()}'` : ""
 		const query = encodeURIComponent(`SELECT * FROM Invoice${modifiedFilter} ORDERBY MetaData.LastUpdatedTime DESC STARTPOSITION ${startPosition} MAXRESULTS ${ACCOUNTING_PAGE_SIZE}`)
-		const res = await fetch(`https://quickbooks.api.intuit.com/v3/company/${encodeURIComponent(realmId)}/query?query=${query}`, {
+		const res = await fetchProvider(`https://quickbooks.api.intuit.com/v3/company/${encodeURIComponent(realmId)}/query?query=${query}`, {
 			headers: { Authorization: authHeader(credentials), Accept: "application/json" },
 		})
 		if (!res.ok) throw new Error(`QuickBooks API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
@@ -305,7 +306,7 @@ async function fetchXeroCases(
 			Accept: "application/json",
 		})
 		if (since) headers.set("If-Modified-Since", since.toISOString().slice(0, 19))
-		const res = await fetch(`https://api.xero.com/api.xro/2.0/Invoices?page=${page}&pageSize=${ACCOUNTING_PAGE_SIZE}`, {
+		const res = await fetchProvider(`https://api.xero.com/api.xro/2.0/Invoices?page=${page}&pageSize=${ACCOUNTING_PAGE_SIZE}`, {
 			headers,
 		})
 		if (!res.ok) throw new Error(`Xero API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
@@ -385,7 +386,7 @@ async function fetchGenericEndpointCases(
 	if (!baseUrl) {
 		throw new Error(`Provider "${provider}" requires an API endpoint URL in its configuration to poll.`)
 	}
-	const res = await fetch(baseUrl, {
+	const res = await fetchProvider(baseUrl, {
 		headers: { Authorization: authHeader(credentials), Accept: "application/json" },
 	})
 	if (!res.ok) {

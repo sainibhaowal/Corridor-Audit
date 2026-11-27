@@ -39,6 +39,9 @@ async function main() {
 		content,
 		format: "auto",
 	})
+	if (orchestrator.router.getPublicStatus().mode === "unconfigured") {
+		throw new Error("Configure an LLM provider before running a CLI settlement audit.")
+	}
 	const verdicts = await orchestrator.enqueueBatch(cases)
 
 	console.log("\n=================== FINAL CENT-PROOF LEDGER ===================")

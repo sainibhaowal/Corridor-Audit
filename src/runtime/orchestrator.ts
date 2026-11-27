@@ -32,6 +32,10 @@ function startCaseQueueWorker(orchestrator: CorridorOrchestrator): void {
 	if (globalStore.__corridorCaseQueueWorkerStarted) return
 	globalStore.__corridorCaseQueueWorkerStarted = true
 	const timer = setInterval(() => {
+		if (orchestrator.router.getPublicStatus().mode === "unconfigured") {
+			orchestrator.state.queueStats.waiting = getCorridorDb().countQueuedCases()
+			return
+		}
 		for (const queuedCase of getCorridorDb().listQueuedCases()) {
 			void orchestrator.runCase(queuedCase).catch((err) => {
 				console.error(`[CaseQueue] Processing failed for ${queuedCase.caseId}:`, err)
@@ -197,6 +201,11 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 		if (completed) return Promise.resolve(completed)
 		// Persist before scheduling so accepted local work survives a process restart.
 		getCorridorDb().saveCase(settlementCase)
+		if (router.getPublicStatus().mode === "unconfigured") {
+			state.casesById.set(settlementCase.caseId, settlementCase)
+			state.queueStats.waiting = getCorridorDb().countQueuedCases()
+			return Promise.reject(new Error("Configure an LLM provider before running queued settlement audits."))
+		}
 		state.queueStats.waiting += 1
 		const task = batchChain.then(() => runWithDurableCaseRetries({
 			db: getCorridorDb(),
@@ -219,6 +228,15 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 	}
 
 	const enqueueBatch = (cases: SettlementCase[]): Promise<AuditVerdict[]> => {
+		if (router.getPublicStatus().mode === "unconfigured") {
+			const db = getCorridorDb()
+			for (const settlementCase of cases) {
+				db.saveCase(settlementCase)
+				state.casesById.set(settlementCase.caseId, settlementCase)
+			}
+			state.queueStats.waiting = db.countQueuedCases()
+			return Promise.resolve([])
+		}
 		const promises = cases.map((c) => runCase(c))
 		return Promise.all(promises)
 	}
@@ -240,10 +258,14 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 	startHotFolderWatcher(orchestrator)
 	startCaseQueueWorker(orchestrator)
 	startBackgroundSyncWorker(orchestrator)
-	for (const queuedCase of db.listQueuedCases()) {
-		void runCase(queuedCase).catch((err) => {
-			console.error(`Failed to resume queued case ${queuedCase.caseId}:`, err)
-		})
+	if (router.getPublicStatus().mode === "unconfigured") {
+		state.queueStats.waiting = db.countQueuedCases()
+	} else {
+		for (const queuedCase of db.listQueuedCases()) {
+			void runCase(queuedCase).catch((err) => {
+				console.error(`Failed to resume queued case ${queuedCase.caseId}:`, err)
+			})
+		}
 	}
 	return orchestrator
 }

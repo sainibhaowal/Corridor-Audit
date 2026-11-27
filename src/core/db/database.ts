@@ -1206,6 +1206,12 @@ export class CorridorDatabase {
 		return rows.map((r) => JSON.parse(r.payload_json_encrypted ? decryptSecret(r.payload_json) : r.payload_json) as SettlementCase)
 	}
 
+	countQueuedCases(workspaceId = DEFAULT_WORKSPACE_ID): number {
+		const row = this.db.prepare("SELECT COUNT(*) AS count FROM cases WHERE workspace_id = ? AND status = 'queued'")
+			.get(workspaceId) as { count: number }
+		return Number(row.count)
+	}
+
 	claimCase(caseId: string, workerId: string, leaseMs = 60_000, workspaceId = DEFAULT_WORKSPACE_ID): boolean {
 		const now = new Date()
 		const nowIso = now.toISOString()

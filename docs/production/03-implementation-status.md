@@ -392,3 +392,10 @@ Update this section per milestone with the exact command, result, environment, a
 - This coordinates processes sharing the same local SQLite file only. The timer remains process-local, there is no durable scheduled retry queue, and provider calls still need consistent network timeouts before long-running production use.
 - Verification on the local Windows environment: `npm run typecheck` passed; `npm test` passed, 70 tests and 0 failures; `npm run build` passed. Coverage includes two independent SQLite connections competing for the same sync lease and the existing concurrent QuickBooks sync flow.
 - No external provider was contacted. No AWS, identity, or mail service was configured.
+
+### 2026-11-27 provider request bounds and unconfigured queue behavior
+
+- Stripe, Wise, QuickBooks, Xero, generic provider reads, and OAuth token requests now use a shared 20 second HTTP request timeout. A stalled request aborts instead of holding its sync lease indefinitely. The timeout is per request; bounded pagination can still make a complete sync take longer.
+- When no LLM provider is configured, accepted cases are persisted and remain queued. The local queue worker waits rather than invoking Mozaik with missing credentials, and startup does not attempt to replay queued cases until a provider is configured. The CLI gives a configuration error before starting an audit.
+- Verification on the local Windows environment: `npm run typecheck` passed; `npm test` passed, 71 tests and 0 failures; `npm run build` passed. Tests cover HTTP abort signaling and verify that unconfigured uploads remain in the durable queued state.
+- No provider, LLM, AWS, or identity service was contacted or configured for this verification.
