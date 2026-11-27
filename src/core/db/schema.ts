@@ -4,7 +4,7 @@ export type IntegrationAuthMode = "oauth2" | "api_token" | "open_banking" | "ema
 export type IntegrationStatus = "connected" | "disconnected" | "syncing" | "error"
 export type TeamRole = "owner" | "controller" | "analyst" | "viewer"
 export type RawIngestionChannel = "manual_upload" | "webhook" | "email" | "platform_sync" | "hot_folder"
-export type RawIngestionParseStatus = "parsed" | "failed"
+export type RawIngestionParseStatus = "received" | "parsed" | "failed"
 
 export interface RawIngestionRecord {
 	id: string
@@ -286,7 +286,7 @@ CREATE TABLE IF NOT EXISTS raw_ingestions (
 	is_base64 INTEGER NOT NULL DEFAULT 0,
 	metadata_json TEXT NOT NULL DEFAULT '{}',
 	metadata_json_encrypted INTEGER NOT NULL DEFAULT 0,
-	parse_status TEXT NOT NULL DEFAULT 'parsed',
+	parse_status TEXT NOT NULL DEFAULT 'received',
 	parse_error TEXT,
 	parse_error_encrypted INTEGER NOT NULL DEFAULT 0,
 	case_ids_json TEXT NOT NULL DEFAULT '[]',

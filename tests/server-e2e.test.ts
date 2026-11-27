@@ -121,6 +121,7 @@ test("Next.js App Router API routes serve health, terminal, upload ingestion, we
 		}),
 	)
 	assert.equal(whRes.status, 202)
+	assert.equal(getCorridorDb().getCaseQueueState("WH-E2E-01")?.status, "queued", "the webhook response follows durable case acceptance")
 
 	const histRes = await historyRoute(new Request("http://127.0.0.1/api/history"))
 	assert.equal(histRes.status, 200)

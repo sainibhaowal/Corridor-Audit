@@ -106,15 +106,17 @@ export async function POST(request: Request) {
 			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
 			return NextResponse.json({ ok: false, error: message, ingestionId: rec.id }, { status: 422 })
 		}
-		db.updateRawIngestionOutcome({
-			id: rec.id,
-			parseStatus: "parsed",
-			caseIds: cases.map((c) => c.caseId),
-		})
-
 		const orchestrator = initCorridorOrchestrator()
+		db.transaction(() => {
+			for (const settlementCase of cases) db.saveCase(settlementCase, DEFAULT_WORKSPACE_ID)
+			db.updateRawIngestionOutcome({
+				id: rec.id,
+				parseStatus: "parsed",
+				caseIds: cases.map((c) => c.caseId),
+			})
+			db.markWebhookReceiptStatus({ ...identity, status: "queued" })
+		})
 		const execution = orchestrator.enqueueBatch(cases)
-		db.markWebhookReceiptStatus({ ...identity, status: "queued" })
 		void execution.catch((err) => {
 			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
 			console.error(`Email ingestion ${rec.id} failed during audit processing:`, err)

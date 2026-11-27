@@ -368,6 +368,54 @@ test("webhook receipt creation is idempotent and preserves payload conflicts", (
 	db.close()
 })
 
+test("webhook receipt, normalized cases, parse result, and queued state commit atomically", () => {
+	const db = new CorridorDatabase(":memory:")
+	const event = {
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider: "corridor",
+		eventId: "evt-atomic-acceptance-01",
+		sourceChannel: "webhook" as const,
+		filename: "atomic.json",
+		format: "json",
+		rawContent: '{"caseId":"CASE-ATOMIC-01"}',
+	}
+	const receipt = db.recordWebhookReceipt(event)
+	const settlementCase = {
+		caseId: "CASE-ATOMIC-01",
+		title: "Atomic webhook case",
+		channelLabel: "webhook",
+		settlementEvidence: "incomplete" as const,
+		wire: {
+			wireId: "WIRE-ATOMIC-01",
+			format: "bank_csv" as const,
+			valueDate: "2026-11-27",
+			settledAmount: { amountMinor: 500, currency: "USD" },
+			senderCharges: [],
+			receiverCharges: [],
+		},
+		createdAt: new Date().toISOString(),
+	}
+	assert.throws(() => db.transaction(() => {
+		db.saveCase(settlementCase)
+		db.updateRawIngestionOutcome({ id: receipt.ingestion.id, parseStatus: "parsed", caseIds: [settlementCase.caseId] })
+		db.markWebhookReceiptStatus({ provider: event.provider, eventId: event.eventId, status: "queued" })
+		throw new Error("simulated crash before webhook acceptance commit")
+	}), /simulated crash/)
+	const retry = db.recordWebhookReceipt(event)
+	assert.equal(retry.duplicate, true)
+	assert.equal(retry.status, "received")
+	assert.equal(retry.ingestion.parseStatus, "received")
+	assert.equal(db.getCaseQueueState(settlementCase.caseId), null)
+	db.transaction(() => {
+		db.saveCase(settlementCase)
+		db.updateRawIngestionOutcome({ id: receipt.ingestion.id, parseStatus: "parsed", caseIds: [settlementCase.caseId] })
+		db.markWebhookReceiptStatus({ provider: event.provider, eventId: event.eventId, status: "queued" })
+	})
+	assert.equal(db.recordWebhookReceipt(event).status, "queued")
+	assert.equal(db.getCaseQueueState(settlementCase.caseId)?.status, "queued")
+	db.close()
+})
+
 test("case IDs and raw-ingestion lookups cannot cross workspace boundaries", () => {
 	const db = new CorridorDatabase(":memory:")
 	const internal = db as unknown as { db: DatabaseSync }

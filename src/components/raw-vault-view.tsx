@@ -18,7 +18,7 @@ interface RawIngestionItem {
 	rawContent?: string
 	isBase64: boolean
 	metadata: Record<string, string>
-	parseStatus: "parsed" | "failed"
+	parseStatus: "received" | "parsed" | "failed"
 	parseError?: string
 	caseIds: string[]
 	createdAt: string
@@ -220,7 +220,7 @@ export function RawVaultView({ onOpenCase }: { onOpenCase: (caseId: string) => v
 										<div className="min-w-0 truncate text-xs font-bold text-[#e3edef]">
 											{item.filename}
 										</div>
-										<Badge variant={item.parseStatus === "parsed" ? "ok" : "bad"}>
+										<Badge variant={item.parseStatus === "parsed" ? "ok" : item.parseStatus === "failed" ? "bad" : "warn"}>
 											{item.parseStatus}
 										</Badge>
 									</div>

@@ -438,3 +438,10 @@ Update this section per milestone with the exact command, result, environment, a
 - The existing review card displays the API error when a review action is denied. No broader UI layout changes were made.
 - Existing local databases receive the nullable `submitted_by_sub` column through an additive migration.
 - Verification in the local Windows environment: `npm run typecheck`, `npm test` (76 passed, 0 failed), and `npm run build` passed. Tests cover rejection of submitter self-approval, approval by an independent reviewer, preservation of submitter identity on case updates, and additive migration of an existing SQLite database.
+
+### 2026-11-27 atomic webhook case acceptance
+
+- Inbound JSON webhooks and email adapter events now persist normalized case rows, raw-ingestion parse outcome, and receipt status `queued` in one SQLite transaction. The orchestrator starts only after commit, and its local startup recovery resumes queued cases after a process restart.
+- A conflict or failed write rolls the acceptance transaction back; the existing receipt remains retryable. Initial raw receipt creation and parsing remain separate, so a crash in that window leaves a `received` event that a provider retry can safely resume.
+- Raw evidence now starts with parse state `received`; only successful parsing changes it to `parsed`. The Raw Data Vault shows received records as pending instead of reporting them as parsed early.
+- Verification in the local Windows environment: `npm run typecheck`, `npm test` (77 passed, 0 failed), and `npm run build` passed. Tests cover transaction rollback for case, parse, and receipt status writes plus the webhook endpoint's durable queued case response.

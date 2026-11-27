@@ -81,14 +81,17 @@ export async function POST(request: Request) {
 			return NextResponse.json({ ok: false, error: message, ingestionId: rec.id }, { status: 422 })
 		}
 		const orchestrator = initCorridorOrchestrator()
-		db.updateRawIngestionOutcome({
-			id: rec.id,
-			parseStatus: "parsed",
-			caseIds: cases.map((c) => c.caseId),
+		db.transaction(() => {
+			for (const settlementCase of cases) db.saveCase(settlementCase, DEFAULT_WORKSPACE_ID)
+			db.updateRawIngestionOutcome({
+				id: rec.id,
+				parseStatus: "parsed",
+				caseIds: cases.map((c) => c.caseId),
+			})
+			db.markWebhookReceiptStatus({ ...identity, status: "queued" })
 		})
 
 		const execution = orchestrator.enqueueBatch(cases)
-		db.markWebhookReceiptStatus({ ...identity, status: "queued" })
 		void execution.catch((err) => {
 			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
 			console.error(`Webhook ingestion ${rec.id} failed during audit processing:`, err)

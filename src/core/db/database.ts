@@ -1477,7 +1477,7 @@ export class CorridorDatabase {
 				encryptSecret(params.rawContent),
 				Number(Boolean(params.isBase64)),
 				encryptSecret(JSON.stringify(params.metadata ?? {})),
-				params.parseStatus ?? "parsed",
+				params.parseStatus ?? "received",
 				params.parseError ? encryptSecret(params.parseError) : null,
 				Number(Boolean(params.parseError)),
 				JSON.stringify(params.caseIds ?? []),
