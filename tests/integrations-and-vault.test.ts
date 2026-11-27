@@ -24,8 +24,8 @@ import { CORRIDOR_SCHEMA_SQL } from "../src/core/db/schema"
 import { parseInboundEmailToCases } from "../src/core/integrations/email-parser"
 import { getWiseEnvironmentConfig } from "../src/core/integrations/wise-environment"
 import { deriveWebhookEventId } from "../src/core/security/webhook-event-id"
-import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
-import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublicly, fetchProvider, fetchValidatedProviderEndpoint, MAX_GENERIC_PROVIDER_RESPONSE_BYTES, validateProviderEndpointUrl } from "../src/core/integrations/http"
+import { fetchCasesFromIntegration, ProviderSyncLimitError } from "../src/core/integrations/connectors"
+import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublicly, fetchProvider, fetchValidatedProviderEndpoint, MAX_GENERIC_PROVIDER_RESPONSE_BYTES, ProviderEndpointResponseLimitError, validateProviderEndpointUrl } from "../src/core/integrations/http"
 import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode, refreshOAuthCredentials } from "../src/core/integrations/oauth"
 import { runIntegrationSync, shouldRunFullProviderReconciliation } from "../src/runtime/workers/sync-worker"
 import { runWithDurableCaseRetries } from "../src/runtime/workers/durable-case-queue"
@@ -767,7 +767,7 @@ test("generic provider requests connect to the public address that passed valida
 			return
 		}
 		response.setHeader("content-type", "application/json")
-		response.end(request.url === "/large" ? Buffer.alloc(MAX_GENERIC_PROVIDER_RESPONSE_BYTES + 1) : JSON.stringify([{ id: "provider-record" }]))
+		response.end(request.url === "/large" ? Buffer.concat([Buffer.from("prefix"), Buffer.alloc(MAX_GENERIC_PROVIDER_RESPONSE_BYTES + 1)]) : JSON.stringify([{ id: "provider-record" }]))
 	})
 	await new Promise<void>((resolve, reject) => {
 		server.once("error", reject)
@@ -792,9 +792,23 @@ test("generic provider requests connect to the public address that passed valida
 		assert.equal(resolutions, 1, "the connection reuses the exact resolution that was validated")
 		assert.match(observedRemoteAddress, /127\.0\.0\.1|::ffff:127\.0\.0\.1/)
 		assert.equal(observedHost, `provider.localhost:${port}`)
+		await assert.rejects(fetchCasesFromIntegration({
+			integration: {
+				id: "int_generic_oversized",
+				workspaceId: DEFAULT_WORKSPACE_ID,
+				provider: "generic_test",
+				category: "accounting",
+				authMode: "api_token",
+				status: "connected",
+				config: { apiBaseUrl: `http://127.0.0.1:${port}/large` },
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			},
+			credentials: { apiKey: "generic-provider-token" },
+		}), (error: unknown) => error instanceof ProviderSyncLimitError && error.evidenceTruncated && JSON.parse(error.rawPayload).truncatedResponsePrefix.startsWith("prefix"))
 		await assert.rejects(fetchValidatedProviderEndpoint(new URL(`http://provider.localhost:${port}/large`), {
 			resolver: async () => [{ address: "127.0.0.1", family: 4 }],
-		}), /exceeds 10485760 bytes/)
+		}), (error: unknown) => error instanceof ProviderEndpointResponseLimitError && error.rawPrefix.startsWith("prefix") && Buffer.byteLength(error.rawPrefix) <= MAX_GENERIC_PROVIDER_RESPONSE_BYTES)
 		await assert.rejects(fetchValidatedProviderEndpoint(new URL(`http://provider.localhost:${port}/slow`), {
 			timeoutMs: 40,
 			resolver: async () => [{ address: "127.0.0.1", family: 4 }],

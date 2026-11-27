@@ -5,7 +5,7 @@ import { normalizeInboundPayloadToCases } from "../ingest/normalize-upload"
 import { IngestionLimitError } from "../ingest/limits"
 import type { AccountingPaymentApplication, SettlementCase, SourceRef } from "../types"
 import { parseDecimalStringToMinor } from "../money"
-import { assertProviderEndpointHostAllowed, fetchProvider, fetchValidatedProviderEndpoint, validateProviderEndpointUrl } from "./http"
+import { assertProviderEndpointHostAllowed, fetchProvider, fetchValidatedProviderEndpoint, ProviderEndpointResponseLimitError, validateProviderEndpointUrl } from "./http"
 import { getWiseEnvironmentConfig } from "./wise-environment"
 
 export interface ConnectorFetchResult {
@@ -745,9 +745,17 @@ async function fetchGenericEndpointCases(
 	}
 	const endpoint = validateProviderEndpointUrl(baseUrl)
 	assertProviderEndpointHostAllowed(endpoint)
-	const res = await fetchValidatedProviderEndpoint(endpoint, {
-		headers: { Authorization: authHeader(credentials), Accept: "application/json" },
-	})
+	let res: Response
+	try {
+		res = await fetchValidatedProviderEndpoint(endpoint, {
+			headers: { Authorization: authHeader(credentials), Accept: "application/json" },
+		})
+	} catch (error) {
+		if (error instanceof ProviderEndpointResponseLimitError) {
+			throw new ProviderSyncLimitError(provider, "response", 0, JSON.stringify({ truncatedResponsePrefix: error.rawPrefix }), true)
+		}
+		throw error
+	}
 	if (!res.ok) {
 		throw new Error(`${provider} API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
 	}

@@ -6,6 +6,13 @@ import { request as httpsRequest } from "node:https"
 export const PROVIDER_HTTP_TIMEOUT_MS = 20_000
 export const MAX_GENERIC_PROVIDER_RESPONSE_BYTES = 10 * 1024 * 1024
 
+export class ProviderEndpointResponseLimitError extends Error {
+	constructor(readonly rawPrefix: string) {
+		super(`Provider response exceeds ${MAX_GENERIC_PROVIDER_RESPONSE_BYTES} bytes.`)
+		this.name = "ProviderEndpointResponseLimitError"
+	}
+}
+
 export function fetchProvider(input: string | URL, init?: RequestInit, timeoutMs = PROVIDER_HTTP_TIMEOUT_MS): Promise<Response> {
 	const timeoutSignal = AbortSignal.timeout(timeoutMs)
 	const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal
@@ -122,7 +129,7 @@ export async function fetchValidatedProviderEndpoint(
 	const endpoint = validateProviderEndpointUrl(url.toString(), production)
 	assertProviderEndpointHostAllowed(endpoint, process.env.CORRIDOR_PROVIDER_ENDPOINT_HOSTS, production)
 	const host = endpoint.hostname.toLowerCase().replace(/^\[|\]$/g, "")
-	const localDevelopmentHost = !production && (host === "localhost" || host.endsWith(".localhost"))
+	const localDevelopmentHost = !production && (host === "localhost" || host.endsWith(".localhost") || isLoopbackAddress(host))
 	const records = isIP(host)
 		? [{ address: host, family: isIP(host) }]
 		: await (options.resolver ?? ((hostname) => dnsLookup(hostname, { all: true, verbatim: true })))(host)
@@ -157,7 +164,10 @@ export async function fetchValidatedProviderEndpoint(
 				const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
 				bytes += buffer.byteLength
 				if (bytes > MAX_GENERIC_PROVIDER_RESPONSE_BYTES) {
-					incoming.destroy(new Error(`Provider response exceeds ${MAX_GENERIC_PROVIDER_RESPONSE_BYTES} bytes.`))
+					const previousBytes = bytes - buffer.byteLength
+					const currentPrefix = buffer.subarray(0, Math.max(0, MAX_GENERIC_PROVIDER_RESPONSE_BYTES - previousBytes))
+					const rawPrefix = Buffer.concat([...chunks, currentPrefix]).subarray(0, MAX_GENERIC_PROVIDER_RESPONSE_BYTES).toString("utf8")
+					incoming.destroy(new ProviderEndpointResponseLimitError(rawPrefix))
 					return
 				}
 				chunks.push(buffer)
