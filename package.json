@@ -10,7 +10,8 @@
 		"start": "node scripts/start.mjs",
 		"cli": "tsx src/cli.ts",
 		"test": "node --import tsx --test tests/*.test.ts",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"db:backup": "tsx src/operations/backup-database.ts"
 	},
 	"keywords": [
 		"mozaik",

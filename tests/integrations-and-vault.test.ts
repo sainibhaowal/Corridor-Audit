@@ -24,6 +24,7 @@ import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
 import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode, refreshOAuthCredentials } from "../src/core/integrations/oauth"
 import { runIntegrationSync } from "../src/runtime/workers/sync-worker"
 import { runWithDurableCaseRetries } from "../src/runtime/workers/durable-case-queue"
+import { backupCorridorDatabase } from "../src/core/db/backup"
 import { decryptJson, decryptSecret, encryptJson, encryptSecret, maskSecret, resetVaultKeyCache } from "../src/core/security/vault"
 import {
 	verifyCorridorSignature,
@@ -172,6 +173,55 @@ test("workspace secret decryption failures do not silently rotate webhook creden
 		.get(DEFAULT_WORKSPACE_ID) as { webhook_signing_secret_enc: string }
 	assert.equal(stored.webhook_signing_secret_enc, "invalid-ciphertext")
 	db.close()
+})
+
+test("SQLite backups include committed WAL records and pass an independent integrity check", () => {
+	const sourcePath = resolve(tmpdir(), `corridor-backup-source-${process.pid}-${Date.now()}.db`)
+	const backupPath = resolve(tmpdir(), `corridor-backup-copy-${process.pid}-${Date.now()}.db`)
+	const db = new CorridorDatabase(sourcePath)
+	const settlementCase = {
+		caseId: "CASE-BACKUP-01",
+		title: "Backup integrity case",
+		channelLabel: "test",
+		settlementEvidence: "incomplete" as const,
+		wire: {
+			wireId: "WIRE-BACKUP-01",
+			format: "bank_csv" as const,
+			valueDate: "2026-11-27",
+			settledAmount: { amountMinor: 5000, currency: "USD" },
+			senderCharges: [],
+			receiverCharges: [],
+		},
+		createdAt: new Date().toISOString(),
+	}
+	db.saveCase(settlementCase)
+	const raw = JSON.stringify({ invoice: "BACKUP-PRIVATE-01", amount: 5000 })
+	const ingestion = db.saveRawIngestion({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		sourceChannel: "manual_upload",
+		sourceProvider: "test",
+		filename: "backup.json",
+		format: "json",
+		rawContent: raw,
+	})
+	try {
+		const backup = backupCorridorDatabase(sourcePath, backupPath)
+		assert.equal(backup.integrity, "ok")
+		assert.ok(backup.sizeBytes > 0)
+		const restored = new CorridorDatabase(backup.path)
+		assert.equal(restored.getPersistedCase(settlementCase.caseId)?.title, settlementCase.title)
+		assert.equal(restored.getRawIngestion(ingestion.id)?.rawContent, raw)
+		restored.close()
+		assert.throws(() => backupCorridorDatabase(sourcePath, backupPath), /already exists/)
+	} finally {
+		db.close()
+		rmSync(sourcePath, { force: true })
+		rmSync(`${sourcePath}-wal`, { force: true })
+		rmSync(`${sourcePath}-shm`, { force: true })
+		rmSync(backupPath, { force: true })
+		rmSync(`${backupPath}-wal`, { force: true })
+		rmSync(`${backupPath}-shm`, { force: true })
+	}
 })
 
 test("local case queue uses exclusive claims and recovers expired work", async () => {

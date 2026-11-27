@@ -9,6 +9,7 @@ This folder is the implementation record for making the existing CorridorAudit a
 | [Current behavior and gaps](./01-current-state.md) | Code-backed description of what runs today and what remains incomplete |
 | [Target architecture](./02-target-architecture.md) | End-to-end production design while retaining the current finance workflow |
 | [Implementation status and release gates](./03-implementation-status.md) | Ordered work plan, external requirements, and evidence required before release |
+| [Local backup and restore operations](./04-local-operations.md) | Operator procedure for creating and testing a verified local SQLite backup |
 
 ## Product boundary
 

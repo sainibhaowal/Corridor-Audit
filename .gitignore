@@ -16,6 +16,7 @@ next-env.d.ts
 # Runtime hot-folder, local SQLite vault & logs
 data/inbox/
 data/corridoraudit.db*
+data/backups/
 data/.vault-key
 tsconfig.tsbuildinfo
 *.log
