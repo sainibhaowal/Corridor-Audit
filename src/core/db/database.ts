@@ -694,8 +694,19 @@ export class CorridorDatabase {
 		return this.listTeamMembers(workspaceId).find((member) => member.email === email && member.status === "active") ?? null
 	}
 
-	removeTeamMember(workspaceId: string, memberId: string): boolean {
-		return Number(this.db.prepare("DELETE FROM team_members WHERE id = ? AND workspace_id = ?").run(memberId, workspaceId).changes) === 1
+	removeTeamMember(workspaceId: string, memberId: string): "removed" | "not_found" | "last_owner" {
+		return this.inTransaction(() => {
+			const member = this.db.prepare("SELECT role, status FROM team_members WHERE id = ? AND workspace_id = ?")
+				.get(memberId, workspaceId) as { role: TeamRole; status: string } | undefined
+			if (!member) return "not_found"
+			if (member.role === "owner" && member.status === "active") {
+				const owners = this.db.prepare("SELECT COUNT(*) AS count FROM team_members WHERE workspace_id = ? AND role = 'owner' AND status = 'active'")
+					.get(workspaceId) as { count: number }
+				if (Number(owners.count) <= 1) return "last_owner"
+			}
+			this.db.prepare("DELETE FROM team_members WHERE id = ? AND workspace_id = ?").run(memberId, workspaceId)
+			return "removed"
+		})
 	}
 
 	private mapIntegrationRow(row: Record<string, unknown>): IntegrationRecord {

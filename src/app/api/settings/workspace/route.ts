@@ -65,6 +65,9 @@ export async function POST(request: Request) {
 			if (!body.memberEmail?.trim() || !body.memberName?.trim()) {
 				return NextResponse.json({ ok: false, error: "Member name and email are required." }, { status: 400 })
 			}
+			if (body.memberRole !== undefined && !["owner", "controller", "analyst", "viewer"].includes(body.memberRole)) {
+				return NextResponse.json({ ok: false, error: "Member role must be owner, controller, analyst, or viewer." }, { status: 400 })
+			}
 			const member = db.transaction(() => {
 				const created = db.addTeamMember({
 					workspaceId: DEFAULT_WORKSPACE_ID,
@@ -82,14 +85,20 @@ export async function POST(request: Request) {
 			})
 		}
 
-		if (body.action === "remove_member" && body.memberId) {
+		if (body.action === "remove_member") {
+			if (!body.memberId?.trim()) {
+				return NextResponse.json({ ok: false, error: "Member ID is required." }, { status: 400 })
+			}
 			if (session && session.role !== "owner") {
 				return NextResponse.json({ ok: false, error: "Only workspace owners can manage team membership." }, { status: 403 })
 			}
-			db.transaction(() => {
+			const result = db.transaction(() => {
 				const removed = db.removeTeamMember(DEFAULT_WORKSPACE_ID, body.memberId!)
-				if (removed) db.appendWorkspaceAuditEvent({ workspaceId: DEFAULT_WORKSPACE_ID, actorType: session ? "user" : "local", actorId: session?.sub, actorEmail: session?.email, actorRole: session?.role, action: "team_member.remove", targetType: "team_member", targetId: body.memberId!, requestId: request.headers.get("x-request-id") || undefined })
+				if (removed === "removed") db.appendWorkspaceAuditEvent({ workspaceId: DEFAULT_WORKSPACE_ID, actorType: session ? "user" : "local", actorId: session?.sub, actorEmail: session?.email, actorRole: session?.role, action: "team_member.remove", targetType: "team_member", targetId: body.memberId!, requestId: request.headers.get("x-request-id") || undefined })
+				return removed
 			})
+			if (result === "last_owner") return NextResponse.json({ ok: false, error: "The last active workspace owner cannot be removed. Assign another active owner first." }, { status: 409 })
+			if (result === "not_found") return NextResponse.json({ ok: false, error: "Team member was not found in this workspace." }, { status: 404 })
 			return NextResponse.json({
 				ok: true,
 				workspace: db.getWorkspace(DEFAULT_WORKSPACE_ID),

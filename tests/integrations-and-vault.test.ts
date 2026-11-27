@@ -134,7 +134,7 @@ test("CorridorDatabase persists workspaces, team members, encrypted integrations
 		role: "controller",
 	})
 	assert.equal(db.listTeamMembers(DEFAULT_WORKSPACE_ID).length, 1)
-	db.removeTeamMember(DEFAULT_WORKSPACE_ID, member.id)
+	assert.equal(db.removeTeamMember(DEFAULT_WORKSPACE_ID, member.id), "removed")
 	assert.equal(db.listTeamMembers(DEFAULT_WORKSPACE_ID).length, 0)
 
 	const integration = db.upsertIntegration({
@@ -164,6 +164,30 @@ test("CorridorDatabase persists workspaces, team members, encrypted integrations
 	assert.equal(db.getIntegration(DEFAULT_WORKSPACE_ID, "wise")?.status, "disconnected")
 	assert.equal(db.getDecryptedCredentials(DEFAULT_WORKSPACE_ID, "wise"), null)
 	db.close()
+})
+
+test("team member removal preserves the final active owner", () => {
+	const db = new CorridorDatabase(":memory:")
+	const owner = db.activateVerifiedTeamMember({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		email: "owner@acme.test",
+		name: "Workspace Owner",
+		identitySub: "cognito-owner",
+		bootstrapOwner: true,
+	})
+	assert.ok(owner)
+	assert.equal(db.removeTeamMember(DEFAULT_WORKSPACE_ID, owner.id), "last_owner")
+	assert.equal(db.getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, "cognito-owner")?.status, "active")
+	assert.equal(db.removeTeamMember(DEFAULT_WORKSPACE_ID, "missing-member"), "not_found")
+
+	db.activateVerifiedTeamMember({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		email: "second-owner@acme.test",
+		name: "Second Owner",
+		identitySub: "cognito-owner-2",
+		bootstrapOwner: true,
+	})
+	assert.equal(db.removeTeamMember(DEFAULT_WORKSPACE_ID, owner.id), "removed")
 })
 
 test("workspace secret decryption failures do not silently rotate webhook credentials", () => {
@@ -1146,6 +1170,22 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 		}),
 	)
 	assert.equal(invalidTaxProfile.status, 400)
+	const invalidMemberRole = await postWorkspaceRoute(
+		new Request("http://127.0.0.1/api/settings/workspace", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ action: "add_member", memberEmail: "bad-role@acme.test", memberName: "Bad Role", memberRole: "superadmin" }),
+		}),
+	)
+	assert.equal(invalidMemberRole.status, 400)
+	const missingMemberId = await postWorkspaceRoute(
+		new Request("http://127.0.0.1/api/settings/workspace", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ action: "remove_member", requireWebhookSignature: false }),
+		}),
+	)
+	assert.equal(missingMemberId.status, 400)
 
 	const wsPost = await postWorkspaceRoute(
 		new Request("http://127.0.0.1/api/settings/workspace", {

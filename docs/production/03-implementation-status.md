@@ -344,3 +344,9 @@ Update this section per milestone with the exact command, result, environment, a
 - Team members now store a Cognito `sub` separately from their verified email address. API authorization resolves the active member by subject, then checks the current stored role. First verified sign-in binds an unbound invitation. A different subject cannot claim an already-bound membership, even if it presents the same verified email. When the same subject returns with a newly verified email, the existing membership email and name are refreshed without changing its role, and that refresh is audited.
 - Existing local SQLite databases receive the nullable `identity_sub` column and a per-workspace unique partial index without replacing team rows. Cognito remains an external setup requirement, and workspace routing still targets the current `ws-default` workspace.
 - Typecheck: passed. Auth tests: 10 passed, 0 failed. Full suite: 67 passed, 0 failed. Production build: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 team role validation and owner retention
+
+- Workspace team invitations now accept only the four supported roles: owner, controller, analyst, and viewer. Runtime validation rejects crafted role strings even though TypeScript request types are narrower.
+- Team removal now runs atomically with an active-owner count check. It refuses to remove the last active owner, returns a distinct not-found result for unknown members, and the API reports clear `409` and `404` responses. A remove request without a member ID now returns `400` instead of falling through to workspace settings updates. Existing UI response shape for successful operations is unchanged.
+- Typecheck: passed. Integration test file: 26 passed, 0 failed. Full suite: 68 passed, 0 failed. Production build: passed. `git diff --check`: passed. Verification ran locally on Windows.
