@@ -590,6 +590,40 @@ export class CorridorDatabase {
 		if (Number(updated.changes) !== 1) throw new Error(`Cannot update credentials for disconnected integration "${provider}".`)
 	}
 
+	claimIntegrationRefreshLease(params: {
+		workspaceId: string
+		provider: string
+		ownerId: string
+		leaseMs: number
+	}): boolean {
+		const now = new Date()
+		const nowIso = now.toISOString()
+		const expiresAt = new Date(now.getTime() + Math.max(1_000, params.leaseMs)).toISOString()
+		const row = this.db.prepare(`INSERT INTO integration_refresh_leases
+			(workspace_id, provider, owner_id, lease_expires_at, created_at)
+			VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT (workspace_id, provider) DO UPDATE SET
+				owner_id = excluded.owner_id,
+				lease_expires_at = excluded.lease_expires_at,
+				created_at = excluded.created_at
+			WHERE integration_refresh_leases.lease_expires_at <= ?
+			RETURNING owner_id`).get(
+			params.workspaceId,
+			params.provider,
+			params.ownerId,
+			expiresAt,
+			nowIso,
+			nowIso,
+		) as { owner_id: string } | undefined
+		return row?.owner_id === params.ownerId
+	}
+
+	releaseIntegrationRefreshLease(params: { workspaceId: string; provider: string; ownerId: string }): void {
+		this.db.prepare(`DELETE FROM integration_refresh_leases
+			WHERE workspace_id = ? AND provider = ? AND owner_id = ?`)
+			.run(params.workspaceId, params.provider, params.ownerId)
+	}
+
 	storeOAuthAuthorizationState(params: {
 		state: string
 		provider: string

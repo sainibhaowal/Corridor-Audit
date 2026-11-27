@@ -450,6 +450,26 @@ test("OAuth authorization state survives restart, expires, and can only be consu
 	rmSync(dbPath, { force: true })
 })
 
+test("integration token refresh leases coordinate separate SQLite connections and recover after expiry", async () => {
+	const dbPath = resolve(tmpdir(), `corridor-refresh-lease-${process.pid}-${Date.now()}.db`)
+	const first = new CorridorDatabase(dbPath)
+	const second = new CorridorDatabase(dbPath)
+	const claim = { workspaceId: DEFAULT_WORKSPACE_ID, provider: "wise", ownerId: "worker-a", leaseMs: 1_000 }
+	try {
+		assert.equal(first.claimIntegrationRefreshLease(claim), true)
+		assert.equal(second.claimIntegrationRefreshLease({ ...claim, ownerId: "worker-b" }), false)
+		first.releaseIntegrationRefreshLease({ workspaceId: claim.workspaceId, provider: claim.provider, ownerId: "worker-a" })
+		assert.equal(second.claimIntegrationRefreshLease({ ...claim, ownerId: "worker-b" }), true)
+		assert.equal(first.claimIntegrationRefreshLease({ ...claim, ownerId: "worker-c" }), false)
+		await new Promise((resolve) => setTimeout(resolve, 1_100))
+		assert.equal(first.claimIntegrationRefreshLease({ ...claim, ownerId: "worker-c" }), true)
+	} finally {
+		first.close()
+		second.close()
+		rmSync(dbPath, { force: true })
+	}
+})
+
 test("Xero OAuth uses S256 PKCE and exchanges the persisted verifier", async () => {
 	const previousFetch = global.fetch
 	const previousClientId = process.env.XERO_CLIENT_ID

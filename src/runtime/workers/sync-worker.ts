@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "../../core/db/database"
 import type { SyncRunRecord } from "../../core/db/schema"
 import type { IntegrationCredentials } from "../../core/db/schema"
@@ -10,7 +10,6 @@ import type { CorridorOrchestrator } from "../orchestrator"
 const globalWorkerStore = globalThis as typeof globalThis & {
 	__corridorSyncWorkerStarted?: boolean
 	__corridorSyncIntervalMs?: number
-	__corridorOAuthRefreshes?: Map<string, Promise<IntegrationCredentials>>
 }
 
 function caseSnapshot(settlementCase: SettlementCase): string {
@@ -50,24 +49,39 @@ async function credentialsForSync(params: {
 	workspaceId: string
 	provider: string
 }): Promise<IntegrationCredentials | null> {
-	const credentials = params.db.getDecryptedCredentials(params.workspaceId, params.provider)
-	if (!credentials?.expiresAt || Date.parse(credentials.expiresAt) > Date.now() + 120_000) return credentials
-	if (!credentials.refreshToken) throw new Error(`OAuth access token for ${params.provider} is expired and has no refresh token. Reconnect this integration.`)
+	const current = params.db.getDecryptedCredentials(params.workspaceId, params.provider)
+	if (!current?.expiresAt || Date.parse(current.expiresAt) > Date.now() + 120_000) return current
+	if (!current.refreshToken) throw new Error(`OAuth access token for ${params.provider} is expired and has no refresh token. Reconnect this integration.`)
 
-	const refreshes = globalWorkerStore.__corridorOAuthRefreshes ??= new Map()
-	const key = `${params.workspaceId}:${params.provider}`
-	let refresh = refreshes.get(key)
-	if (!refresh) {
-		refresh = refreshOAuthCredentials(params.provider, credentials)
-		refreshes.set(key, refresh)
+	const ownerId = `refresh-${randomUUID()}`
+	const waitDeadline = Date.now() + 50_000
+	while (Date.now() < waitDeadline) {
+		const latest = params.db.getDecryptedCredentials(params.workspaceId, params.provider)
+		if (!latest) throw new Error(`Credentials for ${params.provider} were removed during token refresh.`)
+		if (!latest.expiresAt || Date.parse(latest.expiresAt) > Date.now() + 120_000) return latest
+
+		const acquired = params.db.claimIntegrationRefreshLease({
+			workspaceId: params.workspaceId,
+			provider: params.provider,
+			ownerId,
+			leaseMs: 45_000,
+		})
+		if (acquired) {
+			try {
+				const beforeRefresh = params.db.getDecryptedCredentials(params.workspaceId, params.provider)
+				if (!beforeRefresh) throw new Error(`Credentials for ${params.provider} were removed during token refresh.`)
+				if (!beforeRefresh.expiresAt || Date.parse(beforeRefresh.expiresAt) > Date.now() + 120_000) return beforeRefresh
+				if (!beforeRefresh.refreshToken) throw new Error(`OAuth access token for ${params.provider} is expired and has no refresh token. Reconnect this integration.`)
+				const updated = await refreshOAuthCredentials(params.provider, beforeRefresh)
+				params.db.updateIntegrationCredentials(params.workspaceId, params.provider, updated)
+				return updated
+			} finally {
+				params.db.releaseIntegrationRefreshLease({ workspaceId: params.workspaceId, provider: params.provider, ownerId })
+			}
+		}
+		await new Promise((resolve) => setTimeout(resolve, 100))
 	}
-	try {
-		const updated = await refresh
-		params.db.updateIntegrationCredentials(params.workspaceId, params.provider, updated)
-		return updated
-	} finally {
-		if (refreshes.get(key) === refresh) refreshes.delete(key)
-	}
+	throw new Error(`Timed out waiting for another worker to refresh the ${params.provider} OAuth credentials.`)
 }
 
 export async function runIntegrationSync(params: {

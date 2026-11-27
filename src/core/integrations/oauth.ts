@@ -184,6 +184,7 @@ export async function refreshOAuthCredentials(
 			Accept: "application/json",
 		},
 		body: body.toString(),
+		signal: AbortSignal.timeout(40_000),
 	})
 	if (!response.ok) {
 		const message = (await response.text()).slice(0, 240)
