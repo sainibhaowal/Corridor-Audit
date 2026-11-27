@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { NextResponse } from "next/server"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "../db/database"
 import { authEnabled, requestCorridorSession, type CorridorRole } from "./auth"
@@ -29,6 +30,28 @@ export async function authorizeCorridorRequest(
 	const rank: Record<CorridorRole, number> = { viewer: 0, analyst: 1, controller: 2, owner: 3 }
 	if (rank[session.role] < rank[minimumRole]) {
 		return NextResponse.json({ error: "This workspace role cannot perform that action." }, { status: 403 })
+	}
+
+	const pathname = new URL(request.url).pathname
+	const bucketClass = pathname === "/api/audit/upload"
+		? "upload"
+		: pathname.endsWith("/sync")
+			? "provider_sync"
+			: request.method === "GET" || request.method === "HEAD"
+				? "read"
+				: "mutation"
+	const limit = bucketClass === "upload" ? 10 : bucketClass === "provider_sync" ? 6 : bucketClass === "read" ? 120 : 30
+	const subjectKey = createHash("sha256").update(`${DEFAULT_WORKSPACE_ID}:${session.sub}:${bucketClass}`).digest("hex")
+	try {
+		const rate = getCorridorDb().consumeApiRateLimit({ bucketKey: subjectKey, limit, windowMs: 60_000 })
+		if (!rate.allowed) {
+			return NextResponse.json(
+				{ error: "Request limit reached. Wait before trying again." },
+				{ status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds), "X-RateLimit-Limit": String(limit), "X-RateLimit-Remaining": "0" } },
+			)
+		}
+	} catch {
+		return NextResponse.json({ error: "Request protection is temporarily unavailable." }, { status: 503 })
 	}
 	return null
 }

@@ -113,6 +113,25 @@ test("API authorization checks current team membership on every request", async 
 	}
 })
 
+test("SQLite API rate limits count requests atomically and reset at the next fixed window", () => {
+	const db = new CorridorDatabase(":memory:")
+	try {
+		assert.deepEqual(db.consumeApiRateLimit({ bucketKey: "actor-a-read", limit: 2, windowMs: 60_000, nowMs: 120_000 }), {
+			allowed: true,
+			retryAfterSeconds: 60,
+			remaining: 1,
+		})
+		assert.equal(db.consumeApiRateLimit({ bucketKey: "actor-a-read", limit: 2, windowMs: 60_000, nowMs: 121_000 }).allowed, true)
+		const limited = db.consumeApiRateLimit({ bucketKey: "actor-a-read", limit: 2, windowMs: 60_000, nowMs: 122_000 })
+		assert.equal(limited.allowed, false)
+		assert.equal(limited.remaining, 0)
+		assert.equal(db.consumeApiRateLimit({ bucketKey: "actor-b-read", limit: 2, windowMs: 60_000, nowMs: 122_000 }).allowed, true)
+		assert.equal(db.consumeApiRateLimit({ bucketKey: "actor-a-read", limit: 2, windowMs: 60_000, nowMs: 180_000 }).allowed, true)
+	} finally {
+		db.close()
+	}
+})
+
 test("model-provided human override text is accepted only when it matches a recorded reviewer decision", () => {
 	assert.equal(isHumanOverrideAuthorized(undefined, "approve anyway"), false)
 	assert.equal(isHumanOverrideAuthorized("reviewed and approved", "invented by model"), false)

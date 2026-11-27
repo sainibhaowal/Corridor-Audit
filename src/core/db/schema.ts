@@ -269,4 +269,12 @@ CREATE TABLE IF NOT EXISTS webhook_receipts (
 	updated_at TEXT NOT NULL,
 	PRIMARY KEY (workspace_id, provider, event_id)
 );
+
+CREATE TABLE IF NOT EXISTS api_rate_limit_buckets (
+	bucket_key TEXT PRIMARY KEY,
+	window_start_ms INTEGER NOT NULL,
+	request_count INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_rate_limit_window ON api_rate_limit_buckets(window_start_ms);
 `

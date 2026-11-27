@@ -1125,6 +1125,35 @@ export class CorridorDatabase {
 		return stats
 	}
 
+	consumeApiRateLimit(params: {
+		bucketKey: string
+		limit: number
+		windowMs: number
+		nowMs?: number
+	}): { allowed: boolean; retryAfterSeconds: number; remaining: number } {
+		const nowMs = params.nowMs ?? Date.now()
+		const windowStartMs = Math.floor(nowMs / params.windowMs) * params.windowMs
+		const row = this.db.prepare(`INSERT INTO api_rate_limit_buckets (bucket_key, window_start_ms, request_count)
+			VALUES (?, ?, 1)
+			ON CONFLICT(bucket_key) DO UPDATE SET
+				window_start_ms = excluded.window_start_ms,
+				request_count = CASE
+					WHEN api_rate_limit_buckets.window_start_ms = excluded.window_start_ms
+					THEN api_rate_limit_buckets.request_count + 1
+					ELSE 1
+				END
+			RETURNING request_count`).get(params.bucketKey, windowStartMs) as { request_count: number }
+		if (nowMs % (params.windowMs * 10) < 1000) {
+			this.db.prepare("DELETE FROM api_rate_limit_buckets WHERE window_start_ms < ?").run(nowMs - params.windowMs * 2)
+		}
+		const resetAt = windowStartMs + params.windowMs
+		return {
+			allowed: row.request_count <= params.limit,
+			retryAfterSeconds: Math.max(1, Math.ceil((resetAt - nowMs) / 1000)),
+			remaining: Math.max(0, params.limit - row.request_count),
+		}
+	}
+
 	close(): void {
 		this.db.close()
 	}
