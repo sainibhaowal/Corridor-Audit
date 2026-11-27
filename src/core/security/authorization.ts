@@ -16,9 +16,7 @@ export async function authorizeCorridorRequest(
 	}
 	if (!session) return NextResponse.json({ error: "Authentication required." }, { status: 401 })
 
-	const member = getCorridorDb()
-		.listTeamMembers(DEFAULT_WORKSPACE_ID)
-		.find((row) => row.email === session.email && row.status === "active")
+	const member = getCorridorDb().getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, session.sub)
 	if (!member || member.role !== session.role) {
 		return NextResponse.json({ error: "Workspace membership changed. Sign in again." }, { status: 401 })
 	}

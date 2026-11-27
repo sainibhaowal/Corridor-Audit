@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { rmSync } from "node:fs"
+import { DatabaseSync } from "node:sqlite"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
 import test from "node:test"
@@ -10,6 +11,7 @@ import { issueCorridorSession, verifyCorridorSession } from "../src/core/securit
 import { authorizeCorridorRequest } from "../src/core/security/authorization"
 import { middleware } from "../src/middleware"
 import { isHumanOverrideAuthorized } from "../src/runtime/interception/human-override"
+import { CORRIDOR_SCHEMA_SQL } from "../src/core/db/schema"
 
 test("verified invited identities activate with their assigned role; bootstrap owner is provisioned", () => {
 	const db = new CorridorDatabase(":memory:")
@@ -18,18 +20,62 @@ test("verified invited identities activate with their assigned role; bootstrap o
 		workspaceId: DEFAULT_WORKSPACE_ID,
 		email: invited.email,
 		name: invited.name,
+		identitySub: "cognito-analyst-1",
 	})
 	assert.equal(active?.status, "active")
 	assert.equal(active?.role, "analyst")
+	assert.equal(db.getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, "cognito-analyst-1")?.email, invited.email)
 
 	const owner = db.activateVerifiedTeamMember({
 		workspaceId: DEFAULT_WORKSPACE_ID,
 		email: "owner@example.test",
 		name: "Owner",
+		identitySub: "cognito-owner-1",
 		bootstrapOwner: true,
 	})
 	assert.equal(owner?.role, "owner")
 	assert.equal(owner?.status, "active")
+	assert.equal(db.getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, "cognito-owner-1")?.email, "owner@example.test")
+})
+
+test("a verified email cannot rebind an invitation already linked to a different Cognito subject", () => {
+	const db = new CorridorDatabase(":memory:")
+	db.addTeamMember({ email: "analyst@example.test", name: "Analyst", role: "analyst" })
+	assert.equal(db.activateVerifiedTeamMember({ email: "analyst@example.test", name: "Analyst", identitySub: "cognito-sub-1" })?.role, "analyst")
+	assert.equal(db.activateVerifiedTeamMember({ email: "analyst@example.test", name: "Analyst", identitySub: "cognito-sub-2" }), null)
+	assert.equal(db.getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, "cognito-sub-1")?.email, "analyst@example.test")
+	assert.equal(db.getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, "cognito-sub-2"), null)
+	db.close()
+})
+
+test("a stable Cognito subject can refresh a verified email without changing its workspace role", () => {
+	const db = new CorridorDatabase(":memory:")
+	db.addTeamMember({ email: "old@example.test", name: "Analyst", role: "analyst" })
+	db.activateVerifiedTeamMember({ email: "old@example.test", name: "Analyst", identitySub: "stable-sub" })
+	const refreshed = db.activateVerifiedTeamMember({ email: "new@example.test", name: "Updated Analyst", identitySub: "stable-sub" })
+	assert.equal(refreshed?.email, "new@example.test")
+	assert.equal(refreshed?.role, "analyst")
+	assert.equal(db.getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, "stable-sub")?.name, "Updated Analyst")
+	db.close()
+})
+
+test("existing local databases add the stable identity column without losing team records", () => {
+	const dbPath = resolve(tmpdir(), `corridor-identity-migration-${process.pid}-${Date.now()}.db`)
+	const legacyDb = new DatabaseSync(dbPath)
+	legacyDb.exec(CORRIDOR_SCHEMA_SQL.replace("identity_sub TEXT,", ""))
+	legacyDb.close()
+	const db = new CorridorDatabase(dbPath)
+	try {
+		const member = db.addTeamMember({ email: "migration@example.test", name: "Migration", role: "analyst" })
+		const activated = db.activateVerifiedTeamMember({ email: member.email, name: member.name, identitySub: "migrated-cognito-sub" })
+		assert.equal(activated?.status, "active")
+		assert.equal(db.getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, "migrated-cognito-sub")?.id, member.id)
+	} finally {
+		db.close()
+		rmSync(dbPath, { force: true })
+		rmSync(`${dbPath}-wal`, { force: true })
+		rmSync(`${dbPath}-shm`, { force: true })
+	}
 })
 
 test("signed sessions validate claims and reject tampering", async () => {
@@ -92,7 +138,7 @@ test("API authorization checks current team membership on every request", async 
 	try {
 		const db = getCorridorDb()
 		const invited = db.addTeamMember({ email: "viewer@example.test", name: "Viewer", role: "viewer" })
-		db.activateVerifiedTeamMember({ email: invited.email, name: invited.name })
+		db.activateVerifiedTeamMember({ email: invited.email, name: invited.name, identitySub: "viewer-1" })
 		const token = await issueCorridorSession({ sub: "viewer-1", email: invited.email, name: invited.name, role: "viewer" })
 		const request = new Request("http://localhost/api/history", { headers: { cookie: `ca_session=${token}` } })
 		assert.equal(await authorizeCorridorRequest(request, "viewer"), null)

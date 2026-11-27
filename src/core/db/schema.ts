@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
 CREATE TABLE IF NOT EXISTS team_members (
 	id TEXT PRIMARY KEY,
 	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+	identity_sub TEXT,
 	email TEXT NOT NULL,
 	name TEXT NOT NULL,
 	role TEXT NOT NULL DEFAULT 'analyst',

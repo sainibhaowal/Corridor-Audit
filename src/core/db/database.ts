@@ -108,6 +108,7 @@ export class CorridorDatabase {
 		}
 		this.db = new DatabaseSync(target)
 		this.db.exec(CORRIDOR_SCHEMA_SQL)
+		this.ensureTeamIdentityColumn()
 		this.ensureCaseQueueColumns()
 		this.ensureSensitiveJsonEncryptionColumns()
 		this.encryptLegacySensitiveJson()
@@ -240,6 +241,14 @@ export class CorridorDatabase {
 			WHERE status = 'failed'`)
 		this.db.exec("CREATE INDEX IF NOT EXISTS idx_cases_queue_due ON cases(workspace_id, status, next_attempt_at, created_at)")
 		this.db.exec("CREATE INDEX IF NOT EXISTS idx_cases_queue_lease ON cases(workspace_id, status, lease_expires_at, created_at)")
+	}
+
+	private ensureTeamIdentityColumn(): void {
+		const columns = this.db.prepare("PRAGMA table_info(team_members)").all() as Array<{ name: string }>
+		if (!columns.some((column) => column.name === "identity_sub")) {
+			this.db.exec("ALTER TABLE team_members ADD COLUMN identity_sub TEXT")
+		}
+		this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_team_members_workspace_identity ON team_members(workspace_id, identity_sub) WHERE identity_sub IS NOT NULL")
 	}
 
 	private ensureSensitiveJsonEncryptionColumns(): void {
@@ -588,6 +597,15 @@ export class CorridorDatabase {
 		}))
 	}
 
+	getTeamMemberByIdentitySub(workspaceId: string, identitySub: string): TeamMemberRecord | null {
+		const row = this.db.prepare(`SELECT id, workspace_id, email, name, role, status, created_at FROM team_members
+			WHERE workspace_id = ? AND identity_sub = ? AND status = 'active'`).get(workspaceId, identitySub) as Record<string, unknown> | undefined
+		return row ? {
+			id: String(row.id), workspaceId: String(row.workspace_id), email: String(row.email), name: String(row.name),
+			role: String(row.role) as TeamRole, status: String(row.status) as "active" | "invited", createdAt: String(row.created_at),
+		} : null
+	}
+
 	addTeamMember(params: {
 		workspaceId?: string
 		email: string
@@ -619,27 +637,59 @@ export class CorridorDatabase {
 		email: string
 		name: string
 		bootstrapOwner?: boolean
+		identitySub?: string
 	}): TeamMemberRecord | null {
 		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
 		const email = params.email.trim().toLowerCase()
+		const identitySub = params.identitySub?.trim()
+		if (identitySub) {
+			const activeIdentity = this.getTeamMemberByIdentitySub(workspaceId, identitySub)
+			if (activeIdentity) {
+				const conflictingEmail = this.db.prepare(`SELECT id FROM team_members WHERE workspace_id = ? AND lower(email) = ? AND id <> ? LIMIT 1`)
+					.get(workspaceId, email, activeIdentity.id) as { id: string } | undefined
+				if (conflictingEmail) return null
+				if (activeIdentity.email !== email || activeIdentity.name !== (params.name.trim() || email)) {
+					this.inTransaction(() => {
+						this.db.prepare(`UPDATE team_members SET email = ?, name = ? WHERE workspace_id = ? AND identity_sub = ? AND status = 'active'`)
+							.run(email, params.name.trim() || email, workspaceId, identitySub)
+						this.appendWorkspaceAuditEvent({ workspaceId, actorType: "user", actorId: identitySub, actorEmail: email, actorRole: activeIdentity.role, action: "team_member.identity_refresh", targetType: "team_member", targetId: activeIdentity.id, metadata: { emailChanged: activeIdentity.email !== email } })
+					})
+				}
+				return this.getTeamMemberByIdentitySub(workspaceId, identitySub)
+			}
+			const existing = this.db.prepare(`SELECT id, identity_sub FROM team_members
+				WHERE workspace_id = ? AND lower(email) = ? ORDER BY created_at ASC LIMIT 1`)
+				.get(workspaceId, email) as { id: string; identity_sub: string | null } | undefined
+			if (existing?.identity_sub && existing.identity_sub !== identitySub) return null
+		}
 		if (params.bootstrapOwner) {
 			const existing = this.db
-				.prepare("SELECT id FROM team_members WHERE workspace_id = ? AND lower(email) = ? ORDER BY created_at ASC LIMIT 1")
-				.get(workspaceId, email) as { id: string } | undefined
+				.prepare("SELECT id, identity_sub FROM team_members WHERE workspace_id = ? AND lower(email) = ? ORDER BY created_at ASC LIMIT 1")
+				.get(workspaceId, email) as { id: string; identity_sub: string | null } | undefined
 			if (existing) {
+				if (identitySub && existing.identity_sub && existing.identity_sub !== identitySub) return null
 				this.db
-					.prepare("UPDATE team_members SET role = 'owner', status = 'active' WHERE id = ? AND workspace_id = ?")
-					.run(existing.id, workspaceId)
+					.prepare("UPDATE team_members SET role = 'owner', status = 'active', identity_sub = COALESCE(identity_sub, ?) WHERE id = ? AND workspace_id = ?")
+					.run(identitySub ?? null, existing.id, workspaceId)
 			} else {
 				const id = `tm_${randomUUID().slice(0, 8)}`
 				this.db
-					.prepare(`INSERT INTO team_members (id, workspace_id, email, name, role, status, created_at)
-						VALUES (?, ?, ?, ?, 'owner', 'active', ?)`)
-					.run(id, workspaceId, email, params.name.trim() || email, new Date().toISOString())
+					.prepare(`INSERT INTO team_members (id, workspace_id, identity_sub, email, name, role, status, created_at)
+						VALUES (?, ?, ?, ?, ?, 'owner', 'active', ?)`)
+					.run(id, workspaceId, identitySub ?? null, email, params.name.trim() || email, new Date().toISOString())
 			}
 		}
-		this.db
-			.prepare("UPDATE team_members SET status = 'active' WHERE workspace_id = ? AND lower(email) = ? AND status = 'invited'")
+		if (identitySub) {
+			this.db.prepare(`UPDATE team_members SET status = 'active', identity_sub = ?
+				WHERE workspace_id = ? AND lower(email) = ? AND status = 'invited'
+				AND (identity_sub IS NULL OR identity_sub = ?)`)
+				.run(identitySub, workspaceId, email, identitySub)
+			this.db.prepare(`UPDATE team_members SET identity_sub = ?
+				WHERE workspace_id = ? AND lower(email) = ? AND status = 'active' AND identity_sub IS NULL`)
+				.run(identitySub, workspaceId, email)
+			return this.getTeamMemberByIdentitySub(workspaceId, identitySub)
+		}
+		this.db.prepare("UPDATE team_members SET status = 'active' WHERE workspace_id = ? AND lower(email) = ? AND status = 'invited'")
 			.run(workspaceId, email)
 		return this.listTeamMembers(workspaceId).find((member) => member.email === email && member.status === "active") ?? null
 	}

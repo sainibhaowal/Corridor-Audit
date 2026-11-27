@@ -76,6 +76,7 @@ export async function GET(request: Request) {
 			workspaceId: DEFAULT_WORKSPACE_ID,
 			email,
 			name,
+			identitySub: payload.sub,
 			bootstrapOwner: Boolean(bootstrapOwnerEmail && bootstrapOwnerEmail === email),
 		})
 		if (!member) return fail("This verified account has no active workspace invitation.")
