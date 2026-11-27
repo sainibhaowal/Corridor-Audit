@@ -92,6 +92,8 @@ export interface SettlementCase {
 	/** `observed` requires an independent obligation and supplied settlement evidence. */
 	settlementEvidence: "observed" | "estimated" | "incomplete"
 	evidenceGap?: string
+	/** Points to the earlier case when a provider sends changed source data. */
+	sourceRevisionOf?: string
 	invoice?: InvoiceInput
 	wire: WireOrBankInput
 	candidateWires?: WireOrBankInput[]

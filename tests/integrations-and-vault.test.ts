@@ -809,6 +809,97 @@ test("provider sync follows Stripe, Wise, QuickBooks, and Xero page cursors", as
 	}
 })
 
+test("Stripe and Xero incremental sync cursors use a five-minute overlap", async () => {
+	const previousFetch = global.fetch
+	const requests: Array<{ url: URL; headers: Headers }> = []
+	global.fetch = (async (input, init) => {
+		requests.push({ url: new URL(String(input)), headers: new Headers(init?.headers) })
+		return new Response(String(input).includes("stripe.com")
+			? JSON.stringify({ data: [], has_more: false })
+			: JSON.stringify({ Invoices: [] }), { status: 200 })
+	}) as typeof fetch
+	const lastSuccessfulSyncAt = "2026-11-27T12:00:00.000Z"
+	const integration = (provider: "stripe" | "xero", config: Record<string, string> = {}) => ({
+		id: `int_${provider}_cursor`,
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider,
+		category: provider === "xero" ? "accounting" as const : "payouts" as const,
+		authMode: provider === "xero" ? "oauth2" as const : "api_token" as const,
+		status: "connected" as const,
+		config,
+		createdAt: lastSuccessfulSyncAt,
+		updatedAt: lastSuccessfulSyncAt,
+	})
+	try {
+		await fetchCasesFromIntegration({
+			integration: integration("stripe"), credentials: { apiKey: "stripe-test" }, lastSuccessfulSyncAt,
+		})
+		await fetchCasesFromIntegration({
+			integration: integration("xero", { tenantId: "tenant-cursor" }), credentials: { accessToken: "xero-test" }, lastSuccessfulSyncAt,
+		})
+		const stripeSince = new Date(Date.parse(lastSuccessfulSyncAt) - 5 * 60 * 1000)
+		assert.equal(requests[0]?.url.searchParams.get("created[gte]"), String(Math.floor(stripeSince.getTime() / 1000)))
+		assert.equal(requests[1]?.headers.get("If-Modified-Since"), stripeSince.toISOString().slice(0, 19))
+	} finally {
+		global.fetch = previousFetch
+	}
+})
+
+test("changed Xero invoice data creates an immutable source revision case", async () => {
+	const db = getCorridorDb()
+	const previousFetch = global.fetch
+	db.upsertIntegration({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider: "xero",
+		category: "accounting",
+		authMode: "oauth2",
+		status: "connected",
+		credentials: { accessToken: "xero-cursor-test" },
+		config: { tenantId: "tenant-revision-test" },
+	})
+	let amount = 100
+	let fetchCount = 0
+	global.fetch = (async (_input, init) => {
+		fetchCount += 1
+		if (fetchCount === 1) assert.equal(new Headers(init?.headers).has("If-Modified-Since"), false)
+		else assert.equal(new Headers(init?.headers).has("If-Modified-Since"), true)
+		return new Response(JSON.stringify({ Invoices: [{
+			InvoiceID: "xero-source-revision-01",
+			InvoiceNumber: "INV-REVISION-01",
+			Total: amount,
+			CurrencyCode: "EUR",
+			DateString: "2026-11-27",
+			Contact: { Name: "Revision Test Vendor" },
+		}] }), { status: 200 })
+	}) as typeof fetch
+	const orchestrator = {
+		state: { casesById: new Map() },
+		enqueueBatch: async (cases: import("../src/core/types").SettlementCase[]) => {
+			for (const settlementCase of cases) db.saveCase(settlementCase)
+			return []
+		},
+	} as unknown as Parameters<typeof runIntegrationSync>[0]["orchestrator"]
+	try {
+		const initial = await runIntegrationSync({ provider: "xero", workspaceId: DEFAULT_WORKSPACE_ID, orchestrator })
+		assert.equal(initial.status, "success")
+		assert.equal(initial.casesQueued, 1)
+		amount = 125
+		const changed = await runIntegrationSync({ provider: "xero", workspaceId: DEFAULT_WORKSPACE_ID, orchestrator })
+		assert.equal(changed.status, "success")
+		assert.equal(changed.casesQueued, 1)
+		const repeated = await runIntegrationSync({ provider: "xero", workspaceId: DEFAULT_WORKSPACE_ID, orchestrator })
+		assert.equal(repeated.status, "success")
+		assert.equal(repeated.casesQueued, 0, "replaying an unchanged cursor window must not create duplicate revisions")
+		const cases = db.listPersistedCases().filter((item) => item.caseId.startsWith("XERO-INV-REVISION-01"))
+		assert.equal(cases.length, 2)
+		const revision = cases.find((item) => item.sourceRevisionOf === "XERO-INV-REVISION-01")
+		assert.equal(revision?.invoice?.expectedAmount.amountMinor, 12500)
+	} finally {
+		global.fetch = previousFetch
+		db.disconnectIntegration(DEFAULT_WORKSPACE_ID, "xero")
+	}
+})
+
 test("parseInboundEmailToCases extracts MT103 attachments from inbound email payloads", () => {
 	const mt103 = [
 		":20:TXN-EMAIL-01",

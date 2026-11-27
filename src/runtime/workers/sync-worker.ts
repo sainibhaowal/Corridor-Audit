@@ -1,14 +1,48 @@
+import { createHash } from "node:crypto"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "../../core/db/database"
 import type { SyncRunRecord } from "../../core/db/schema"
 import type { IntegrationCredentials } from "../../core/db/schema"
 import { fetchCasesFromIntegration } from "../../core/integrations/connectors"
 import { refreshOAuthCredentials } from "../../core/integrations/oauth"
+import type { SettlementCase } from "../../core/types"
 import type { CorridorOrchestrator } from "../orchestrator"
 
 const globalWorkerStore = globalThis as typeof globalThis & {
 	__corridorSyncWorkerStarted?: boolean
 	__corridorSyncIntervalMs?: number
 	__corridorOAuthRefreshes?: Map<string, Promise<IntegrationCredentials>>
+}
+
+function caseSnapshot(settlementCase: SettlementCase): string {
+	const { createdAt: _createdAt, ...stable } = settlementCase
+	return JSON.stringify(stable)
+}
+
+function prepareChangedCases(
+	cases: SettlementCase[],
+	db: ReturnType<typeof getCorridorDb>,
+	workspaceId: string,
+): SettlementCase[] {
+	const prepared: SettlementCase[] = []
+	for (const settlementCase of cases) {
+		const existing = db.getPersistedCase(settlementCase.caseId, workspaceId)
+		if (!existing) {
+			prepared.push(settlementCase)
+			continue
+		}
+		if (caseSnapshot(existing) === caseSnapshot(settlementCase)) continue
+
+		const revisionHash = createHash("sha256").update(caseSnapshot(settlementCase), "utf8").digest("hex").slice(0, 12)
+		const revisionCase: SettlementCase = {
+			...settlementCase,
+			caseId: `${settlementCase.caseId}-R${revisionHash}`,
+			title: `${settlementCase.title} (source revision)`,
+			sourceRevisionOf: existing.sourceRevisionOf || settlementCase.caseId,
+		}
+		const priorRevision = db.getPersistedCase(revisionCase.caseId, workspaceId)
+		if (!priorRevision || caseSnapshot(priorRevision) !== caseSnapshot(revisionCase)) prepared.push(revisionCase)
+	}
+	return prepared
 }
 
 async function credentialsForSync(params: {
@@ -65,9 +99,9 @@ export async function runIntegrationSync(params: {
 
 	try {
 		const credentials = await credentialsForSync({ db, workspaceId, provider: integration.provider })
-		const fetched = await fetchCasesFromIntegration({ integration, credentials })
+		const fetched = await fetchCasesFromIntegration({ integration, credentials, lastSuccessfulSyncAt: integration.lastSyncedAt })
 
-		const freshCases = fetched.cases.filter((c) => !params.orchestrator.state.casesById.has(c.caseId))
+		const freshCases = prepareChangedCases(fetched.cases, db, workspaceId)
 		if (fetched.rawPayload !== undefined) {
 			db.saveRawIngestion({
 				workspaceId,
@@ -84,7 +118,7 @@ export async function runIntegrationSync(params: {
 					mappingCaseCount: String(fetched.cases.length),
 				},
 				parseStatus: "parsed",
-				caseIds: fetched.cases.map((c) => c.caseId),
+				caseIds: freshCases.map((c) => c.caseId),
 			})
 		} else if (freshCases.length > 0) {
 			db.saveRawIngestion({

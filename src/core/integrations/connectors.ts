@@ -15,6 +15,14 @@ const MAX_PROVIDER_SYNC_PAGES = 100
 const STRIPE_PAGE_SIZE = 100
 const WISE_PAGE_SIZE = 100
 const ACCOUNTING_PAGE_SIZE = 1000
+const SYNC_CURSOR_OVERLAP_MS = 5 * 60 * 1000
+
+function syncSince(lastSuccessfulSyncAt?: string): Date | undefined {
+	if (!lastSuccessfulSyncAt) return undefined
+	const timestamp = Date.parse(lastSuccessfulSyncAt)
+	if (!Number.isFinite(timestamp)) throw new Error("Stored provider sync cursor is not a valid timestamp.")
+	return new Date(timestamp - SYNC_CURSOR_OVERLAP_MS)
+}
 
 function combineRawPages(pages: string[]): string {
 	return pages.length === 1 ? pages[0]! : JSON.stringify({ pageResponses: pages })
@@ -28,7 +36,7 @@ function authHeader(credentials: IntegrationCredentials): string {
 	return `Bearer ${token}`
 }
 
-async function fetchStripeCases(credentials: IntegrationCredentials): Promise<ConnectorFetchResult> {
+async function fetchStripeCases(credentials: IntegrationCredentials, lastSuccessfulSyncAt?: string): Promise<ConnectorFetchResult> {
 	const payouts: Array<{
 			id: string
 			amount: number
@@ -40,9 +48,11 @@ async function fetchStripeCases(credentials: IntegrationCredentials): Promise<Co
 		}> = []
 	const rawPages: string[] = []
 	let startingAfter: string | undefined
+	const since = syncSince(lastSuccessfulSyncAt)
 	for (let page = 0; page < MAX_PROVIDER_SYNC_PAGES; page += 1) {
 		const url = new URL("https://api.stripe.com/v1/payouts")
 		url.searchParams.set("limit", String(STRIPE_PAGE_SIZE))
+		if (since) url.searchParams.set("created[gte]", String(Math.floor(since.getTime() / 1000)))
 		if (startingAfter) url.searchParams.set("starting_after", startingAfter)
 		const res = await fetch(url, { headers: { Authorization: authHeader(credentials) } })
 		if (!res.ok) throw new Error(`Stripe API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
@@ -268,6 +278,7 @@ async function fetchQuickBooksCases(
 async function fetchXeroCases(
 	credentials: IntegrationCredentials,
 	config: Record<string, string>,
+	lastSuccessfulSyncAt?: string,
 ): Promise<ConnectorFetchResult> {
 	const tenantId = config.tenantId?.trim()
 	if (!tenantId) {
@@ -282,13 +293,16 @@ async function fetchXeroCases(
 		Contact?: { Name?: string }
 	}> = []
 	const rawPages: string[] = []
+	const since = syncSince(lastSuccessfulSyncAt)
 	for (let page = 1; page <= MAX_PROVIDER_SYNC_PAGES; page += 1) {
+		const headers = new Headers({
+			Authorization: authHeader(credentials),
+			"Xero-tenant-id": tenantId,
+			Accept: "application/json",
+		})
+		if (since) headers.set("If-Modified-Since", since.toISOString().slice(0, 19))
 		const res = await fetch(`https://api.xero.com/api.xro/2.0/Invoices?page=${page}&pageSize=${ACCOUNTING_PAGE_SIZE}`, {
-			headers: {
-				Authorization: authHeader(credentials),
-				"Xero-tenant-id": tenantId,
-				Accept: "application/json",
-			},
+			headers,
 		})
 		if (!res.ok) throw new Error(`Xero API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
 		const rawPage = await res.text()
@@ -381,6 +395,7 @@ async function fetchGenericEndpointCases(
 export async function fetchCasesFromIntegration(params: {
 	integration: IntegrationRecord
 	credentials: IntegrationCredentials | null
+	lastSuccessfulSyncAt?: string
 }): Promise<ConnectorFetchResult> {
 	const { integration, credentials } = params
 	switch (integration.provider) {
@@ -389,13 +404,13 @@ export async function fetchCasesFromIntegration(params: {
 		case "bank_sftp":
 			return fetchHotFolderCases(integration.config)
 		case "stripe":
-			return fetchStripeCases(credentials ?? {})
+			return fetchStripeCases(credentials ?? {}, params.lastSuccessfulSyncAt)
 		case "wise":
 			return fetchWiseCases(credentials ?? {}, integration.config)
 		case "quickbooks":
 			return fetchQuickBooksCases(credentials ?? {}, integration.config)
 		case "xero":
-			return fetchXeroCases(credentials ?? {}, integration.config)
+			return fetchXeroCases(credentials ?? {}, integration.config, params.lastSuccessfulSyncAt)
 		default:
 			return fetchGenericEndpointCases(integration.provider, credentials ?? {}, integration.config)
 	}

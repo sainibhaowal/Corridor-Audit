@@ -769,6 +769,13 @@ export class CorridorDatabase {
 		return rows.map((r) => JSON.parse(r.payload_json_encrypted ? decryptSecret(r.payload_json) : r.payload_json) as SettlementCase)
 	}
 
+	getPersistedCase(caseId: string, workspaceId = DEFAULT_WORKSPACE_ID): SettlementCase | null {
+		const row = this.db.prepare(`SELECT payload_json, payload_json_encrypted FROM cases
+			WHERE case_id = ? AND workspace_id = ?`).get(caseId, workspaceId) as
+			{ payload_json: string; payload_json_encrypted: number } | undefined
+		return row ? JSON.parse(row.payload_json_encrypted ? decryptSecret(row.payload_json) : row.payload_json) as SettlementCase : null
+	}
+
 	listQueuedCases(workspaceId = DEFAULT_WORKSPACE_ID, limit = 100): SettlementCase[] {
 		const now = new Date().toISOString()
 		this.db.prepare(`UPDATE cases SET status = 'dead_letter', last_error = COALESCE(last_error, 'Processing lease expired after the maximum attempt count.'),
