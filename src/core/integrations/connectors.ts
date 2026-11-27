@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { extname, resolve } from "node:path"
 import type { IntegrationCredentials, IntegrationRecord } from "../db/schema"
 import { normalizeInboundPayloadToCases } from "../ingest/normalize-upload"
+import { IngestionLimitError } from "../ingest/limits"
 import type { AccountingPaymentApplication, SettlementCase, SourceRef } from "../types"
 import { parseDecimalStringToMinor } from "../money"
 import { assertProviderEndpointHostAllowed, fetchProvider, fetchValidatedProviderEndpoint, validateProviderEndpointUrl } from "./http"
@@ -21,6 +22,23 @@ const ACCOUNTING_PAGE_SIZE = 1000
 const LINKED_INVOICE_LOOKUP_BATCH_SIZE = 40
 const MAX_LINKED_INVOICE_LOOKUP_BATCHES = 20
 const SYNC_CURSOR_OVERLAP_MS = 5 * 60 * 1000
+export const MAX_PROVIDER_RECORDS_PER_SYNC = 10_000
+export const MAX_PROVIDER_CASES_PER_SYNC = 5_000
+const MAX_PROVIDER_RESPONSE_BYTES = 10 * 1024 * 1024
+const MAX_PROVIDER_SYNC_RAW_BYTES = 50 * 1024 * 1024
+
+export class ProviderSyncLimitError extends Error {
+	constructor(
+		readonly provider: string,
+		readonly resource: string,
+		readonly recordsFetched: number,
+		readonly rawPayload: string,
+		readonly evidenceTruncated = false,
+	) {
+		super(`${provider} ${resource} sync exceeded a local safety limit. No partial cases were queued; adjust the backfill or provider query window and retry.`)
+		this.name = "ProviderSyncLimitError"
+	}
+}
 
 export class ProviderPageLimitError extends Error {
 	constructor(readonly provider: string, readonly resource: string, readonly pageLimit: number) {
@@ -90,6 +108,71 @@ function combineRawPages(pages: string[]): string {
 	return pages.length === 1 ? pages[0]! : JSON.stringify({ pageResponses: pages })
 }
 
+async function readProviderPage(
+	response: Response,
+	provider: string,
+	resource: string,
+	priorPages: string[],
+	recordsFetched: number,
+): Promise<string> {
+	if (!response.body) return ""
+	const reader = response.body.getReader()
+	const chunks: Uint8Array[] = []
+	let size = 0
+	try {
+		while (true) {
+			const { done, value } = await reader.read()
+			if (done) break
+			size += value.byteLength
+			chunks.push(value)
+			if (size > MAX_PROVIDER_RESPONSE_BYTES) {
+				await reader.cancel().catch(() => undefined)
+				const prefix = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).subarray(0, MAX_PROVIDER_RESPONSE_BYTES).toString("utf8")
+				const rawPayload = combineRawPages([...priorPages, JSON.stringify({ truncatedResponsePrefix: prefix })])
+				throw new ProviderSyncLimitError(provider, resource, recordsFetched, rawPayload, true)
+			}
+		}
+	} finally {
+		reader.releaseLock()
+	}
+	return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8")
+}
+
+function retainProviderPage(
+	pages: string[],
+	page: string,
+	provider: string,
+	resource: string,
+	recordsFetched: number,
+): void {
+	const usedBytes = pages.reduce((total, value) => total + Buffer.byteLength(value, "utf8"), 0)
+	const remainingBytes = Math.max(0, MAX_PROVIDER_SYNC_RAW_BYTES - usedBytes)
+	const pageBytes = Buffer.from(page, "utf8")
+	if (pageBytes.byteLength > remainingBytes) {
+		const prefix = pageBytes.subarray(0, remainingBytes).toString("utf8")
+		throw new ProviderSyncLimitError(
+			provider,
+			resource,
+			recordsFetched,
+			combineRawPages(prefix ? [...pages, prefix] : pages),
+			true,
+		)
+	}
+	pages.push(page)
+}
+
+function enforceProviderRecordLimit(provider: string, resource: string, count: number, rawPages: string[]): void {
+	if (count > MAX_PROVIDER_RECORDS_PER_SYNC) {
+		throw new ProviderSyncLimitError(provider, resource, count, combineRawPages(rawPages))
+	}
+}
+
+function enforceProviderCaseLimit(provider: string, cases: SettlementCase[], recordsFetched: number, rawPages: string[]): void {
+	if (cases.length > MAX_PROVIDER_CASES_PER_SYNC) {
+		throw new ProviderSyncLimitError(provider, "mapped case", recordsFetched, combineRawPages(rawPages))
+	}
+}
+
 function authHeader(credentials: IntegrationCredentials): string {
 	const token = credentials.accessToken || credentials.apiKey
 	if (!token) {
@@ -118,8 +201,8 @@ async function fetchStripeCases(credentials: IntegrationCredentials, lastSuccess
 		if (startingAfter) url.searchParams.set("starting_after", startingAfter)
 		const res = await fetchProvider(url, { headers: { Authorization: authHeader(credentials) } })
 		if (!res.ok) throw new Error(`Stripe API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
-		const rawPage = await res.text()
-		rawPages.push(rawPage)
+		const rawPage = await readProviderPage(res, "Stripe", "payout", rawPages, payouts.length)
+		retainProviderPage(rawPages, rawPage, "Stripe", "payout", payouts.length)
 		const payload = JSON.parse(rawPage) as {
 			data?: Array<{
 				id: string
@@ -134,6 +217,7 @@ async function fetchStripeCases(credentials: IntegrationCredentials, lastSuccess
 		}
 		const pagePayouts = payload.data ?? []
 		payouts.push(...pagePayouts)
+		enforceProviderRecordLimit("Stripe", "payout", payouts.length, rawPages)
 		if (!payload.has_more) break
 		const lastId = pagePayouts.at(-1)?.id
 		if (!lastId) throw new Error("Stripe indicated another page but returned no payout cursor.")
@@ -172,6 +256,7 @@ async function fetchStripeCases(credentials: IntegrationCredentials, lastSuccess
 			},
 		}
 	})
+	enforceProviderCaseLimit("Stripe", cases, payouts.length, rawPages)
 	return { recordsFetched: payouts.length, cases, rawPayload: combineRawPages(rawPages) }
 }
 
@@ -191,8 +276,8 @@ async function fetchWiseCases(
 		if (!pRes.ok) {
 			throw new Error(`Wise Profiles API error (${pRes.status}): ${(await pRes.text()).slice(0, 200)}`)
 		}
-		const rawProfiles = await pRes.text()
-		rawPages.push(rawProfiles)
+		const rawProfiles = await readProviderPage(pRes, "Wise", "profile", rawPages, 0)
+		retainProviderPage(rawPages, rawProfiles, "Wise", "profile", 0)
 		const profiles = JSON.parse(rawProfiles) as Array<{ id: number }>
 		profileId = profiles[0]?.id ? String(profiles[0].id) : undefined
 	}
@@ -219,10 +304,11 @@ async function fetchWiseCases(
 		if (since) url.searchParams.set("createdDateStart", since.toISOString())
 		const tRes = await fetchProvider(url, { headers })
 		if (!tRes.ok) throw new Error(`Wise Transfers API error (${tRes.status}): ${(await tRes.text()).slice(0, 200)}`)
-		const rawPage = await tRes.text()
-		rawPages.push(rawPage)
+		const rawPage = await readProviderPage(tRes, "Wise", "transfer", rawPages, transfers.length)
+		retainProviderPage(rawPages, rawPage, "Wise", "transfer", transfers.length)
 		const pageTransfers = JSON.parse(rawPage) as typeof transfers
 		transfers.push(...pageTransfers)
+		enforceProviderRecordLimit("Wise", "transfer", transfers.length, rawPages)
 		if (pageTransfers.length < WISE_PAGE_SIZE) break
 		if (page === MAX_PROVIDER_SYNC_PAGES - 1) throw new ProviderPageLimitError("Wise", "transfer", MAX_PROVIDER_SYNC_PAGES)
 	}
@@ -257,6 +343,7 @@ async function fetchWiseCases(
 			],
 		},
 	}))
+	enforceProviderCaseLimit("Wise", cases, transfers.length, rawPages)
 
 	return { recordsFetched: transfers.length, cases, rawPayload: combineRawPages(rawPages) }
 }
@@ -301,11 +388,12 @@ async function fetchQuickBooksCases(
 				headers: { Authorization: authHeader(credentials), Accept: "application/json" },
 			})
 			if (!res.ok) throw new Error(`QuickBooks ${entity} API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
-			const rawPage = await res.text()
-			rawPages.push(rawPage)
+			const rawPage = await readProviderPage(res, "QuickBooks", entity.toLowerCase(), rawPages, target.length)
+			retainProviderPage(rawPages, rawPage, "QuickBooks", entity.toLowerCase(), target.length)
 			const json = JSON.parse(rawPage) as { QueryResponse?: Record<string, T[]> }
 			const pageRecords = json.QueryResponse?.[entity] ?? []
 			target.push(...pageRecords)
+			enforceProviderRecordLimit("QuickBooks", entity.toLowerCase(), target.length, rawPages)
 			if (pageRecords.length < ACCOUNTING_PAGE_SIZE) break
 			if (page === MAX_PROVIDER_SYNC_PAGES - 1) throw new ProviderPageLimitError("QuickBooks", entity.toLowerCase(), MAX_PROVIDER_SYNC_PAGES)
 		}
@@ -328,10 +416,11 @@ async function fetchQuickBooksCases(
 			headers: { Authorization: authHeader(credentials), Accept: "application/json" },
 		})
 		if (!res.ok) throw new Error(`QuickBooks linked invoice lookup error (${res.status}): ${(await res.text()).slice(0, 200)}`)
-		const rawPage = await res.text()
-		rawPages.push(rawPage)
+		const rawPage = await readProviderPage(res, "QuickBooks", "linked invoice", rawPages, invoices.length + payments.length)
+		retainProviderPage(rawPages, rawPage, "QuickBooks", "linked invoice", invoices.length + payments.length)
 		const json = JSON.parse(rawPage) as { QueryResponse?: { Invoice?: typeof invoices } }
 		invoices.push(...(json.QueryResponse?.Invoice ?? []))
+		enforceProviderRecordLimit("QuickBooks", "invoice", invoices.length, rawPages)
 	}
 	const invoicesById = new Map(invoices.map((invoice) => [invoice.Id, invoice]))
 	const foundInvoiceIds = new Set(invoices.map((invoice) => invoice.Id))
@@ -436,6 +525,7 @@ async function fetchQuickBooksCases(
 			evidenceGap: `${accountingPaymentGap("QuickBooks", merged.applications)} The linked invoice record was loaded from an earlier local sync because it was outside this incremental invoice window.${merged.truncated ? " More than 1,000 applications are linked; the displayed list is capped and the full provider responses remain in the raw vault." : ""}`,
 		})
 	}
+	enforceProviderCaseLimit("QuickBooks", cases, invoices.length + payments.length, rawPages)
 	return {
 		recordsFetched: invoices.length + payments.length,
 		cases,
@@ -485,11 +575,12 @@ async function fetchXeroCases(
 			if (since) headers.set("If-Modified-Since", since.toISOString().slice(0, 19))
 			const res = await fetchProvider(`https://api.xero.com/api.xro/2.0/${resource}?page=${page}&pageSize=${ACCOUNTING_PAGE_SIZE}`, { headers })
 			if (!res.ok) throw new Error(`Xero ${resource} API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
-			const rawPage = await res.text()
-			rawPages.push(rawPage)
+			const rawPage = await readProviderPage(res, "Xero", resource.toLowerCase(), rawPages, target.length)
+			retainProviderPage(rawPages, rawPage, "Xero", resource.toLowerCase(), target.length)
 			const json = JSON.parse(rawPage) as Record<string, T[]>
 			const pageRecords = json[resource] ?? []
 			target.push(...pageRecords)
+			enforceProviderRecordLimit("Xero", resource.toLowerCase(), target.length, rawPages)
 			if (pageRecords.length < ACCOUNTING_PAGE_SIZE) break
 			if (page === MAX_PROVIDER_SYNC_PAGES) throw new ProviderPageLimitError("Xero", resource.toLowerCase(), MAX_PROVIDER_SYNC_PAGES)
 		}
@@ -514,10 +605,11 @@ async function fetchXeroCases(
 			},
 		})
 		if (!res.ok) throw new Error(`Xero linked invoice lookup error (${res.status}): ${(await res.text()).slice(0, 200)}`)
-		const rawPage = await res.text()
-		rawPages.push(rawPage)
+		const rawPage = await readProviderPage(res, "Xero", "linked invoice", rawPages, invoices.length + payments.length)
+		retainProviderPage(rawPages, rawPage, "Xero", "linked invoice", invoices.length + payments.length)
 		const json = JSON.parse(rawPage) as { Invoices?: typeof invoices }
 		invoices.push(...(json.Invoices ?? []))
+		enforceProviderRecordLimit("Xero", "invoice", invoices.length, rawPages)
 	}
 	const invoicesById = new Map(invoices.map((invoice) => [invoice.InvoiceID, invoice]))
 	const foundInvoiceIds = new Set(invoices.map((invoice) => invoice.InvoiceID))
@@ -616,6 +708,7 @@ async function fetchXeroCases(
 			evidenceGap: `${accountingPaymentGap("Xero", merged.applications)} The linked invoice record was loaded from an earlier local sync because it was outside this incremental invoice window.${merged.truncated ? " More than 1,000 applications are linked; the displayed list is capped and the full provider responses remain in the raw vault." : ""}`,
 		})
 	}
+	enforceProviderCaseLimit("Xero", cases, invoices.length + payments.length, rawPages)
 	return {
 		recordsFetched: invoices.length + payments.length,
 		cases,
@@ -659,8 +752,17 @@ async function fetchGenericEndpointCases(
 		throw new Error(`${provider} API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
 	}
 	const raw = await res.text()
-	const cases = normalizeInboundPayloadToCases({ content: raw, format: "json" })
-	return { recordsFetched: cases.length, cases }
+	let cases: SettlementCase[]
+	try {
+		cases = normalizeInboundPayloadToCases({ content: raw, format: "json" })
+	} catch (error) {
+		if (error instanceof IngestionLimitError) {
+			throw new ProviderSyncLimitError(provider, "mapped case", 0, raw)
+		}
+		throw error
+	}
+	enforceProviderCaseLimit(provider, cases, cases.length, [raw])
+	return { recordsFetched: cases.length, cases, rawPayload: raw }
 }
 
 export async function fetchCasesFromIntegration(params: {

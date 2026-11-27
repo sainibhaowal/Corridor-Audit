@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "../../core/db/database"
 import type { IntegrationRecord, SyncRunRecord } from "../../core/db/schema"
 import type { IntegrationCredentials } from "../../core/db/schema"
-import { fetchCasesFromIntegration, ProviderPageLimitError } from "../../core/integrations/connectors"
+import { fetchCasesFromIntegration, ProviderPageLimitError, ProviderSyncLimitError } from "../../core/integrations/connectors"
 import { refreshOAuthCredentials } from "../../core/integrations/oauth"
 import type { SettlementCase } from "../../core/types"
 import type { CorridorOrchestrator } from "../orchestrator"
@@ -158,6 +158,7 @@ export async function runIntegrationSync(params: {
 	}
 	let run: SyncRunRecord | undefined
 	let fullReconciliationAttemptAt: string | undefined
+	let fullReconciliation = false
 	try {
 		const latestIntegration = db.getIntegration(workspaceId, params.provider)
 		if (!latestIntegration || latestIntegration.status === "disconnected") {
@@ -178,7 +179,7 @@ export async function runIntegrationSync(params: {
 		})
 		const credentials = await credentialsForSync({ db, workspaceId, provider: integration.provider })
 		assertLease()
-		let fullReconciliation = shouldRunFullProviderReconciliation(integration)
+		fullReconciliation = shouldRunFullProviderReconciliation(integration)
 		let reconciliationMode: "full" | "incremental" | "incremental_after_full_limit" = fullReconciliation ? "full" : "incremental"
 		if (
 			!fullReconciliation &&
@@ -291,8 +292,38 @@ export async function runIntegrationSync(params: {
 			finishedAt: now,
 		}
 	} catch (err) {
-		const msg = err instanceof Error ? err.message : String(err)
+		let msg = err instanceof Error ? err.message : String(err)
 		if (!run) throw err
+		if (err instanceof ProviderSyncLimitError) {
+			if (fullReconciliation) fullReconciliationAttemptAt = new Date().toISOString()
+			if (!leaseLost) {
+				try {
+					db.saveRawIngestion({
+						workspaceId,
+						sourceChannel: "platform_sync",
+						sourceProvider: integration.provider,
+						filename: `${integration.provider}-sync-${run.id}-limit-evidence.json`,
+						format: "json",
+						rawContent: err.rawPayload,
+						metadata: {
+							syncRunId: run.id,
+							trigger: run.trigger,
+							provider: integration.provider,
+							resource: err.resource,
+							recordsFetchedBeforeLimit: String(err.recordsFetched),
+							evidenceTruncated: String(err.evidenceTruncated),
+							partialCasesQueued: "0",
+						},
+						parseStatus: "failed",
+						parseError: msg,
+					})
+				} catch (evidenceError) {
+					const evidenceMessage = evidenceError instanceof Error ? evidenceError.message : String(evidenceError)
+					msg = `${msg} Raw limit evidence could not be saved: ${evidenceMessage}`
+					console.error(`[SyncWorker] Failed to save bounded limit evidence for ${integration.provider}:`, evidenceError)
+				}
+			}
+		}
 		if (leaseLost) {
 			return { ...run, status: "failed", auditStatus: "unknown", error: msg, finishedAt: new Date().toISOString() }
 		}
@@ -300,7 +331,7 @@ export async function runIntegrationSync(params: {
 		db.finishSyncRun({
 			id: run.id,
 			status: "failed",
-			recordsFetched: 0,
+			recordsFetched: err instanceof ProviderSyncLimitError ? err.recordsFetched : 0,
 			casesQueued: 0,
 			error: msg,
 		})

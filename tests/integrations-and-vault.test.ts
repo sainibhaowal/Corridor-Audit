@@ -1420,6 +1420,65 @@ test("provider sync retains original API payloads and converts Wise currencies t
 	}
 })
 
+test("oversized provider sync fails without queueing and retains bounded failed evidence", async () => {
+	const db = getCorridorDb()
+	const previousFetch = global.fetch
+	const previousInterval = process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS
+	process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS = "168"
+	const integration = db.upsertIntegration({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider: "stripe",
+		category: "payouts",
+		authMode: "api_token",
+		status: "connected",
+		credentials: { apiKey: "stripe-oversized-sync-test" },
+	})
+	const priorSyncAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
+	const priorFullSyncAt = new Date().toISOString()
+	db.markIntegrationSyncState({
+		integrationId: integration.id,
+		status: "connected",
+		lastSyncStatus: "success",
+		lastSyncedAt: priorSyncAt,
+		lastFullSyncedAt: priorFullSyncAt,
+	})
+	let queuedBatchCount = 0
+	const orchestrator = {
+		state: { casesById: new Map() },
+		enqueueBatch: async () => { queuedBatchCount += 1 },
+	} as unknown as Parameters<typeof runIntegrationSync>[0]["orchestrator"]
+	global.fetch = (async () => new Response("x".repeat(10 * 1024 * 1024 + 1), { status: 200 })) as typeof fetch
+	try {
+		const result = await runIntegrationSync({ provider: "stripe", workspaceId: DEFAULT_WORKSPACE_ID, orchestrator })
+		assert.equal(result.status, "failed")
+		assert.equal(result.casesQueued, 0)
+		assert.match(result.error || "", /local safety limit/)
+		assert.equal(queuedBatchCount, 0)
+		const updatedIntegration = db.getIntegration(DEFAULT_WORKSPACE_ID, "stripe")
+		assert.equal(updatedIntegration?.lastSyncedAt, priorSyncAt)
+		assert.equal(updatedIntegration?.lastFullSyncedAt, priorFullSyncAt)
+		const rawMetadata = db.listRawIngestions({ workspaceId: DEFAULT_WORKSPACE_ID, channel: "platform_sync", limit: 5 })
+		const limitEvidence = rawMetadata.find((item) => item.filename.includes("oversized-sync-test") || item.parseError?.includes("local safety limit"))
+		assert.ok(limitEvidence)
+		assert.equal(limitEvidence?.parseStatus, "failed")
+		assert.equal(limitEvidence?.metadata.evidenceTruncated, "true")
+		assert.equal(limitEvidence?.metadata.partialCasesQueued, "0")
+		assert.ok((limitEvidence?.sizeBytes ?? Number.POSITIVE_INFINITY) <= 10 * 1024 * 1024 + 1024)
+		const fullEvidence = db.getRawIngestion(limitEvidence!.id, true, DEFAULT_WORKSPACE_ID)
+		assert.match(fullEvidence?.rawContent || "", /truncatedResponsePrefix/)
+	} finally {
+		global.fetch = previousFetch
+		if (previousInterval === undefined) delete process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS
+		else process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS = previousInterval
+		db.disconnectIntegration(DEFAULT_WORKSPACE_ID, "stripe")
+		db.markIntegrationSyncState({
+			integrationId: integration.id,
+			status: "disconnected",
+			lastFullSyncAttemptAt: new Date(0).toISOString(),
+		})
+	}
+})
+
 test("provider sync follows Stripe, Wise, QuickBooks, and Xero page cursors", async () => {
 	const previousFetch = global.fetch
 	const previousWiseEnvironment = process.env.WISE_API_ENVIRONMENT
