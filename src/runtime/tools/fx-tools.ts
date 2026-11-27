@@ -184,12 +184,13 @@ export const computeFxSpreadMinorTool: Tool = {
 			? convertMinorUnits(c.wire.platformFee.amountMinor, c.wire.platformFee.currency, to, await feeRateIfNeeded(c.wire.platformFee.currency))
 			: 0
 
-		const taxSourceMinor =
-			state.termsByCaseId.get(args.caseId)?.withholdingTaxMinor ??
-			(c.invoice?.withholdingTaxRateBps
-				? computeTaxWithholding(c.invoice.expectedAmount.amountMinor, c.invoice.withholdingTaxRateBps)
-				: 0)
-		const taxCurrency = state.termsByCaseId.get(args.caseId)?.expectedCurrency ?? c.invoice?.expectedAmount.currency ?? from
+		const taxAssessment = state.termsByCaseId.get(args.caseId)
+		const taxRateBps = taxAssessment?.withholdingTaxRateBps ?? c.invoice?.withholdingTaxRateBps ?? 0
+		const calculatedTaxMinor = c.invoice
+			? computeTaxWithholding(c.invoice.expectedAmount.amountMinor, taxRateBps)
+			: 0
+		const taxSourceMinor = taxAssessment?.withholdingTaxMinor || calculatedTaxMinor
+		const taxCurrency = taxAssessment?.expectedCurrency ?? c.invoice?.expectedAmount.currency ?? from
 		const normalizedWithholdingTaxMinor =
 			taxSourceMinor > 0
 				? convertMinorUnits(taxSourceMinor, taxCurrency, to, await feeRateIfNeeded(taxCurrency))

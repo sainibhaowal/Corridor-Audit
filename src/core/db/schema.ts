@@ -39,6 +39,15 @@ export interface WorkspaceRecord {
 	updatedAt: string
 }
 
+export interface WorkspaceTaxPolicyRecord {
+	id: string
+	workspaceId: string
+	country: string
+	withholdingTaxBps: number
+	effectiveAt: string
+	createdAt: string
+}
+
 export interface TeamMemberRecord {
 	id: string
 	workspaceId: string
@@ -115,6 +124,15 @@ CREATE TABLE IF NOT EXISTS team_members (
 	name TEXT NOT NULL,
 	role TEXT NOT NULL DEFAULT 'analyst',
 	status TEXT NOT NULL DEFAULT 'active',
+	created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workspace_tax_policies (
+	id TEXT PRIMARY KEY,
+	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+	country TEXT NOT NULL,
+	withholding_tax_bps INTEGER NOT NULL,
+	effective_at TEXT NOT NULL,
 	created_at TEXT NOT NULL
 );
 

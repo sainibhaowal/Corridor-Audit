@@ -9,6 +9,7 @@ export type SourceType =
 	| "bank_csv"
 	| "platform_csv"
 	| "pdf_extract"
+	| "workspace_policy"
 	| "ecb_fx"
 
 export interface Money {
@@ -41,7 +42,7 @@ export interface InvoiceInput {
 	expectedAmount: Money
 	expectedSettlementCurrency: CurrencyCode
 	contractedChargeBearer: ChargeBearerClause
-	withholdingTaxRateBps: number
+	withholdingTaxRateBps?: number
 	taxMinor?: number
 	discountMinor?: number
 	lineItems?: InvoiceLineItem[]
@@ -105,6 +106,9 @@ export interface TermsAssessment {
 	expectedSettlementCurrency: CurrencyCode
 	contractedChargeBearer: ChargeBearerClause
 	withholdingTaxRateBps: number
+	withholdingTaxSource: "invoice" | "workspace_profile"
+	taxCountry: string
+	taxPolicyVersionId: string
 	withholdingTaxMinor: number
 	lineItemCheckPassed: boolean
 	lineItemComputedMinor: number

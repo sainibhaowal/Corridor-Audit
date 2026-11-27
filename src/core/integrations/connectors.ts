@@ -187,7 +187,7 @@ async function fetchQuickBooksCases(
 				expectedAmount: { amountMinor: minor, currency: ccy },
 				expectedSettlementCurrency: ccy,
 				contractedChargeBearer: "SHA",
-				withholdingTaxRateBps: 0,
+				withholdingTaxRateBps: undefined,
 				remittanceHint: inv.DocNumber || inv.Id,
 				sourceRefs: [
 					{
@@ -262,7 +262,7 @@ async function fetchXeroCases(
 				expectedAmount: { amountMinor: minor, currency: ccy },
 				expectedSettlementCurrency: ccy,
 				contractedChargeBearer: "SHA",
-				withholdingTaxRateBps: 0,
+				withholdingTaxRateBps: undefined,
 				remittanceHint: inv.InvoiceNumber || inv.InvoiceID,
 				sourceRefs: [
 					{

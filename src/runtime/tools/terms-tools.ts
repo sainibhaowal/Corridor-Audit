@@ -8,6 +8,8 @@ import {
 	validateIbanMod97,
 } from "../../core/money"
 import type { ChargeBearerClause, SourceRef, TermsAssessment } from "../../core/types"
+import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "../../core/db/database"
+import { resolveWithholdingPolicy } from "../../core/policies/tax-profile"
 import { resolveRuntime } from "../corridor-runtime"
 
 const CaseIdSchema = z.object({ caseId: z.string().min(1) })
@@ -35,6 +37,12 @@ function ensureTermsAssessment(caseId: string): TermsAssessment {
 	if (existing) return existing
 	const c = state.casesById.get(caseId)
 	const inv = c?.invoice
+	const taxProfile = getCorridorDb().getCurrentTaxPolicy(DEFAULT_WORKSPACE_ID)
+	const taxPolicy = resolveWithholdingPolicy({
+		invoiceRateBps: inv?.withholdingTaxRateBps,
+		workspaceRateBps: taxProfile.withholdingTaxBps,
+		taxCountry: taxProfile.country,
+	})
 	const expectedCurrency = inv?.expectedAmount.currency ?? c?.wire.instructedAmount?.currency ?? "USD"
 	const expectedSettlementCurrency = inv?.expectedSettlementCurrency ?? c?.wire.settledAmount.currency ?? "USD"
 	const draft: TermsAssessment = {
@@ -44,7 +52,10 @@ function ensureTermsAssessment(caseId: string): TermsAssessment {
 		expectedCurrency,
 		expectedSettlementCurrency,
 		contractedChargeBearer: inv?.contractedChargeBearer ?? c?.wire.chargeBearer ?? "SHA",
-		withholdingTaxRateBps: inv?.withholdingTaxRateBps ?? 0,
+		withholdingTaxRateBps: taxPolicy.rateBps,
+		withholdingTaxSource: taxPolicy.source,
+		taxCountry: taxPolicy.taxCountry,
+		taxPolicyVersionId: taxProfile.id,
 		withholdingTaxMinor: 0,
 		lineItemCheckPassed: true,
 		lineItemComputedMinor: inv?.expectedAmount.amountMinor ?? 0,
@@ -98,6 +109,14 @@ export const getInvoiceRecordTool: Tool = {
 					},
 				]
 		assessment.sourceRefs = refs
+		if (assessment.withholdingTaxSource === "workspace_profile") {
+			refs.push({
+				sourceType: "workspace_policy",
+				recordId: assessment.taxPolicyVersionId,
+				field: "withholdingTaxBps",
+				rawExcerpt: `Workspace tax profile ${assessment.taxPolicyVersionId} (${assessment.taxCountry}): ${assessment.withholdingTaxRateBps} bps used because the invoice did not provide a rate. This is a configured assumption, not a jurisdictional tax determination.`,
+			})
+		}
 		state.termsByCaseId.set(caseId, assessment)
 
 		return {
@@ -112,6 +131,9 @@ export const getInvoiceRecordTool: Tool = {
 			vendorIban: inv?.vendorIban,
 			vendorBic: inv?.vendorBic,
 			withholdingTaxRateBps: assessment.withholdingTaxRateBps,
+			withholdingTaxSource: assessment.withholdingTaxSource,
+			taxCountry: assessment.taxCountry,
+			taxPolicyVersionId: assessment.taxPolicyVersionId,
 			hasLineItems: Boolean(inv?.lineItems?.length),
 			summary: `Loaded ${assessment.invoiceId}: ${formatMoney(assessment.expectedGrossMinor, assessment.expectedCurrency)} (${assessment.contractedChargeBearer})`,
 			sourceRefs: refs,
@@ -146,7 +168,9 @@ export const verifyInvoiceLineItemsTool: Tool = {
 			}
 		}
 
-		const res = computeInvoiceLineItemsTotal(inv.lineItems, inv.taxMinor ?? 0, inv.discountMinor ?? 0)
+		const lineItemsBaseMinor = inv.lineItems.reduce((sum, item) => sum + item.lineTotalMinor, 0)
+		const taxMinor = inv.taxMinor ?? computeTaxWithholding(lineItemsBaseMinor, assessment.withholdingTaxRateBps)
+		const res = computeInvoiceLineItemsTotal(inv.lineItems, taxMinor, inv.discountMinor ?? 0)
 		const matchesHeader = res.computedMinor === inv.expectedAmount.amountMinor && !res.mismatchExists
 		assessment.lineItemCheckPassed = matchesHeader
 		assessment.lineItemComputedMinor = res.computedMinor
@@ -242,18 +266,22 @@ export const computeTaxWithholdingTool: Tool = {
 		const inv = args.caseId ? state.casesById.get(args.caseId)?.invoice : undefined
 		const grossMinor = args.grossMinor ?? inv?.expectedAmount.amountMinor ?? 0
 		const currency = args.currency ?? inv?.expectedAmount.currency ?? "USD"
-		const bps = args.withholdingTaxRateBps ?? inv?.withholdingTaxRateBps ?? 0
+		const assessment = args.caseId ? ensureTermsAssessment(args.caseId) : undefined
+		const bps = args.withholdingTaxRateBps ?? assessment?.withholdingTaxRateBps ?? inv?.withholdingTaxRateBps ?? 0
 		const withholdingTaxMinor = computeTaxWithholding(grossMinor, bps)
 
 		if (args.caseId) {
-			const assessment = ensureTermsAssessment(args.caseId)
-			assessment.withholdingTaxMinor = withholdingTaxMinor
+			const caseAssessment = ensureTermsAssessment(args.caseId)
+			caseAssessment.withholdingTaxMinor = withholdingTaxMinor
 		}
 
 		return {
 			grossMinor,
 			currency,
 			withholdingTaxRateBps: bps,
+			withholdingTaxSource: assessment?.withholdingTaxSource,
+			taxCountry: assessment?.taxCountry,
+			taxPolicyVersionId: assessment?.taxPolicyVersionId,
 			withholdingTaxMinor,
 			withholdingFormatted: formatMoney(withholdingTaxMinor, currency),
 			summary: `Withholding tax (${bps} bps): ${formatMoney(withholdingTaxMinor, currency)}`,

@@ -91,7 +91,7 @@ export function parseInvoiceFromExtractedText(rawText: string, sourceId = "PDF-U
 		expectedAmount: { amountMinor, currency },
 		expectedSettlementCurrency: settleMatch ? settleMatch[1].toUpperCase() : "USD",
 		contractedChargeBearer,
-		withholdingTaxRateBps: 0,
+		withholdingTaxRateBps: undefined,
 		remittanceHint: invoiceId,
 		sourceRefs,
 	}

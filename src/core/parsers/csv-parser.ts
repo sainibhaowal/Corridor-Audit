@@ -60,7 +60,11 @@ export function parseInvoicesCsv(rawCsv: string): InvoiceInput[] {
 		const currency = (row.currency || row.expected_currency || "EUR").toUpperCase()
 		const settlementCurrency = (row.settlement_currency || row.expected_settlement_currency || "USD").toUpperCase()
 		const amountMinor = parseDecimalStringToMinor(row.amount || row.expected_amount || "0", currency)
-		const whtBps = Number(row.withholding_tax_bps || row.tax_bps || "0") || 0
+		const rawWithholdingBps = row.withholding_tax_bps ?? row.tax_bps
+		const whtBps = rawWithholdingBps ? Number(rawWithholdingBps) : undefined
+		if (whtBps !== undefined && (!Number.isInteger(whtBps) || whtBps < 0 || whtBps > 10_000)) {
+			throw new Error(`Invoice ${invoiceId} has an invalid withholding_tax_bps value.`)
+		}
 		const bearer = normalizeBearer(row.charge_bearer || row.contracted_charge_bearer)
 
 		const sourceRefs: SourceRef[] = [

@@ -71,6 +71,7 @@ test("CorridorDatabase persists workspaces, team members, encrypted integrations
 	const ws = db.getWorkspace(DEFAULT_WORKSPACE_ID)
 	assert.equal(ws.accountMode, "b2b")
 	assert.ok(ws.inboundEmailAddress.includes(DEFAULT_WORKSPACE_ID))
+	const initialTaxPolicy = db.getCurrentTaxPolicy(DEFAULT_WORKSPACE_ID)
 
 	const updated = db.updateWorkspace(DEFAULT_WORKSPACE_ID, {
 		name: "Acme Global Ops",
@@ -85,6 +86,12 @@ test("CorridorDatabase persists workspaces, team members, encrypted integrations
 	assert.equal(updated.defaultCurrency, "EUR")
 	assert.equal(updated.taxCountry, "DE")
 	assert.equal(updated.withholdingTaxBps, 1500)
+	const updatedTaxPolicy = db.getCurrentTaxPolicy(DEFAULT_WORKSPACE_ID)
+	assert.notEqual(updatedTaxPolicy.id, initialTaxPolicy.id)
+	assert.equal(updatedTaxPolicy.country, "DE")
+	assert.equal(updatedTaxPolicy.withholdingTaxBps, 1500)
+	db.updateWorkspace(DEFAULT_WORKSPACE_ID, { name: "Acme Operations" })
+	assert.equal(db.getCurrentTaxPolicy(DEFAULT_WORKSPACE_ID).id, updatedTaxPolicy.id, "non-tax workspace changes do not create tax versions")
 
 	const member = db.addTeamMember({
 		workspaceId: DEFAULT_WORKSPACE_ID,
@@ -247,6 +254,14 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 	// 2. Workspace settings & webhook signature enforcement
 	const wsGet = await getWorkspaceRoute(new Request("http://127.0.0.1/api/settings/workspace"))
 	assert.equal(wsGet.status, 200)
+	const invalidTaxProfile = await postWorkspaceRoute(
+		new Request("http://127.0.0.1/api/settings/workspace", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ action: "update_workspace", taxCountry: "Germany", withholdingTaxBps: 15_001 }),
+		}),
+	)
+	assert.equal(invalidTaxProfile.status, 400)
 
 	const wsPost = await postWorkspaceRoute(
 		new Request("http://127.0.0.1/api/settings/workspace", {

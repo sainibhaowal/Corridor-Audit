@@ -123,7 +123,7 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 							expectedAmount: w.instructedAmount,
 							expectedSettlementCurrency: w.settledAmount.currency,
 							contractedChargeBearer: w.chargeBearer ?? "SHA",
-							withholdingTaxRateBps: 0,
+							withholdingTaxRateBps: undefined,
 							remittanceHint: w.remittanceInfo,
 						}
 					: undefined,
@@ -154,7 +154,7 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 							expectedAmount: w.instructedAmount,
 							expectedSettlementCurrency: w.settledAmount.currency,
 							contractedChargeBearer: w.chargeBearer ?? "OUR",
-							withholdingTaxRateBps: 0,
+							withholdingTaxRateBps: undefined,
 							remittanceHint: invRef,
 						}
 					: undefined,
@@ -186,7 +186,7 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 								expectedAmount: w.instructedAmount,
 								expectedSettlementCurrency: w.settledAmount.currency,
 								contractedChargeBearer: w.chargeBearer ?? "SHA",
-								withholdingTaxRateBps: 0,
+								withholdingTaxRateBps: undefined,
 								remittanceHint: w.remittanceInfo,
 							}
 						: undefined,

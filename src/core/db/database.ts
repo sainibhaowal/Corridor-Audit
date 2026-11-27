@@ -19,6 +19,7 @@ import {
 	type TeamMemberRecord,
 	type TeamRole,
 	type WorkspaceRecord,
+	type WorkspaceTaxPolicyRecord,
 } from "./schema"
 
 export const DEFAULT_WORKSPACE_ID = "ws-default"
@@ -36,6 +37,37 @@ export class CorridorDatabase {
 		this.ensureRawContentEncryptionColumn()
 		this.encryptLegacyRawContent()
 		this.ensureDefaultWorkspace()
+		this.ensureWorkspaceTaxPolicies()
+	}
+
+	private ensureWorkspaceTaxPolicies(): void {
+		const workspaces = this.db.prepare("SELECT id, tax_country, withholding_tax_bps FROM workspaces").all() as Array<{
+			id: string
+			tax_country: string
+			withholding_tax_bps: number
+		}>
+		const latest = this.db.prepare("SELECT id FROM workspace_tax_policies WHERE workspace_id = ? LIMIT 1")
+		const insert = this.db.prepare(`INSERT INTO workspace_tax_policies
+			(id, workspace_id, country, withholding_tax_bps, effective_at, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+		for (const workspace of workspaces) {
+			if (latest.get(workspace.id)) continue
+			const now = new Date().toISOString()
+			insert.run(`taxp_${randomUUID().slice(0, 12)}`, workspace.id, workspace.tax_country, workspace.withholding_tax_bps, now, now)
+		}
+	}
+
+	getCurrentTaxPolicy(workspaceId = DEFAULT_WORKSPACE_ID): WorkspaceTaxPolicyRecord {
+		const row = this.db.prepare(`SELECT * FROM workspace_tax_policies WHERE workspace_id = ?
+			ORDER BY rowid DESC LIMIT 1`).get(workspaceId) as Record<string, unknown> | undefined
+		if (!row) throw new Error(`Tax policy for workspace ${workspaceId} not found.`)
+		return {
+			id: String(row.id),
+			workspaceId: String(row.workspace_id),
+			country: String(row.country),
+			withholdingTaxBps: Number(row.withholding_tax_bps),
+			effectiveAt: String(row.effective_at),
+			createdAt: String(row.created_at),
+		}
 	}
 
 	private ensureRawContentEncryptionColumn(): void {
@@ -172,7 +204,14 @@ export class CorridorDatabase {
 				now,
 				workspaceId,
 			)
-		return this.getWorkspace(workspaceId)
+		const updated = this.getWorkspace(workspaceId)
+		if (updated.taxCountry !== current.taxCountry || updated.withholdingTaxBps !== current.withholdingTaxBps) {
+			const now = new Date().toISOString()
+			this.db.prepare(`INSERT INTO workspace_tax_policies
+				(id, workspace_id, country, withholding_tax_bps, effective_at, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+				.run(`taxp_${randomUUID().slice(0, 12)}`, workspaceId, updated.taxCountry, updated.withholdingTaxBps, now, now)
+		}
+		return updated
 	}
 
 	listTeamMembers(workspaceId = DEFAULT_WORKSPACE_ID): TeamMemberRecord[] {

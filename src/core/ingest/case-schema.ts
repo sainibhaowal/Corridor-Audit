@@ -8,7 +8,7 @@ const money = z.object({
 }).passthrough()
 
 const sourceRef = z.object({
-	sourceType: z.enum(["invoice", "mt103", "camt053", "bank_csv", "platform_csv", "pdf_extract", "ecb_fx"]),
+	sourceType: z.enum(["invoice", "mt103", "camt053", "bank_csv", "platform_csv", "pdf_extract", "workspace_policy", "ecb_fx"]),
 	recordId: z.string().min(1).max(500),
 	field: z.string().min(1).max(500),
 	rawExcerpt: z.string().max(20_000),
@@ -25,7 +25,7 @@ const invoice = z.object({
 	expectedAmount: money,
 	expectedSettlementCurrency: currency,
 	contractedChargeBearer: z.enum(["OUR", "SHA", "BEN"]),
-	withholdingTaxRateBps: z.number().int().min(0).max(10_000),
+	withholdingTaxRateBps: z.number().int().min(0).max(10_000).optional(),
 	taxMinor: z.number().int().safe().optional(),
 	discountMinor: z.number().int().safe().optional(),
 	lineItems: z.array(z.object({
