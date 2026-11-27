@@ -34,6 +34,36 @@ Feature release for local persistence, ingestion records, integration setup, and
 - `npm run build` passed for application version `0.2.0`.
 - `npm start -- --no-open` started the built app; `/` and `/api/health` returned HTTP 200, with health reporting app version `0.2.0` and Mozaik core `6.0.0`.
 
+## [0.2.1] - 2026-11-27
+
+Patch release fixing six production-affecting UI/runtime bugs discovered during hackathon submission preparation. All fixes are local-only with no external dependencies.
+
+### Fixed
+
+- **SSE status indicators** (`src/components/corridor-workspace.tsx`): Replaced malformed Tailwind class `bg-[#2c2111]0` with valid `bg-amber-600` for disconnected state at two locations (header status row and footer status bar). The invalid class produced no visible dot in production builds.
+
+- **Settings sidebar GitHub icon overlap** (`src/components/settings-view.tsx`): Added `pb-10` bottom padding to the settings `Card` so the absolute-positioned GitHub octocat icons (repo + issues links) no longer cover the last settings tile.
+
+- **Hot-folder watcher re-ingestion** (`src/runtime/orchestrator.ts`): Changed `seenFiles` from a `Set<string>` to a `Map<string, string>` keyed by filename with values of `${mtimeMs}:${size}`. The watcher now re-ingests a file when its modification time or size changes, skips directories and non-files, and avoids partial-write races by verifying the signature again after the 250 ms debounce.
+
+- **Stale production bundle** (`scripts/start.mjs`): Added `bundleIsStale()` that compares the newest mtime among tracked source directories (`src`, `public`, `next.config.mjs`, `package.json`, `tailwind.config.ts`, `postcss.config.mjs`, `tsconfig.json`) against the `.next/BUILD_ID` mtime. The start script now rebuilds when sources are newer instead of serving a stale bundle.
+
+- **Preview format race condition** (`src/components/case-inspector-modal.tsx`): Added a `useRef` run counter that clears `previewText`/`previewError` on format change and ignores stale fetch responses, preventing CSV/TXT previews from showing stale PDF content while the new fetch is in flight.
+
+- **CSV export negative amounts** (`src/core/reports/export-formats.ts`): Fixed `csvEscape()` to keep plain numbers (including negatives like `-35.00`) numeric in spreadsheets. Only values that start with `= + - @` and are **not** plain numbers receive the leading-apostrophe neutralization. Added regression test covering `-35.00` → `-35.00` (not `'-35.00`).
+
+### Verification
+
+- `npm test` passed: 93 tests, 0 failures.
+- `npm run typecheck` passed.
+- `npm run build` passed for application version `0.2.1`.
+- `npm start -- --no-open` started the built app; `/api/runtime/status` reports `sourceRevision: c3523593bcb8`, `workingTree: "clean"`, provider mode `unconfigured`, queue stats all zero.
+- Runtime SSE indicators show emerald (connected) / amber (disconnected).
+- Settings sidebar GitHub icons no longer overlap at any viewport.
+- Hot-folder re-drop of edited file re-ingests with new ingestion ID.
+- Case inspector preview tabs switch without stale content.
+- CSV export opens in spreadsheet with numeric negative cells (SUM works).
+
 ## [0.1.1] - 2026-11-26
 
 Patch release for the command-line audit completion message and release documentation. Reconciliation rules and audit-rules version remain unchanged from `0.1.0`.
