@@ -108,7 +108,8 @@ export class CorridorDatabase {
 		const occurredAt = new Date().toISOString()
 		const eventId = `evt_${randomUUID()}`
 		const clean = (value: string | undefined, max: number) => value?.trim().slice(0, max) || null
-		this.db.exec("BEGIN IMMEDIATE")
+		const nestedTransaction = this.db.isTransaction
+		this.db.exec(nestedTransaction ? "SAVEPOINT audit_event_append" : "BEGIN IMMEDIATE")
 		try {
 			const previous = this.db.prepare(`SELECT sequence, event_hash FROM workspace_audit_log
 				WHERE workspace_id = ? ORDER BY sequence DESC LIMIT 1`).get(workspaceId) as { sequence: number; event_hash: string } | undefined
@@ -139,7 +140,7 @@ export class CorridorDatabase {
 				event.actorEmail, event.actorRole, event.action, event.targetType, event.targetId, event.outcome,
 				event.requestId, event.metadataJson, event.previousHash, eventHash,
 			)
-			this.db.exec("COMMIT")
+			this.db.exec(nestedTransaction ? "RELEASE SAVEPOINT audit_event_append" : "COMMIT")
 			return {
 				workspaceId, sequence, eventId, occurredAt, actorType: input.actorType,
 				actorId: event.actorId || undefined, actorEmail: event.actorEmail || undefined,
@@ -148,7 +149,12 @@ export class CorridorDatabase {
 				requestId: event.requestId || undefined, metadata, previousHash: event.previousHash, eventHash,
 			}
 		} catch (error) {
-			this.db.exec("ROLLBACK")
+			if (nestedTransaction) {
+				this.db.exec("ROLLBACK TO SAVEPOINT audit_event_append")
+				this.db.exec("RELEASE SAVEPOINT audit_event_append")
+			} else {
+				this.db.exec("ROLLBACK")
+			}
 			throw error
 		}
 	}
@@ -320,15 +326,31 @@ export class CorridorDatabase {
 		reviewerRole: string
 		workspaceId?: string
 	}): string | null {
-		const row = this.db.prepare(`SELECT id FROM review_approvals WHERE workspace_id = ? AND case_id = ? AND status = 'pending'
-			ORDER BY requested_at DESC, rowid DESC LIMIT 1`).get(params.workspaceId || DEFAULT_WORKSPACE_ID, params.caseId) as { id: string } | undefined
-		if (!row) return null
-		const decidedAt = new Date().toISOString()
-		const updated = this.db.prepare(`UPDATE review_approvals SET status = ?, decision = ?, reason = ?, reviewer_sub = ?,
-			reviewer_email = ?, reviewer_role = ?, decided_at = ? WHERE id = ? AND status = 'pending'`)
-			.run(params.decision === "approve" ? "approved" : params.decision === "reject" ? "rejected" : "stopped",
-				params.decision, params.reason ?? null, params.reviewerSub, params.reviewerEmail, params.reviewerRole, decidedAt, row.id)
-		return Number(updated.changes) === 1 ? row.id : null
+		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
+		this.db.exec("BEGIN IMMEDIATE")
+		try {
+			const row = this.db.prepare(`SELECT id FROM review_approvals WHERE workspace_id = ? AND case_id = ? AND status = 'pending'
+				ORDER BY requested_at DESC, rowid DESC LIMIT 1`).get(workspaceId, params.caseId) as { id: string } | undefined
+			if (!row) {
+				this.db.exec("COMMIT")
+				return null
+			}
+			const decidedAt = new Date().toISOString()
+			const updated = this.db.prepare(`UPDATE review_approvals SET status = ?, decision = ?, reason = ?, reviewer_sub = ?,
+				reviewer_email = ?, reviewer_role = ?, decided_at = ? WHERE id = ? AND status = 'pending'`)
+				.run(params.decision === "approve" ? "approved" : params.decision === "reject" ? "rejected" : "stopped",
+					params.decision, params.reason ?? null, params.reviewerSub, params.reviewerEmail, params.reviewerRole, decidedAt, row.id)
+			if (Number(updated.changes) !== 1) {
+				this.db.exec("COMMIT")
+				return null
+			}
+			this.appendWorkspaceAuditEvent({ workspaceId, actorType: params.reviewerSub === "local-operator" ? "local" : "user", actorId: params.reviewerSub, actorEmail: params.reviewerEmail, actorRole: params.reviewerRole, action: "review.decision", targetType: "case", targetId: params.caseId, metadata: { decision: params.decision, approvalId: row.id } })
+			this.db.exec("COMMIT")
+			return row.id
+		} catch (error) {
+			this.db.exec("ROLLBACK")
+			throw error
+		}
 	}
 
 	findStoredReviewDecision(caseId: string, argsJson: string, workspaceId = DEFAULT_WORKSPACE_ID): StoredReviewDecision | null {
@@ -847,20 +869,27 @@ export class CorridorDatabase {
 		casesQueued: number
 		error?: string
 	}): void {
-		this.db
-			.prepare(
-				`UPDATE sync_runs
+		this.db.exec("BEGIN IMMEDIATE")
+		try {
+			const run = this.db.prepare(`UPDATE sync_runs
 				SET status = ?, records_fetched = ?, cases_queued = ?, error = ?, finished_at = ?
-				WHERE id = ?`,
-			)
-			.run(
-				params.status,
-				params.recordsFetched,
-				params.casesQueued,
-				params.error ?? null,
-				new Date().toISOString(),
-				params.id,
-			)
+				WHERE id = ? RETURNING workspace_id, provider, trigger_type`).get(
+				params.status, params.recordsFetched, params.casesQueued, params.error ?? null, new Date().toISOString(), params.id,
+			) as { workspace_id: string; provider: string; trigger_type: string } | undefined
+			if (run) this.appendWorkspaceAuditEvent({
+				workspaceId: run.workspace_id,
+				actorType: "system",
+				action: "integration.sync.complete",
+				targetType: "integration",
+				targetId: run.provider,
+				outcome: params.status === "success" ? "success" : "failure",
+				metadata: { status: params.status, trigger: run.trigger_type, recordsFetched: params.recordsFetched, casesQueued: params.casesQueued },
+			})
+			this.db.exec("COMMIT")
+		} catch (error) {
+			this.db.exec("ROLLBACK")
+			throw error
+		}
 	}
 
 	listRecentSyncRuns(workspaceId = DEFAULT_WORKSPACE_ID, limit = 20): SyncRunRecord[] {
@@ -925,6 +954,7 @@ export class CorridorDatabase {
 				if (Number(update.changes) !== 1) throw new Error(`Case ${verdict.caseId} does not belong to workspace ${workspaceId}.`)
 			}
 			this.upsertAuditVerdict(verdict, workspaceId)
+			this.appendWorkspaceAuditEvent({ workspaceId, actorType: "system", action: "case.audit.complete", targetType: "case", targetId: verdict.caseId, metadata: { verdictStatus: verdict.status } })
 			this.db.exec("COMMIT")
 		} catch (error) {
 			this.db.exec("ROLLBACK")

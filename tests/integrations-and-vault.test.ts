@@ -157,6 +157,8 @@ test("CorridorDatabase persists workspaces, team members, encrypted integrations
 	})
 	db.finishSyncRun({ id: syncRun.id, status: "success", recordsFetched: 4, casesQueued: 2 })
 	assert.equal(db.listRecentSyncRuns(DEFAULT_WORKSPACE_ID, 5)[0]?.casesQueued, 2)
+	assert.equal(db.listWorkspaceAuditEvents(DEFAULT_WORKSPACE_ID).find((event) => event.action === "integration.sync.complete")?.metadata.recordsFetched, 4)
+	assert.equal(db.verifyWorkspaceAuditChain(DEFAULT_WORKSPACE_ID).valid, true)
 
 	db.disconnectIntegration(DEFAULT_WORKSPACE_ID, "wise")
 	assert.equal(db.getIntegration(DEFAULT_WORKSPACE_ID, "wise")?.status, "disconnected")
@@ -730,6 +732,7 @@ test("normalized cases, verdicts, and approval payloads encrypt at rest and migr
 	}
 	db.saveCase(settlementCase)
 	db.saveAuditVerdict(verdict)
+	assert.equal(db.listWorkspaceAuditEvents(DEFAULT_WORKSPACE_ID).find((event) => event.action === "case.audit.complete")?.targetId, settlementCase.caseId)
 	db.createPendingApproval(approval)
 	db.close()
 
@@ -794,6 +797,10 @@ test("review decisions persist against the exact breakpoint call and retain huma
 		reviewerRole: "controller",
 	})
 	assert.ok(rejected)
+	const reviewEvent = db.listWorkspaceAuditEvents(DEFAULT_WORKSPACE_ID).find((event) => event.action === "review.decision")
+	assert.equal(reviewEvent?.actorEmail, "controller@acme.test")
+	assert.equal(reviewEvent?.metadata.decision, "reject")
+	assert.equal(JSON.stringify(reviewEvent).includes("Keep the relationship"), false)
 	assert.deepEqual(db.findStoredReviewDecision(pending.caseId, pending.argsJson), {
 		approvalId: rejected,
 		decision: "reject",
