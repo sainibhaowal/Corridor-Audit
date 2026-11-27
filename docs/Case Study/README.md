@@ -15,6 +15,7 @@
 | **[04. Mozaik 4+1 Agent System](./04-mozaik-4-plus-1-agents.md)** | Why `@mozaik-ai/core`, 4+1 concurrent agents, `CorridorState`, breakpoints | 4+1 Topology SVG + Mermaid state machine & router |
 | **[05. Financial Math & Algorithms](./05-algorithms-and-financial-math.md)** | Zero-drift integer minor units, Cent-Conservation Equation, Mod-97, FX bps | Mathematical proofs, waterfall SVG, algorithm specs |
 | **[06. Outputs, Disputes & ROI](./06-outputs-disputes-and-roi.md)** | Exact user deliverables, worked `€5,000` EUR→USD case, dispute letters, ROI | Worked ledger example, dispute template, B2C/B2B ROI |
+| **[07. Security, Hashing & Data Protection](./07-security-hashing-and-data-protection.md)** | AES-256-GCM vault, HMAC-SHA256 webhooks, SHA-256 fingerprints & BEC guard | 5-Layer Security SVG, webhook sequence & zero-leak policy |
 
 ---
 

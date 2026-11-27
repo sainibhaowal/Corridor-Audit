@@ -1,4 +1,4 @@
-﻿# 01 · Problem Statement — The Silent Cross-Border Settlement Leak
+# 01 · Problem Statement — The Silent Cross-Border Settlement Leak
 
 ## 1. The Core Problem
 

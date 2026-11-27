@@ -1,4 +1,4 @@
-﻿# 06 · Actionable Outputs, Bank Dispute Letters & ROI
+# 06 · Actionable Outputs, Bank Dispute Letters & ROI
 
 ## 1. What Every User & Finance Team Receives
 

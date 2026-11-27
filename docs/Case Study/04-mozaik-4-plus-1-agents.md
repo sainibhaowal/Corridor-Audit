@@ -1,4 +1,4 @@
-﻿# 04 · The Mozaik 4+1 Concurrent Agent System
+# 04 · The Mozaik 4+1 Concurrent Agent System
 
 ## 1. Infographic Agent Topology
 

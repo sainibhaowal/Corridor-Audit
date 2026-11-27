@@ -1,4 +1,4 @@
-﻿# 05 · Financial Mathematics & Forensic Algorithms
+# 05 · Financial Mathematics & Forensic Algorithms
 
 > [!IMPORTANT]
 > Floating-point arithmetic (`0.1 + 0.2 === 0.30000000000000004`) is **banned** in CorridorAudit's accounting core ([`src/core/money.ts`](../../src/core/money.ts)). Every monetary calculation executes in **integer minor units**.

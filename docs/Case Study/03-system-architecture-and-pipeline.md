@@ -1,4 +1,4 @@
-﻿# 03 · End-to-End System Architecture & Processing Pipeline
+# 03 · End-to-End System Architecture & Processing Pipeline
 
 ## 1. Infographic Architecture Blueprint
 

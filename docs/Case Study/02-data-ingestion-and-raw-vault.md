@@ -1,4 +1,4 @@
-﻿# 02 · Data Ingestion, Vendor Platforms & Raw Data Vault
+# 02 · Data Ingestion, Vendor Platforms & Raw Data Vault
 
 ## 1. Where the Data Comes From (5 Live Channels)
 
