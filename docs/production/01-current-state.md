@@ -6,27 +6,31 @@ This page records behavior visible in the current source tree. It distinguishes 
 
 ```mermaid
 flowchart LR
-    U[Upload or paste] --> P[Parse in Next.js process]
+    U[Upload or paste] --> P[Parse and validate in Next.js process]
     W[Inbound JSON or email adapter] --> P
-    H[Local hot folder] --> P
+    H[Local hot folder] --> R[Encrypted SQLite raw evidence]
     I[Integration poll] --> N[Provider mapping]
-    N --> P
-    P --> R[SQLite raw ingestion record]
-    P --> Q[In-process case promise chain]
-    Q --> T[Terms specialist]
-    Q --> F[FX specialist]
-    Q --> D[Wire specialist]
-    Q -. conditional .-> A[Anomaly specialist]
+    N --> R
+    P --> R
+    P --> Q[Durable SQLite case queue]
+    N --> Q
+    H --> Q
+    W --> Q
+    Q --> L[Single local queue worker with leases and retries]
+    L --> T[Terms specialist]
+    L --> F[FX specialist]
+    L --> D[Wire specialist]
+    L -. conditional .-> A[Anomaly specialist]
     T --> B[Expected-role barrier]
     F --> B
     D --> B
     A -. when expected .-> B
     B --> C[Auditor]
-    C --> G[In-process review gate]
+    C --> G[SQLite pending review and decision]
     G --> V[SQLite verdict and current workbench]
 ```
 
-Uploads and inbound webhooks parse in the request process. Upload and webhook bodies have endpoint-specific streaming size limits. The API normally returns `202` after parsing and starting an in-process queue operation, not after the audit finishes. Three specialist agents run concurrently per case. The anomaly agent runs when candidate wires or account-change evidence is present. The auditor starts after all expected specialists complete. Cases are serialized through a process-local promise chain. See [`src/runtime/orchestrator.ts`](../../src/runtime/orchestrator.ts).
+Uploads and inbound webhooks parse in the request process. Upload and webhook bodies have endpoint-specific streaming size limits. Accepted cases are stored in the SQLite queue before the audit finishes. Inbound JSON and email adapter receipts commit the normalized cases, parse result, and queued receipt state together before returning `202`; uploads persist their ingestion result and queue cases through the local orchestrator. The local worker polls SQLite, claims cases with leases, retries bounded failures, and restores queued work after restart. It serializes cases in one process to respect configured model-call limits, while the three specialist agents run concurrently within each case. The anomaly agent runs when candidate wires or account-change evidence is present. The auditor starts after all expected specialists complete. The worker and model runtime are still part of the Next.js process, so this is durable local work storage and recovery, not a separately deployed worker fleet or distributed queue. See [`src/runtime/orchestrator.ts`](../../src/runtime/orchestrator.ts) and [`src/runtime/workers/durable-case-queue.ts`](../../src/runtime/workers/durable-case-queue.ts).
 
 ## Feature status
 

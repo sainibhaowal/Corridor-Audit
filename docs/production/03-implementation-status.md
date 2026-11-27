@@ -457,3 +457,8 @@ Update this section per milestone with the exact command, result, environment, a
 - Fee-clause assessments now state that a potential discrepancy or mismatch is calculated from submitted invoice and wire records and should be checked against the original contract and bank statement. Existing internal status and amount fields remain stable for compatibility.
 - The downloadable text artifact remains a draft asking the bank to review the submitted records. It does not send a claim or establish that an adjustment is owed.
 - Verification in the local Windows environment: `npm run typecheck`, `npm test` (77 passed, 0 failed), and `npm run build` passed. No provider or cloud service was contacted.
+
+### 2026-11-27 local processing architecture record
+
+- Updated the current-state flow to show encrypted raw evidence, the durable SQLite case queue, the single local worker's leases and retries, persisted human review, and verdict storage. Clarified that intake parsing runs in the request process and that audit processing returns after durable acceptance rather than after the full audit completes.
+- This is a documentation correction based on the current upload, webhook, database queue, and orchestrator implementations. It does not describe a distributed worker fleet or cloud deployment.
