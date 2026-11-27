@@ -33,12 +33,19 @@ export async function POST(request: Request) {
 			return NextResponse.json({ error: parsedBody.error.issues[0]?.message || "Invalid upload request." }, { status: 400 })
 		}
 		const body: UploadPayload = parsedBody.data
+		const filename = body.filename || (body.format ? `upload.${body.format}` : "manual-paste.txt")
+		const isPdfUpload = body.format === "pdf" || filename.toLowerCase().endsWith(".pdf")
+		if (body.base64 && !isPdfUpload) {
+			return NextResponse.json({ error: "Base64 file uploads are supported only for PDF documents." }, { status: 400 })
+		}
+		if (isPdfUpload && !body.base64) {
+			return NextResponse.json({ error: "PDF uploads must be provided as a base64 encoded file." }, { status: 400 })
+		}
 		if (body.base64 && Buffer.from(body.base64, "base64").byteLength > 10 * 1024 * 1024) {
 			return NextResponse.json({ error: "Decoded file exceeds the 10 MiB upload limit." }, { status: 413 })
 		}
 		const isBase64 = Boolean(body.base64 && !body.content)
 		const rawContent = body.content || body.base64 || ""
-		const filename = body.filename || (body.format ? `upload.${body.format}` : "manual-paste.txt")
 		const format = body.format || "auto"
 
 		if (rawContent) {

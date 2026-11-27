@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { normalizeInboundPayloadToCases } from "../src/core/ingest/normalize-upload"
+import { extractTextFromPdfBuffer } from "../src/core/parsers/pdf-parser"
 import { readRequestTextLimited, RequestBodyTooLargeError } from "../src/core/security/request-body"
 
 const invoice = {
@@ -118,4 +119,11 @@ test("request body reader enforces its byte limit while streaming", async () => 
 
 	const smallRequest = new Request("http://localhost/upload", { method: "POST", body: "1234" })
 	assert.equal(await readRequestTextLimited(smallRequest, 4), "1234")
+})
+
+test("PDF ingestion rejects mislabeled and non-extractable files while reading actual PDF text", () => {
+	const pdf = Buffer.from("%PDF-1.4\n1 0 obj\n<< /Length 44 >>\nstream\nBT (Invoice INV-12345 EUR 125.00) Tj ET\nendstream\nendobj\n%%EOF\n", "utf8")
+	assert.match(extractTextFromPdfBuffer(pdf), /INV-12345/)
+	assert.throws(() => extractTextFromPdfBuffer(Buffer.from("not a pdf")), /not a complete PDF/)
+	assert.throws(() => extractTextFromPdfBuffer(Buffer.from("%PDF-1.4\n%%EOF\n")), /no extractable text/)
 })

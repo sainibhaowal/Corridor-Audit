@@ -2,6 +2,9 @@ import { inflateSync } from "node:zlib"
 import { parseDecimalStringToMinor } from "../money"
 import type { ChargeBearerClause, InvoiceInput, SourceRef } from "../types"
 
+const MAX_PDF_DECOMPRESSED_BYTES = 20 * 1024 * 1024
+const MAX_PDF_STREAMS = 1000
+
 function decodePdfLiteralStrings(chunk: string): string[] {
 	const results: string[] = []
 	const matches = chunk.match(/\((?:\\.|[^\\()])*\)\s*Tj|\[[^\]]*\]\s*TJ/g) ?? []
@@ -29,32 +32,46 @@ function decodePdfLiteralStrings(chunk: string): string[] {
  */
 export function extractTextFromPdfBuffer(buffer: Buffer): string {
 	const latin1 = buffer.toString("latin1")
+	const header = buffer.subarray(0, Math.min(buffer.length, 1024)).toString("latin1")
+	const trailer = buffer.subarray(Math.max(0, buffer.length - 2048)).toString("latin1")
+	if (!header.includes("%PDF-") || !trailer.includes("%%EOF")) {
+		throw new Error("Upload is not a complete PDF file.")
+	}
 	const collected: string[] = []
+	let decompressedBytes = 0
+	let streamCount = 0
 
 	// 1. Try inflating FlateDecode streams
 	const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g
 	let match: RegExpExecArray | null
 	while ((match = streamRegex.exec(latin1)) !== null) {
+		streamCount += 1
+		if (streamCount > MAX_PDF_STREAMS) throw new Error("PDF contains too many streams to process safely.")
 		const rawStream = Buffer.from(match[1], "latin1")
+		const remainingBytes = MAX_PDF_DECOMPRESSED_BYTES - decompressedBytes
+		if (remainingBytes <= 0) throw new Error("PDF decompressed content exceeds the 20 MiB processing limit.")
 		try {
-			const inflated = inflateSync(rawStream).toString("latin1")
+			const inflatedBuffer = inflateSync(rawStream, { maxOutputLength: remainingBytes })
+			decompressedBytes += inflatedBuffer.byteLength
+			const inflated = inflatedBuffer.toString("latin1")
 			collected.push(...decodePdfLiteralStrings(inflated))
-		} catch {
+		} catch (error) {
+			if (error instanceof Error && "code" in error && error.code === "ERR_BUFFER_TOO_LARGE") {
+				throw new Error("PDF decompressed content exceeds the 20 MiB processing limit.")
+			}
 			// Also scan uncompressed streams directly
 			collected.push(...decodePdfLiteralStrings(match[1]))
 		}
 	}
 
 	if (collected.length > 0) {
-		return collected.join("\n")
+		const result = collected.join("\n")
+		if (Buffer.byteLength(result, "utf8") > MAX_PDF_DECOMPRESSED_BYTES) {
+			throw new Error("PDF extracted text exceeds the 20 MiB processing limit.")
+		}
+		return result
 	}
-
-	// 2. Fallback: extract printable ASCII lines for lightweight text/pseudo-PDF inputs
-	return buffer
-		.toString("utf8")
-		.replace(/[^\x20-\x7E\r\n]/g, " ")
-		.replace(/[ \t]{2,}/g, " ")
-		.trim()
+	throw new Error("PDF contains no extractable text. Scanned PDFs require OCR before upload.")
 }
 
 /**

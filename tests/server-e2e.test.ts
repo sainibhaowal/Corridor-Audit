@@ -59,6 +59,26 @@ test("Next.js App Router API routes serve health, terminal, upload ingestion, we
 		":71A:OUR",
 		":71G:USD45,00",
 	].join("\n")
+	const mislabeledBase64 = await uploadRoute(
+		new Request("http://127.0.0.1/api/audit/upload", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ filename: "records.csv", base64: Buffer.from("not a PDF").toString("base64") }),
+		}),
+	)
+	assert.equal(mislabeledBase64.status, 400, "binary base64 uploads must not be guessed as text records")
+
+	const invalidPdf = await uploadRoute(
+		new Request("http://127.0.0.1/api/audit/upload", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ format: "pdf", base64: Buffer.from("not a PDF").toString("base64") }),
+		}),
+	)
+	assert.equal(invalidPdf.status, 400)
+	const invalidPdfBody = (await invalidPdf.json()) as { ingestionId?: string }
+	assert.ok(invalidPdfBody.ingestionId)
+	assert.equal(getCorridorDb().getRawIngestion(invalidPdfBody.ingestionId || "")?.parseStatus, "failed")
 
 	const uploadRes = await uploadRoute(
 		new Request("http://127.0.0.1/api/audit/upload", {
