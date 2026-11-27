@@ -9,7 +9,7 @@ import {
 } from "../../core/money"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "../../core/db/database"
 import type { AuditStatus, AuditVerdict, SourceRef } from "../../core/types"
-import { type CorridorState, resolveRuntime } from "../corridor-runtime"
+import { type CorridorState, publishCorridorEvent, resolveRuntime } from "../corridor-runtime"
 import { isHumanOverrideAuthorized } from "../interception/human-override"
 
 const CaseIdSchema = z.object({ caseId: z.string() })
@@ -450,9 +450,65 @@ export const finalizeSettlementActionTool: Tool = {
 	},
 }
 
+export const rerunSpecialistAgentTool: Tool = {
+	type: "function",
+	name: "rerun_specialist_agent",
+	description:
+		"Re-run a single specialist agent (terms, fx, wire, or anomaly) with targeted feedback when its output is missing, failed, or inconsistent with the raw extracted data. Does not re-run other satisfied specialists. Maximum 2 reruns per role per case.",
+	parameters: {
+		type: "object",
+		properties: {
+			caseId: { type: "string" },
+			role: { type: "string", enum: ["terms", "fx", "wire", "anomaly"] },
+			feedback: { type: "string" },
+		},
+		required: ["caseId", "role", "feedback"],
+	},
+	strict: false,
+	invoke: async (rawArgs: unknown) => {
+		const args = rawArgs as {
+			caseId: string
+			role: "terms" | "fx" | "wire" | "anomaly"
+			feedback: string
+		}
+		const state = resolveRuntime().state
+		const { allowed, attempt } = state.requestSpecialistRerun(args.caseId, args.role)
+		if (!allowed) {
+			return {
+				retriggered: false,
+				caseId: args.caseId,
+				role: args.role,
+				attempt,
+				reason: `Maximum rerun limit (2) already reached for ${args.role} on ${args.caseId}.`,
+			}
+		}
+		state.emitTrajectory({
+			caseId: args.caseId,
+			kind: "phase.changed",
+			phase: `TARGETED RE-RUN · ${args.role.toUpperCase()} (ATTEMPT ${attempt})`,
+			agentName: "AuditorAgent",
+			text: `AuditorAgent requested targeted re-run of ${args.role}: ${args.feedback}`,
+		})
+		publishCorridorEvent("specialist.rerun", "auditor", {
+			caseId: args.caseId,
+			role: args.role,
+			feedback: args.feedback,
+			attempt,
+		})
+		return {
+			retriggered: true,
+			caseId: args.caseId,
+			role: args.role,
+			attempt,
+			feedback: args.feedback,
+		}
+	},
+}
+
 export const auditTools: Tool[] = [
 	verifySettlementBalanceTool,
 	verifyCitationsIntegrityTool,
 	simulateCorridorReplayTool,
+	rerunSpecialistAgentTool,
 	finalizeSettlementActionTool,
 ]

@@ -90,12 +90,62 @@ function createSpecialistAgent(params: {
 		},
 	}
 
+	const rerunHandler: SituationHandler = {
+		specification: new (class extends SituationSpecification {
+			isSatisfiedBy(ctx: SituationContext): boolean {
+				if (ctx.event.type !== "specialist.rerun") return false
+				const { role } = ctx.event.payload as { role?: string }
+				return role === params.role
+			}
+		})(),
+		processor: {
+			apply(ctx: SituationContext): void {
+				const agent = ctx.participant as Agent
+				const { caseId, feedback, attempt } = ctx.event.payload as {
+					caseId: string
+					feedback?: string
+					attempt?: number
+				}
+				const state = resolveRuntime().state
+				activeCaseByAgentId.set(agent.getId(), caseId)
+				const rawSnippet = state.casesById.get(caseId)?.wire.rawText?.slice(0, 1200)
+
+				state.emitTrajectory({
+					caseId,
+					kind: "agent.started",
+					agentName: params.name,
+					phase: `TARGETED RE-RUN · ATTEMPT ${attempt ?? 1}`,
+					status: "running",
+				})
+
+				const freshContext = ModelContext.create().addContextItem(
+					DeveloperMessageItem.create(agent.getDeveloperMessage()),
+				)
+				const prompt = [
+					`AuditorAgent requested a targeted re-run for settlement case ${caseId}.`,
+					feedback ? `Auditor feedback: ${feedback}` : "",
+					rawSnippet ? `Raw extracted text excerpt:\n${rawSnippet}` : "",
+					`Re-execute your mandatory deterministic tool workflow now to produce an accurate result.`,
+				]
+					.filter(Boolean)
+					.join("\n\n")
+				runLoop(agent.getId(), prompt, {
+					model: ACTIVE_MODEL_SLOT,
+					maxOutputTokens: 4096,
+					streaming: true,
+					context: freshContext,
+					tools: agent.getTools(),
+				})
+			},
+		},
+	}
+
 	return createAgent({
 		name: params.name,
 		capabilities: [params.role],
 		instruction: params.instruction,
 		tools: instrumentTools(params.name, params.tools),
-		handlers: [handler],
+		handlers: [handler, rerunHandler],
 	})
 }
 
