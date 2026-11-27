@@ -22,6 +22,35 @@ export interface IntegrationCatalogItem {
 	fields: IntegrationFieldSpec[]
 }
 
+export type IntegrationAdapterMode = "native_provider_api" | "generic_json_endpoint" | "local_folder" | "email_webhook_adapter"
+
+export interface IntegrationAdapterDetails {
+	mode: IntegrationAdapterMode
+	label: string
+	scope: string
+}
+
+export function getIntegrationAdapterDetails(provider: string): IntegrationAdapterDetails {
+	switch (provider) {
+		case "stripe":
+			return { mode: "native_provider_api", label: "Native provider API", scope: "Reads Stripe payout records. It does not fetch balance transactions, match invoices, or confirm receiving bank settlement." }
+		case "wise":
+			return { mode: "native_provider_api", label: "Native provider API", scope: "Reads Wise transfer amounts, currencies, rate, date, and reference with offset pagination. No incremental cursor or invoice and bank matching." }
+		case "quickbooks":
+			return { mode: "native_provider_api", label: "Native provider API", scope: "Reads QuickBooks invoices only. Payment and bank settlement evidence are not fetched; the unmatched wire is structural, not a payment record." }
+		case "xero":
+			return { mode: "native_provider_api", label: "Native provider API", scope: "Reads Xero invoices only. Payment and bank settlement evidence are not fetched; the unmatched wire is structural, not a payment record." }
+		case "bank_sftp":
+			return { mode: "local_folder", label: "Local folder adapter", scope: "Reads supported files from a local hot folder. This adapter does not open an SFTP connection." }
+		case "email_inbound":
+			return { mode: "email_webhook_adapter", label: "Email webhook adapter", scope: "Parses JSON delivered to the email webhook route. A mailbox and email provider delivery must be configured separately." }
+		case "open_banking":
+			return { mode: "generic_json_endpoint", label: "Generic JSON endpoint", scope: "Uses the configured OAuth or bearer token and performs one JSON GET. It does not link bank accounts or implement provider transaction pagination." }
+		default:
+			return { mode: "generic_json_endpoint", label: "Generic JSON endpoint", scope: "Performs one bearer authenticated JSON GET to the configured URL. Vendor specific pagination, cursors, payload mapping, and reconciliation are not implemented." }
+	}
+}
+
 export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 	{
 		provider: "stripe",
@@ -30,8 +59,8 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 		audiences: ["b2c", "b2b"],
 		authModes: ["oauth2", "api_token"],
 		defaultAuthMode: "oauth2",
-		description: "Connect Stripe Connect or paste a Restricted API Key to sync payouts, balance transactions, and FX fees.",
-		dataReceived: "Payout webhooks, gross/net settlement amounts, processing fees, currency conversions",
+		description: "Connect Stripe Connect or an API key to import payout records.",
+		dataReceived: "Payout ID, amount, currency, status, creation time, arrival date, and description from the Payouts API",
 		oauthEnvVars: { clientId: "STRIPE_CLIENT_ID", clientSecret: "STRIPE_CLIENT_SECRET" },
 		fields: [
 			{ key: "apiKey", label: "Restricted / Secret API Key", type: "password", placeholder: "rk_live_... or sk_live_...", required: true, secret: true },
@@ -46,8 +75,8 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 		audiences: ["b2c", "b2b"],
 		authModes: ["oauth2", "api_token"],
 		defaultAuthMode: "oauth2",
-		description: "Sync multi-currency Wise transfers, applied exchange rates, and fee breakdowns automatically.",
-		dataReceived: "Transfer webhooks, Wise applied FX rate, source/target amounts, transfer fees",
+		description: "Import Wise transfer records and their reported source and destination amounts.",
+		dataReceived: "Transfer ID, source and destination currencies and amounts, reported rate, creation time, and reference",
 		oauthEnvVars: { clientId: "WISE_CLIENT_ID", clientSecret: "WISE_CLIENT_SECRET" },
 		fields: [
 			{ key: "apiKey", label: "Wise API Token", type: "password", placeholder: "Wise personal or business token", required: true, secret: true },
@@ -62,12 +91,12 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 		audiences: ["b2c", "b2b"],
 		authModes: ["api_token", "oauth2"],
 		defaultAuthMode: "api_token",
-		description: "Pull global marketplace payouts and cross-currency withdrawal fees.",
-		dataReceived: "Payout status, withdrawal FX spread, platform fees",
+		description: "Use a configured JSON endpoint to import normalized payout records.",
+		dataReceived: "The endpoint response must use the supported CorridorAudit JSON input shape; no native Payoneer mapping is implemented",
 		fields: [
 			{ key: "apiKey", label: "Payoneer API Token", type: "password", placeholder: "Bearer token", required: true, secret: true },
 			{ key: "accountId", label: "Payoneer Account / Program ID", type: "text", placeholder: "e.g. 10004291", required: true },
-			{ key: "apiBaseUrl", label: "API Endpoint", type: "url", placeholder: "https://api.payoneer.com/v4", required: false },
+			{ key: "apiBaseUrl", label: "JSON API Endpoint", type: "url", placeholder: "https://your-provider.example/api/records", required: true },
 		],
 	},
 	{
@@ -75,12 +104,13 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 		name: "Upwork",
 		category: "payouts",
 		audiences: ["b2c"],
-		authModes: ["oauth2", "email_forward"],
-		defaultAuthMode: "oauth2",
-		description: "Track freelance escrow releases, 10% platform fees, and local currency payout spreads.",
-		dataReceived: "Earnings & withdrawal statements, platform service fees, net landed payout",
+		authModes: ["api_token", "email_forward"],
+		defaultAuthMode: "api_token",
+		description: "Use a configured JSON endpoint or the separate email webhook adapter to import records.",
+		dataReceived: "The generic endpoint must return the supported CorridorAudit JSON input shape; no native Upwork API mapping is implemented",
 		fields: [
 			{ key: "apiKey", label: "Upwork OAuth Access Token", type: "password", placeholder: "OAuth2 bearer token", required: true, secret: true },
+			{ key: "apiBaseUrl", label: "JSON API Endpoint", type: "url", placeholder: "https://your-provider.example/api/records", required: true },
 			{ key: "accountLabel", label: "Freelancer / Agency Name", type: "text", placeholder: "My Upwork Profile", required: false },
 		],
 	},
@@ -91,11 +121,11 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 		audiences: ["b2c", "b2b"],
 		authModes: ["api_token", "oauth2"],
 		defaultAuthMode: "api_token",
-		description: "Sync multi-currency Revolut account transactions and weekend/interbank FX markups.",
-		dataReceived: "Account transactions, applied FX legs, international wire fees",
+		description: "Use a configured JSON endpoint to import normalized payout or transaction records.",
+		dataReceived: "The endpoint response must use the supported CorridorAudit JSON input shape; no native Revolut mapping is implemented",
 		fields: [
 			{ key: "apiKey", label: "Revolut Business API Key", type: "password", placeholder: "oa_prod_...", required: true, secret: true },
-			{ key: "apiBaseUrl", label: "API Base URL", type: "url", placeholder: "https://b2b.revolut.com/api/1.0", required: false },
+			{ key: "apiBaseUrl", label: "JSON API Endpoint", type: "url", placeholder: "https://your-provider.example/api/records", required: true },
 		],
 	},
 	{
@@ -105,11 +135,11 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 		audiences: ["b2b"],
 		authModes: ["api_token"],
 		defaultAuthMode: "api_token",
-		description: "Connect B2B corporate treasury accounts for real-time ACH & international SWIFT wire tracking.",
-		dataReceived: "Outbound/inbound wires, intermediary bank deductions, SWIFT references",
+		description: "Use a configured JSON endpoint to import normalized treasury records.",
+		dataReceived: "The endpoint response must use the supported CorridorAudit JSON input shape; no native Mercury or Brex mapping is implemented",
 		fields: [
 			{ key: "apiKey", label: "Treasury API Token", type: "password", placeholder: "secret-token:...", required: true, secret: true },
-			{ key: "apiBaseUrl", label: "API Base URL", type: "url", placeholder: "https://api.mercury.com/api/v1", required: false },
+			{ key: "apiBaseUrl", label: "JSON API Endpoint", type: "url", placeholder: "https://your-provider.example/api/records", required: true },
 		],
 	},
 	{
@@ -119,8 +149,8 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 		audiences: ["b2b"],
 		authModes: ["oauth2", "api_token"],
 		defaultAuthMode: "oauth2",
-		description: "Sync company invoices, contracted currencies, and payment terms for automatic wire matching.",
-		dataReceived: "Open/paid invoices, customer/vendor details, contracted amounts & tax codes",
+		description: "Import invoice records for review. This connection does not perform automatic payment matching.",
+		dataReceived: "Invoice number, total, transaction date, currency, and customer name",
 		oauthEnvVars: { clientId: "QUICKBOOKS_CLIENT_ID", clientSecret: "QUICKBOOKS_CLIENT_SECRET" },
 		fields: [
 			{ key: "apiKey", label: "OAuth2 Access Token", type: "password", placeholder: "Intuit OAuth access token", required: true, secret: true },
@@ -134,8 +164,8 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 		audiences: ["b2b"],
 		authModes: ["oauth2", "api_token"],
 		defaultAuthMode: "oauth2",
-		description: "Continuously import Xero invoices and bills so every incoming wire has contracted terms.",
-		dataReceived: "Invoices, credit notes, withholding tax lines, expected settlement currency",
+		description: "Import Xero invoice records for review. This connection does not import payment or bank settlement evidence.",
+		dataReceived: "Invoice number, total, currency, date, and contact name",
 		oauthEnvVars: { clientId: "XERO_CLIENT_ID" },
 		fields: [
 			{ key: "apiKey", label: "OAuth2 Access Token", type: "password", placeholder: "Xero bearer token", required: true, secret: true },
@@ -149,12 +179,12 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 		audiences: ["b2b"],
 		authModes: ["api_token"],
 		defaultAuthMode: "api_token",
-		description: "Enterprise ERP invoice & vendor bill sync via RESTlet / SuiteTalk token auth.",
-		dataReceived: "Subsidiary invoices, intercompany wires, WHT & FX ledger postings",
+		description: "Use a configured JSON endpoint to import normalized ERP records.",
+		dataReceived: "The endpoint response must use the supported CorridorAudit JSON input shape; no native NetSuite mapping is implemented",
 		fields: [
 			{ key: "apiKey", label: "SuiteTalk Bearer / TBA Token", type: "password", placeholder: "NetSuite token", required: true, secret: true },
 			{ key: "accountId", label: "NetSuite Account ID", type: "text", placeholder: "1234567_SB1", required: true },
-			{ key: "apiBaseUrl", label: "REST Base URL", type: "url", placeholder: "https://<account>.suitetalk.api.netsuite.com", required: false },
+			{ key: "apiBaseUrl", label: "JSON API Endpoint", type: "url", placeholder: "https://your-provider.example/api/records", required: true },
 		],
 	},
 	{
@@ -164,12 +194,12 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 		audiences: ["b2c", "b2b"],
 		authModes: ["open_banking", "api_token"],
 		defaultAuthMode: "open_banking",
-		description: "Connect HSBC, Citi, Deutsche Bank, JPMorgan, or local bank accounts via Open Banking.",
-		dataReceived: "Live bank statement transactions, value dates, FX settlements, bank fees",
+		description: "Configure a TrueLayer OAuth token flow or bearer token with a JSON endpoint.",
+		dataReceived: "The configured endpoint response must use the supported CorridorAudit JSON input shape; no account linking or native Plaid mapping is implemented",
 		oauthEnvVars: { clientId: "TRUELAYER_CLIENT_ID", clientSecret: "TRUELAYER_CLIENT_SECRET" },
 		fields: [
 			{ key: "apiKey", label: "Access Token", type: "password", placeholder: "Plaid or TrueLayer access token", required: true, secret: true },
-			{ key: "apiBaseUrl", label: "Provider Transactions Endpoint", type: "url", placeholder: "https://api.truelayer.com/data/v1/accounts", required: false },
+			{ key: "apiBaseUrl", label: "JSON Transactions Endpoint", type: "url", placeholder: "https://api.truelayer.com/data/v1/transactions", required: true },
 			{ key: "accountLabel", label: "Bank & Account Name", type: "text", placeholder: "HSBC EUR Treasury", required: false },
 		],
 	},
@@ -180,8 +210,8 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 		audiences: ["b2b"],
 		authModes: ["sftp"],
 		defaultAuthMode: "sftp",
-		description: "Watch automated SWIFT MT103 and ISO 20022 camt.053 XML drops from enterprise treasury feeds.",
-		dataReceived: "SWIFT MT103 (:32A:, :33B:, :36:, :71A:, :71G:) & camt.053 bank statements",
+		description: "Import supported files placed in a local hot folder. Configure an external SFTP process to deliver files if needed.",
+		dataReceived: "Local JSON, CSV, TXT, XML, MT103, and camt.053 files supported by the existing parsers",
 		fields: [
 			{ key: "hotFolder", label: "Inbox Directory Path", type: "text", placeholder: "data/inbox", required: false },
 			{ key: "accountLabel", label: "Treasury Feed Name", type: "text", placeholder: "Citi Host-to-Host SFTP", required: false },
@@ -194,8 +224,8 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 		audiences: ["b2c", "b2b"],
 		authModes: ["email_forward"],
 		defaultAuthMode: "email_forward",
-		description: "Forward client PDF invoices, Upwork receipts, or SWIFT wire advices to your unique audit inbox.",
-		dataReceived: "PDF invoices, CSV exports, MT103/camt.053 email attachments via Postmark/Resend/Mailgun",
+		description: "Connect an email delivery service that POSTs its parsed message payload and attachments to the email webhook.",
+		dataReceived: "Email webhook JSON and supported PDF, CSV, MT103, and camt.053 attachments; no mailbox provider is provisioned by this app",
 		fields: [
 			{ key: "accountLabel", label: "Allowed Sender Domain (optional)", type: "text", placeholder: "e.g. @acme.com", required: false },
 		],

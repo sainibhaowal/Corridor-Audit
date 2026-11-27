@@ -4,7 +4,7 @@ import type { IntegrationCredentials, IntegrationRecord } from "../db/schema"
 import { normalizeInboundPayloadToCases } from "../ingest/normalize-upload"
 import type { SettlementCase } from "../types"
 import { parseDecimalStringToMinor } from "../money"
-import { fetchProvider } from "./http"
+import { assertProviderEndpointResolvesPublicly, fetchProvider, validateProviderEndpointUrl } from "./http"
 
 export interface ConnectorFetchResult {
 	recordsFetched: number
@@ -386,8 +386,11 @@ async function fetchGenericEndpointCases(
 	if (!baseUrl) {
 		throw new Error(`Provider "${provider}" requires an API endpoint URL in its configuration to poll.`)
 	}
-	const res = await fetchProvider(baseUrl, {
+	const endpoint = validateProviderEndpointUrl(baseUrl)
+	await assertProviderEndpointResolvesPublicly(endpoint)
+	const res = await fetchProvider(endpoint, {
 		headers: { Authorization: authHeader(credentials), Accept: "application/json" },
+		redirect: "error",
 	})
 	if (!res.ok) {
 		throw new Error(`${provider} API error (${res.status}): ${(await res.text()).slice(0, 200)}`)

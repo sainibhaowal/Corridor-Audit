@@ -399,3 +399,8 @@ Update this section per milestone with the exact command, result, environment, a
 - When no LLM provider is configured, accepted cases are persisted and remain queued. The local queue worker waits rather than invoking Mozaik with missing credentials, and startup does not attempt to replay queued cases until a provider is configured. The CLI gives a configuration error before starting an audit.
 - Verification on the local Windows environment: `npm run typecheck` passed; `npm test` passed, 71 tests and 0 failures; `npm run build` passed. Tests cover HTTP abort signaling and verify that unconfigured uploads remain in the durable queued state.
 - No provider, LLM, AWS, or identity service was contacted or configured for this verification.
+### 2026-11-27 connector scope and generic endpoint guardrails
+
+- Integration cards now disclose whether the connection is a native provider API, generic JSON endpoint, local folder adapter, or email webhook adapter, including the actual data scope and missing payment/bank matching. The email card shows the application webhook URL and states that no mailbox is provisioned.
+- Generic catalog connectors now require an endpoint URL before a connection can be saved. Remote HTTP endpoints, private or reserved IP destinations, and redirect responses are rejected before a configured bearer token can be forwarded.
+- DNS is checked immediately before connection and again before polling, but the runtime does not pin DNS resolution to the outbound socket. A production deployment still needs egress firewall rules or an endpoint allowlist. No external provider was contacted and no cloud services were configured.

@@ -21,7 +21,7 @@ import { POST as inboundWebhookRoute } from "../src/app/api/webhooks/inbound/rou
 import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/core/db/database"
 import { parseInboundEmailToCases } from "../src/core/integrations/email-parser"
 import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
-import { fetchProvider } from "../src/core/integrations/http"
+import { assertProviderEndpointResolvesPublicly, fetchProvider, validateProviderEndpointUrl } from "../src/core/integrations/http"
 import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode, refreshOAuthCredentials } from "../src/core/integrations/oauth"
 import { runIntegrationSync } from "../src/runtime/workers/sync-worker"
 import { runWithDurableCaseRetries } from "../src/runtime/workers/durable-case-queue"
@@ -562,6 +562,17 @@ test("provider HTTP helper aborts a stalled request at its configured timeout", 
 	} finally {
 		global.fetch = previousFetch
 	}
+})
+
+test("generic provider endpoints reject insecure schemes and private DNS targets", async () => {
+	assert.throws(() => validateProviderEndpointUrl("http://api.example.test/records"), /HTTPS/)
+	assert.throws(() => validateProviderEndpointUrl("https://127.0.0.1/records", true), /private or reserved/)
+	const publicEndpoint = validateProviderEndpointUrl("https://api.example.test/v1/records", true)
+	await assert.doesNotReject(assertProviderEndpointResolvesPublicly(publicEndpoint, async () => [{ address: "8.8.8.8", family: 4 }]))
+	await assert.rejects(
+		assertProviderEndpointResolvesPublicly(publicEndpoint, async () => [{ address: "169.254.169.254", family: 4 }]),
+		/private IP addresses|public IP addresses/,
+	)
 })
 
 test("Xero OAuth uses S256 PKCE and exchanges the persisted verifier", async () => {
@@ -1244,10 +1255,33 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 	const listRes = await listIntegrationsRoute(new Request("http://127.0.0.1/api/integrations"))
 	const listJson = (await listRes.json()) as {
 		ok: boolean
-		integrations: Array<{ provider: string; connection: { status: string } }>
+		integrations: Array<{ provider: string; dataReceived: string; adapter: { mode: string; scope: string }; connection: { status: string } }>
 	}
 	assert.equal(listJson.ok, true)
 	assert.equal(listJson.integrations.find((i) => i.provider === "stripe")?.connection.status, "connected")
+	assert.equal(listJson.integrations.find((i) => i.provider === "stripe")?.adapter.mode, "native_provider_api")
+	assert.match(listJson.integrations.find((i) => i.provider === "payoneer")?.adapter.scope || "", /Vendor specific pagination.*not implemented/)
+	assert.match(listJson.integrations.find((i) => i.provider === "quickbooks")?.dataReceived || "", /Invoice number.*total/)
+	assert.match(listJson.integrations.find((i) => i.provider === "email_inbound")?.adapter.scope || "", /mailbox.*configured separately/)
+
+	const missingEndpoint = await connectIntegrationRoute(
+		new Request("http://127.0.0.1/api/integrations/payoneer/connect", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ authMode: "api_token", apiKey: "test-token", config: { accountId: "account-01" } }),
+		}),
+		{ params: Promise.resolve({ provider: "payoneer" }) },
+	)
+	assert.equal(missingEndpoint.status, 400, "generic connector cannot be saved without its required endpoint")
+	const insecureEndpoint = await connectIntegrationRoute(
+		new Request("http://127.0.0.1/api/integrations/payoneer/connect", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ authMode: "api_token", apiKey: "test-token", config: { accountId: "account-01", apiBaseUrl: "http://api.example.test/records" } }),
+		}),
+		{ params: Promise.resolve({ provider: "payoneer" }) },
+	)
+	assert.equal(insecureEndpoint.status, 400, "generic connector refuses an insecure remote endpoint")
 
 	const disconnectRes = await disconnectIntegrationRoute(
 		new Request("http://127.0.0.1/api/integrations/stripe/disconnect", { method: "POST" }),

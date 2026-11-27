@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
-import { INTEGRATION_CATALOG, isOAuthConfiguredForProvider } from "@/core/integrations/catalog"
+import { getIntegrationAdapterDetails, INTEGRATION_CATALOG, isOAuthConfiguredForProvider } from "@/core/integrations/catalog"
 import { authorizeCorridorRequest } from "@/core/security/authorization"
 
 export const runtime = "nodejs"
@@ -19,6 +19,7 @@ export async function GET(request: Request) {
 		const record = byProvider.get(spec.provider)
 		return {
 			...spec,
+			adapter: getIntegrationAdapterDetails(spec.provider),
 			oauthConfigured: isOAuthConfiguredForProvider(spec),
 			connection: record ?? {
 				id: null,

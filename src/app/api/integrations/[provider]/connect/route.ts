@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
 import type { IntegrationAuthMode } from "@/core/db/schema"
 import { getCatalogItem } from "@/core/integrations/catalog"
+import { assertProviderEndpointResolvesPublicly, validateProviderEndpointUrl } from "@/core/integrations/http"
 import { createOAuthAuthorizationUrl } from "@/core/integrations/oauth"
 import { authorizeCorridorRequest } from "@/core/security/authorization"
 import { getCorridorPublicOrigin } from "@/core/security/public-origin"
@@ -62,6 +63,22 @@ export async function POST(
 				{ ok: false, error: `An API key or access token is required to connect ${spec.name}.` },
 				{ status: 400 },
 			)
+		}
+		const missingConfig = spec.fields.find((field) => {
+			if (!field.required || ["apiKey", "webhookSecret", "accountLabel"].includes(field.key)) return false
+			const value: unknown = body.config?.[field.key]
+			return typeof value !== "string" || value.trim().length === 0
+		})
+		if (missingConfig) {
+			return NextResponse.json({ ok: false, error: `${missingConfig.label} is required to connect ${spec.name}.` }, { status: 400 })
+		}
+		for (const field of spec.fields.filter((entry) => entry.type === "url" && typeof body.config?.[entry.key] === "string")) {
+			try {
+				const endpoint = validateProviderEndpointUrl(body.config![field.key]!)
+				await assertProviderEndpointResolvesPublicly(endpoint)
+			} catch (error) {
+				return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Invalid provider endpoint." }, { status: 400 })
+			}
 		}
 
 		const db = getCorridorDb()

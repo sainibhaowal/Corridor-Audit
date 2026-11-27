@@ -25,6 +25,7 @@ interface IntegrationItem {
 	defaultAuthMode: string
 	description: string
 	dataReceived: string
+	adapter: { mode: string; label: string; scope: string }
 	oauthConfigured: boolean
 	fields: IntegrationFieldSpec[]
 	connection: {
@@ -50,17 +51,9 @@ interface SyncRunItem {
 	startedAt: string
 }
 
-interface WorkspaceSummary {
-	id: string
-	name: string
-	accountMode: "b2c" | "b2b"
-	inboundEmailAddress: string
-}
-
 export function IntegrationsPanel({ onCasesQueued }: { onCasesQueued: () => void }) {
 	const [integrations, setIntegrations] = useState<IntegrationItem[]>([])
 	const [syncRuns, setSyncRuns] = useState<SyncRunItem[]>([])
-	const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null)
 	const [filter, setFilter] = useState<"all" | "b2c" | "b2b" | "accounting" | "banking">("all")
 	const [activeProvider, setActiveProvider] = useState<IntegrationItem | null>(null)
 	const [formValues, setFormValues] = useState<Record<string, string>>({})
@@ -74,12 +67,10 @@ export function IntegrationsPanel({ onCasesQueued }: { onCasesQueued: () => void
 			const res = await fetch("/api/integrations")
 			const data = (await res.json()) as {
 				ok: boolean
-				workspace?: WorkspaceSummary
 				integrations?: IntegrationItem[]
 				syncRuns?: SyncRunItem[]
 			}
 			if (data.ok) {
-				setWorkspace(data.workspace ?? null)
 				setIntegrations(data.integrations ?? [])
 				setSyncRuns(data.syncRuns ?? [])
 			} else {
@@ -257,20 +248,20 @@ export function IntegrationsPanel({ onCasesQueued }: { onCasesQueued: () => void
 					<div className="min-w-0">
 						<div className="flex items-center gap-1.5 text-xs font-bold text-[#e3edef]">
 							<Mail className="h-3.5 w-3.5 text-[#62e1c3]" />
-							Unique Audit Forwarding Inbox
+										Email Delivery Adapter
 						</div>
 						<div className="mt-1 truncate font-mono text-[11.5px] text-[#75e4c7]">
-							{workspace?.inboundEmailAddress || "inbox+ws-default@inbound.corridoraudit.com"}
+										POST {typeof window === "undefined" ? "" : window.location.origin}/api/webhooks/email
 						</div>
 						<div className="mt-0.5 text-[11px] text-[#81949a]">
-							Forward PDF invoices, Upwork receipts, or SWIFT advices here (Postmark/Resend/Mailgun → POST /api/webhooks/email).
+							No mailbox is provisioned. Configure an email service to POST signed JSON messages and attachments here.
 						</div>
 					</div>
 					<Button
 						size="sm"
 						variant="outline"
 						onClick={() =>
-							copyText("email", workspace?.inboundEmailAddress || "inbox+ws-default@inbound.corridoraudit.com")
+										copyText("email", `${window.location.origin}/api/webhooks/email`)
 						}
 					>
 						{copied === "email" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
@@ -317,6 +308,7 @@ export function IntegrationsPanel({ onCasesQueued }: { onCasesQueued: () => void
 												</Badge>
 											))}
 											<Badge variant="neutral">{item.category}</Badge>
+											<Badge variant="neutral">{item.adapter.label}</Badge>
 										</div>
 									</div>
 									<Badge variant={isConnected ? "ok" : isError ? "bad" : "neutral"}>
@@ -327,6 +319,9 @@ export function IntegrationsPanel({ onCasesQueued }: { onCasesQueued: () => void
 								<p className="mt-2.5 text-xs leading-relaxed text-[#a4b4b8]">{item.description}</p>
 								<div className="mt-2 rounded bg-[#080d12] px-2.5 py-1.5 text-[11px] text-[#81949a]">
 									<strong className="text-[#c7d3d6]">Data:</strong> {item.dataReceived}
+								</div>
+								<div className="mt-1 rounded bg-[#080d12] px-2.5 py-1.5 text-[11px] text-[#81949a]">
+									<strong className="text-[#c7d3d6]">Scope:</strong> {item.adapter.scope}
 								</div>
 								{item.connection.lastSyncedAt && (
 									<div className="mt-1.5 text-[11px] text-[#75e4c7]">
