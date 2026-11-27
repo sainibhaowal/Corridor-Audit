@@ -1601,9 +1601,25 @@ test("cursor providers perform a durable full reconciliation before resuming inc
 		credentials: { apiKey: "wise-reconcile-test" },
 		config: { profileId: "profile-reconcile-test" },
 	})
+	const quickBooksIntegration = db.upsertIntegration({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider: "quickbooks",
+		category: "accounting",
+		authMode: "api_token",
+		status: "connected",
+		credentials: { accessToken: "quickbooks-reconcile-test" },
+		config: { realmId: "realm-reconcile-test" },
+	})
 	const oldSyncAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
 	db.markIntegrationSyncState({
 		integrationId: integration.id,
+		status: "connected",
+		lastSyncStatus: "success",
+		lastSyncedAt: oldSyncAt,
+		lastFullSyncedAt: oldSyncAt,
+	})
+	db.markIntegrationSyncState({
+		integrationId: quickBooksIntegration.id,
 		status: "connected",
 		lastSyncStatus: "success",
 		lastSyncedAt: oldSyncAt,
@@ -1621,11 +1637,27 @@ test("cursor providers perform a durable full reconciliation before resuming inc
 		assert.equal(incrementalRun.status, "success")
 		assert.ok(requestedUrls[1]?.searchParams.has("createdDateStart"))
 		assert.equal(db.getIntegration(DEFAULT_WORKSPACE_ID, "wise")?.lastFullSyncedAt, fullSyncAt)
+
+		const quickBooksFull = await runIntegrationSync({ provider: "quickbooks", workspaceId: DEFAULT_WORKSPACE_ID, orchestrator })
+		assert.equal(quickBooksFull.status, "success")
+		assert.equal(requestedUrls.length, 4)
+		assert.doesNotMatch(requestedUrls[2]?.searchParams.get("query") || "", /WHERE MetaData\.LastUpdatedTime/)
+		assert.doesNotMatch(requestedUrls[3]?.searchParams.get("query") || "", /WHERE MetaData\.LastUpdatedTime/)
+		const quickBooksFullSyncAt = db.getIntegration(DEFAULT_WORKSPACE_ID, "quickbooks")?.lastFullSyncedAt
+		assert.ok(quickBooksFullSyncAt && Date.parse(quickBooksFullSyncAt) > Date.parse(oldSyncAt))
+
+		const quickBooksIncremental = await runIntegrationSync({ provider: "quickbooks", workspaceId: DEFAULT_WORKSPACE_ID, orchestrator })
+		assert.equal(quickBooksIncremental.status, "success")
+		assert.equal(requestedUrls.length, 6)
+		assert.match(requestedUrls[4]?.searchParams.get("query") || "", /WHERE MetaData\.LastUpdatedTime/)
+		assert.match(requestedUrls[5]?.searchParams.get("query") || "", /WHERE MetaData\.LastUpdatedTime/)
+		assert.equal(db.getIntegration(DEFAULT_WORKSPACE_ID, "quickbooks")?.lastFullSyncedAt, quickBooksFullSyncAt)
 	} finally {
 		global.fetch = previousFetch
 		if (previousInterval === undefined) delete process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS
 		else process.env.PROVIDER_FULL_RECONCILIATION_INTERVAL_HOURS = previousInterval
 		db.disconnectIntegration(DEFAULT_WORKSPACE_ID, "wise")
+		db.disconnectIntegration(DEFAULT_WORKSPACE_ID, "quickbooks")
 	}
 })
 

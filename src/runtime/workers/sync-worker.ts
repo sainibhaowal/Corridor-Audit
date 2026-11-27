@@ -14,7 +14,7 @@ const globalWorkerStore = globalThis as typeof globalThis & {
 
 const SYNC_LEASE_MS = 60_000
 const SYNC_LEASE_RENEW_MS = 15_000
-const CURSOR_RECONCILIATION_PROVIDERS = new Set(["stripe", "wise", "xero"])
+const CURSOR_RECONCILIATION_PROVIDERS = new Set(["stripe", "wise", "quickbooks", "xero"])
 
 export function shouldRunFullProviderReconciliation(
 	integration: Pick<IntegrationRecord, "provider" | "lastFullSyncedAt" | "lastFullSyncAttemptAt">,
