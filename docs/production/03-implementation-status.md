@@ -445,3 +445,8 @@ Update this section per milestone with the exact command, result, environment, a
 - A conflict or failed write rolls the acceptance transaction back; the existing receipt remains retryable. Initial raw receipt creation and parsing remain separate, so a crash in that window leaves a `received` event that a provider retry can safely resume.
 - Raw evidence now starts with parse state `received`; only successful parsing changes it to `parsed`. The Raw Data Vault shows received records as pending instead of reporting them as parsed early.
 - Verification in the local Windows environment: `npm run typecheck`, `npm test` (77 passed, 0 failed), and `npm run build` passed. Tests cover transaction rollback for case, parse, and receipt status writes plus the webhook endpoint's durable queued case response.
+
+### 2026-11-27 hot-folder parse failure evidence
+
+- If local hot-folder content has been saved and normalization then fails, the ingestion now records `failed` with the error text in the encrypted parse-error field. Failures during scanning or before raw-record creation remain visible in the local runtime log only.
+- Verification pending for this milestone.

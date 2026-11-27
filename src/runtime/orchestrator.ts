@@ -59,6 +59,7 @@ function startHotFolderWatcher(orchestrator: CorridorOrchestrator): void {
 			if (!existsSync(fullPath)) return
 			seenFiles.add(filename)
 			setTimeout(() => void (async () => {
+				let ingestionId: string | undefined
 				try {
 					const ext = extname(filename).toLowerCase()
 					if (statSync(fullPath).size > MAX_MALWARE_SCAN_BYTES) throw new MalwareScanLimitError()
@@ -74,6 +75,7 @@ function startHotFolderWatcher(orchestrator: CorridorOrchestrator): void {
 						isBase64: isPdf,
 						metadata: { fullPath, malwareScan: malwareScan.status },
 					})
+					ingestionId = rec.id
 					const cases = normalizeInboundPayloadToCases(
 						isPdf
 							? { filename, base64: buf.toString("base64"), format: "pdf" }
@@ -88,7 +90,15 @@ function startHotFolderWatcher(orchestrator: CorridorOrchestrator): void {
 						console.error(`Hot-folder ingestion ${rec.id} failed during audit processing:`, err)
 					})
 				} catch (error) {
-					console.error(`Hot-folder file ${filename} was not accepted:`, error instanceof Error ? error.message : "unknown error")
+					const message = error instanceof Error ? error.message : "unknown error"
+					if (ingestionId) {
+						try {
+							getCorridorDb().updateRawIngestionOutcome({ id: ingestionId, parseStatus: "failed", parseError: message })
+						} catch (recordError) {
+							console.error(`Hot-folder ingestion ${ingestionId} could not record its failure:`, recordError)
+						}
+					}
+					console.error(`Hot-folder file ${filename} was not accepted:`, message)
 				}
 			})(), 250)
 		})
