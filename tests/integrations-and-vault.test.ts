@@ -140,7 +140,7 @@ test("CorridorDatabase persists workspaces, team members, encrypted integrations
 	db.close()
 })
 
-test("local case queue survives restart and recovers work interrupted while running", () => {
+test("local case queue uses exclusive claims and recovers expired work", async () => {
 	const db = new CorridorDatabase(":memory:")
 	const queuedCase = {
 		caseId: "CASE-RECOVERY-01",
@@ -160,10 +160,13 @@ test("local case queue survives restart and recovers work interrupted while runn
 
 	db.saveCase(queuedCase)
 	assert.deepEqual(db.listQueuedCases().map((item) => item.caseId), [queuedCase.caseId])
-	db.markCaseRunning(queuedCase.caseId)
+	assert.equal(db.claimCase(queuedCase.caseId, "worker-one", 5), true)
+	assert.equal(db.claimCase(queuedCase.caseId, "worker-two"), false, "a live lease prevents competing workers from starting the case")
 	assert.equal(db.listQueuedCases().length, 0, "running work is not also offered as queued work")
-	db.requeueInterruptedCases()
-	assert.deepEqual(db.listQueuedCases().map((item) => item.caseId), [queuedCase.caseId])
+	await new Promise((resolve) => setTimeout(resolve, 15))
+	assert.deepEqual(db.listQueuedCases().map((item) => item.caseId), [queuedCase.caseId], "expired work becomes eligible for recovery")
+	assert.equal(db.claimCase(queuedCase.caseId, "worker-two"), true)
+	assert.equal(db.renewCaseLease(queuedCase.caseId, "worker-one"), false, "the former worker cannot renew a reclaimed lease")
 	db.markCaseFailed(queuedCase.caseId)
 	assert.equal(db.listQueuedCases().length, 0, "failed work is not silently auto retried")
 	assert.equal(db.listDeadLetterCases()[0]?.caseId, queuedCase.caseId)
@@ -210,10 +213,10 @@ test("durable case retries use bounded backoff and expose exhausted jobs for ope
 	const actual = await runWithDurableCaseRetries({
 		db,
 		caseId: settlementCase.caseId,
-		runAttempt: async () => {
+		runAttempt: async (workerId) => {
 			attempts += 1
 			if (attempts < 3) throw new Error(`temporary model gateway failure ${attempts}`)
-			db.saveAuditVerdict(verdict)
+			db.saveAuditVerdict(verdict, undefined, workerId)
 			return verdict
 		},
 		onRetryScheduled: (_retryAt, delayMs) => retryDelays.push(delayMs),

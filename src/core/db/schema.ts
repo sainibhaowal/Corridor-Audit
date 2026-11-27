@@ -224,6 +224,8 @@ CREATE TABLE IF NOT EXISTS cases (
 	attempt_count INTEGER NOT NULL DEFAULT 0,
 	next_attempt_at TEXT,
 	last_error TEXT,
+	worker_id TEXT,
+	lease_expires_at TEXT,
 	created_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL
 );

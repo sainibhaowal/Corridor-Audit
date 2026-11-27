@@ -10,7 +10,7 @@ This is the live delivery record for production-readiness engineering. A row is 
 | 1 | Canonical evidence completeness, provider mapping correctness, upload validation, and accurate states | In progress |
 | 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | Cognito role gates implemented but not configured; durable provider OAuth state and Xero PKCE implemented; workspace isolation, email invitations, and SSE revocation remain |
 | 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Versioned tax and review policies plus durable approval records implemented locally; approval UI and production workflow controls remain |
-| 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Local SQLite case retries, delayed recovery, dead-letter listing, and controller replay implemented; transactional outbox, distributed claims/leases, independent workers, and production queue remain open |
+| 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Local SQLite retries, atomic cross-process leases, expired-lease recovery, dead-letter listing, and controller replay implemented; transactional outbox, independent worker deployment, distributed queue, and production database remain open |
 | 5 | Raw evidence object storage, encryption/key lifecycle, retention, backup, restore, and deletion | Local SQLite encryption now covers raw payloads, normalized cases, verdicts, pending approval payloads, and integration credentials; managed storage, KMS, key rotation, retention, backups, restore, and deletion remain open |
 | 6 | Provider adapters with pagination, cursors, token refresh/revocation, event security, and reconciliation | Bounded pagination, raw-response retention, and local token refresh for Wise, QuickBooks, Xero, and TrueLayer implemented. Incremental cursors, cross-instance refresh locking, revocation, matching, and provider conformance remain open |
 | 7 | Monitoring, audit logs, deployment configuration, threat review, and operational runbooks | Not started |
@@ -128,6 +128,13 @@ Update this section per milestone with the exact command, result, environment, a
 - The threshold is explicitly interpreted as minor units of the case settlement currency. API writes reject negative, non-integer, or unsafe threshold values.
 - This preserves the current UI field while making its unit explicit and adding calculation provenance. Per-currency threshold tables and historical policy replay remain future release work.
 - `npm run typecheck`: passed. `npm test`: passed, 33 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 local SQLite case ownership leases
+
+- Case acquisition is a single conditional SQLite update. Two local processes sharing the same database cannot both claim a case while its lease is live. Lease renewals are conditional on the current worker ID, and a stale worker cannot complete the case after another worker has reclaimed it.
+- The local poller offers queued work and expired running leases. A claim expires after 60 seconds unless renewed every 20 seconds. Cases at the attempt limit are moved to dead letter after their lease expires. Startup no longer resets every running row, which could have stolen work from another live process.
+- This is a local single-host coordination improvement, not a distributed production queue. It depends on processes sharing one SQLite file and does not provide multi-host semantics, an independent worker deployment, an outbox, or durable agent execution state.
+- `npm run typecheck`: passed. `npm test`: passed, 41 tests, 0 failures, including exclusive claims, lease expiry recovery, retry and dead-letter behavior. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows; provider accounts were not contacted.
 
 ### 2026-11-27 durable review decision records
 

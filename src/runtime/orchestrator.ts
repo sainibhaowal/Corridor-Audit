@@ -1,4 +1,5 @@
 import "dotenv/config"
+import { randomUUID } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, watch } from "node:fs"
 import { extname, resolve } from "node:path"
 import { getCorridorDb } from "../core/db/database"
@@ -107,7 +108,7 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 		options?.autoApprove ?? process.env.AUTO_APPROVE_BREAKPOINTS === "true"
 
 	const db = getCorridorDb()
-	db.requeueInterruptedCases()
+	const workerId = `local-${randomUUID()}`
 	for (const persistedCase of db.listPersistedCases()) {
 		state.casesById.set(persistedCase.caseId, persistedCase)
 	}
@@ -138,7 +139,7 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 	let batchChain: Promise<unknown> = Promise.resolve()
 	const caseTasks = new Map<string, Promise<AuditVerdict>>()
 
-	const runSingleCase = async (settlementCase: SettlementCase): Promise<AuditVerdict> => {
+	const runSingleCase = async (settlementCase: SettlementCase, claimedBy: string): Promise<AuditVerdict> => {
 		state.registerCase(settlementCase)
 		state.queueStats.active += 1
 
@@ -171,7 +172,7 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 
 		try {
 			const verdict = await state.waitForCaseVerdict(settlementCase.caseId, 180_000)
-			getCorridorDb().saveAuditVerdict(verdict)
+			getCorridorDb().saveAuditVerdict(verdict, undefined, claimedBy)
 			state.queueStats.done += 1
 			return verdict
 		} catch (err) {
@@ -197,7 +198,8 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 		const task = batchChain.then(() => runWithDurableCaseRetries({
 			db: getCorridorDb(),
 			caseId: settlementCase.caseId,
-			runAttempt: () => runSingleCase(settlementCase),
+			workerId,
+			runAttempt: (claimedBy) => runSingleCase(settlementCase, claimedBy),
 			shouldRetry: (error) => !(error instanceof Error && error.message.startsWith("Timed out waiting for")),
 			onAttemptStart: () => {
 				if (state.queueStats.waiting > 0) state.queueStats.waiting -= 1
