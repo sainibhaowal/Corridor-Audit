@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto"
 import { getCorridorDb } from "../db/database"
 import type { IntegrationCredentials } from "../db/schema"
 import { fetchProvider } from "./http"
+import { getWiseEnvironmentConfig } from "./wise-environment"
 
 interface OAuthProviderSpec {
 	authUrl: string
@@ -20,14 +21,6 @@ const OAUTH_SPECS: Record<string, OAuthProviderSpec> = {
 		clientIdEnv: "STRIPE_CLIENT_ID",
 		clientSecretEnv: "STRIPE_CLIENT_SECRET",
 		scope: "read_only",
-	},
-	wise: {
-		authUrl: "https://sandbox.transferwise.tech/oauth/authorize",
-		tokenUrl: "https://api.transferwise.com/oauth/token",
-		clientIdEnv: "WISE_CLIENT_ID",
-		clientSecretEnv: "WISE_CLIENT_SECRET",
-		tokenClientAuth: "basic",
-		scope: "transfers.read balances.read",
 	},
 	quickbooks: {
 		authUrl: "https://appcenter.intuit.com/connect/oauth2",
@@ -54,12 +47,27 @@ const OAUTH_SPECS: Record<string, OAuthProviderSpec> = {
 	},
 }
 
+function getOAuthProviderSpec(provider: string): OAuthProviderSpec | undefined {
+	if (provider === "wise") {
+		const wise = getWiseEnvironmentConfig()
+		return {
+			authUrl: wise.authorizationUrl,
+			tokenUrl: wise.tokenUrl,
+			clientIdEnv: wise.clientIdEnv,
+			clientSecretEnv: wise.clientSecretEnv,
+			tokenClientAuth: "basic",
+			scope: "transfers.read balances.read",
+		}
+	}
+	return OAUTH_SPECS[provider]
+}
+
 export function createOAuthAuthorizationUrl(params: {
 	provider: string
 	workspaceId: string
 	origin: string
 }): { url: string; state: string } {
-	const spec = OAUTH_SPECS[params.provider]
+	const spec = getOAuthProviderSpec(params.provider)
 	if (!spec) {
 		throw new Error(`OAuth2 is not supported for provider "${params.provider}". Use API token connection instead.`)
 	}
@@ -108,7 +116,7 @@ export async function exchangeOAuthCode(params: {
 	origin: string
 	codeVerifier?: string
 }): Promise<{ credentials: IntegrationCredentials; externalAccountId?: string }> {
-	const spec = OAUTH_SPECS[params.provider]
+	const spec = getOAuthProviderSpec(params.provider)
 	if (!spec) {
 		throw new Error(`OAuth2 token exchange is not supported for "${params.provider}".`)
 	}
@@ -174,7 +182,7 @@ export async function refreshOAuthCredentials(
 	provider: string,
 	credentials: IntegrationCredentials,
 ): Promise<IntegrationCredentials> {
-	const spec = OAUTH_SPECS[provider]
+	const spec = getOAuthProviderSpec(provider)
 	if (!spec || !credentials.refreshToken) {
 		throw new Error(`A refresh token is not available for OAuth provider "${provider}". Reconnect this integration.`)
 	}

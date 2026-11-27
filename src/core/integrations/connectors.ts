@@ -5,6 +5,7 @@ import { normalizeInboundPayloadToCases } from "../ingest/normalize-upload"
 import type { AccountingPaymentApplication, SettlementCase, SourceRef } from "../types"
 import { parseDecimalStringToMinor } from "../money"
 import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublicly, fetchProvider, validateProviderEndpointUrl } from "./http"
+import { getWiseEnvironmentConfig } from "./wise-environment"
 
 export interface ConnectorFetchResult {
 	recordsFetched: number
@@ -180,12 +181,13 @@ async function fetchWiseCases(
 	lastSuccessfulSyncAt?: string,
 ): Promise<ConnectorFetchResult> {
 	const headers = { Authorization: authHeader(credentials) }
+	const wiseApiBaseUrl = getWiseEnvironmentConfig().apiBaseUrl
 	let profileId: string | undefined = config.profileId?.trim() || undefined
 	const rawPages: string[] = []
 	const since = syncSince(lastSuccessfulSyncAt)
 
 	if (!profileId) {
-		const pRes = await fetchProvider("https://api.transferwise.com/v1/profiles", { headers })
+		const pRes = await fetchProvider(`${wiseApiBaseUrl}/profiles`, { headers })
 		if (!pRes.ok) {
 			throw new Error(`Wise Profiles API error (${pRes.status}): ${(await pRes.text()).slice(0, 200)}`)
 		}
@@ -210,7 +212,7 @@ async function fetchWiseCases(
 		reference?: string
 	}> = []
 	for (let page = 0; page < MAX_PROVIDER_SYNC_PAGES; page += 1) {
-		const url = new URL("https://api.transferwise.com/v1/transfers")
+		const url = new URL(`${wiseApiBaseUrl}/transfers`)
 		url.searchParams.set("profile", profileId)
 		url.searchParams.set("limit", String(WISE_PAGE_SIZE))
 		url.searchParams.set("offset", String(page * WISE_PAGE_SIZE))

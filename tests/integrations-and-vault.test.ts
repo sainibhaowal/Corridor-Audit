@@ -21,6 +21,7 @@ import { POST as inboundWebhookRoute } from "../src/app/api/webhooks/inbound/rou
 import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/core/db/database"
 import { CORRIDOR_SCHEMA_SQL } from "../src/core/db/schema"
 import { parseInboundEmailToCases } from "../src/core/integrations/email-parser"
+import { getWiseEnvironmentConfig } from "../src/core/integrations/wise-environment"
 import { deriveWebhookEventId } from "../src/core/security/webhook-event-id"
 import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
 import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublicly, fetchProvider, validateProviderEndpointUrl } from "../src/core/integrations/http"
@@ -802,12 +803,16 @@ test("QuickBooks and Wise authorization exchanges authenticate with HTTP Basic",
 	const previousFetch = global.fetch
 	const previousQuickBooksId = process.env.QUICKBOOKS_CLIENT_ID
 	const previousQuickBooksSecret = process.env.QUICKBOOKS_CLIENT_SECRET
-	const previousWiseId = process.env.WISE_CLIENT_ID
-	const previousWiseSecret = process.env.WISE_CLIENT_SECRET
+	const previousWiseId = process.env.WISE_SANDBOX_CLIENT_ID
+	const previousWiseSecret = process.env.WISE_SANDBOX_CLIENT_SECRET
+	const previousWiseEnvironment = process.env.WISE_API_ENVIRONMENT
+	const previousWiseProductionId = process.env.WISE_PRODUCTION_CLIENT_ID
+	const previousWiseProductionSecret = process.env.WISE_PRODUCTION_CLIENT_SECRET
 	process.env.QUICKBOOKS_CLIENT_ID = "qbo-oauth-client"
 	process.env.QUICKBOOKS_CLIENT_SECRET = "qbo-oauth-secret"
-	process.env.WISE_CLIENT_ID = "wise-oauth-client"
-	process.env.WISE_CLIENT_SECRET = "wise-oauth-secret"
+	process.env.WISE_API_ENVIRONMENT = "sandbox"
+	process.env.WISE_SANDBOX_CLIENT_ID = "wise-oauth-client"
+	process.env.WISE_SANDBOX_CLIENT_SECRET = "wise-oauth-secret"
 	const requests: Array<{ url: string; body: string; authorization: string }> = []
 	global.fetch = (async (input, init) => {
 		requests.push({
@@ -831,17 +836,32 @@ test("QuickBooks and Wise authorization exchanges authenticate with HTTP Basic",
 			assert.equal(body.get("code"), "authorization-code")
 			assert.equal(body.has("client_id"), false)
 			assert.equal(body.has("client_secret"), false)
+			if (provider === "wise") {
+				assert.equal(request.url, "https://api.wise-sandbox.com/2026Q4/oauth/token")
+				assert.equal(getWiseEnvironmentConfig().authorizationUrl, "https://wise-sandbox.com/oauth/authorize/")
+			}
 		}
+		process.env.WISE_API_ENVIRONMENT = "production"
+		process.env.WISE_PRODUCTION_CLIENT_ID = "wise-live-client"
+		process.env.WISE_PRODUCTION_CLIENT_SECRET = "wise-live-secret"
+		assert.equal(getWiseEnvironmentConfig().apiBaseUrl, "https://api.wise.com/2026Q4")
+		assert.equal(getWiseEnvironmentConfig().authorizationUrl, "https://wise.com/oauth/authorize/")
 	} finally {
 		global.fetch = previousFetch
 		if (previousQuickBooksId === undefined) delete process.env.QUICKBOOKS_CLIENT_ID
 		else process.env.QUICKBOOKS_CLIENT_ID = previousQuickBooksId
 		if (previousQuickBooksSecret === undefined) delete process.env.QUICKBOOKS_CLIENT_SECRET
 		else process.env.QUICKBOOKS_CLIENT_SECRET = previousQuickBooksSecret
-		if (previousWiseId === undefined) delete process.env.WISE_CLIENT_ID
-		else process.env.WISE_CLIENT_ID = previousWiseId
-		if (previousWiseSecret === undefined) delete process.env.WISE_CLIENT_SECRET
-		else process.env.WISE_CLIENT_SECRET = previousWiseSecret
+		if (previousWiseId === undefined) delete process.env.WISE_SANDBOX_CLIENT_ID
+		else process.env.WISE_SANDBOX_CLIENT_ID = previousWiseId
+		if (previousWiseSecret === undefined) delete process.env.WISE_SANDBOX_CLIENT_SECRET
+		else process.env.WISE_SANDBOX_CLIENT_SECRET = previousWiseSecret
+		if (previousWiseEnvironment === undefined) delete process.env.WISE_API_ENVIRONMENT
+		else process.env.WISE_API_ENVIRONMENT = previousWiseEnvironment
+		if (previousWiseProductionId === undefined) delete process.env.WISE_PRODUCTION_CLIENT_ID
+		else process.env.WISE_PRODUCTION_CLIENT_ID = previousWiseProductionId
+		if (previousWiseProductionSecret === undefined) delete process.env.WISE_PRODUCTION_CLIENT_SECRET
+		else process.env.WISE_PRODUCTION_CLIENT_SECRET = previousWiseProductionSecret
 	}
 })
 
@@ -1347,6 +1367,8 @@ test("provider sync retains original API payloads and converts Wise currencies t
 
 test("provider sync follows Stripe, Wise, QuickBooks, and Xero page cursors", async () => {
 	const previousFetch = global.fetch
+	const previousWiseEnvironment = process.env.WISE_API_ENVIRONMENT
+	process.env.WISE_API_ENVIRONMENT = "sandbox"
 	const requests: string[] = []
 	const stripeFirst = JSON.stringify({
 		data: Array.from({ length: 100 }, (_, index) => ({
@@ -1375,7 +1397,7 @@ test("provider sync follows Stripe, Wise, QuickBooks, and Xero page cursors", as
 		const url = String(input)
 		requests.push(url)
 		if (url.includes("stripe.com")) return new Response(requests.filter((item) => item.includes("stripe.com")).length === 1 ? stripeFirst : stripeLast, { status: 200 })
-		if (url.includes("transferwise.com")) return new Response(requests.filter((item) => item.includes("transferwise.com")).length === 1 ? wiseFirst : wiseLast, { status: 200 })
+		if (url.includes("api.wise-sandbox.com")) return new Response(requests.filter((item) => item.includes("api.wise-sandbox.com")).length === 1 ? wiseFirst : wiseLast, { status: 200 })
 		if (url.includes("quickbooks.api.intuit.com")) {
 			const firstPage = decodeURIComponent(url).includes("STARTPOSITION 1 MAXRESULTS")
 			return new Response(JSON.stringify({ QueryResponse: { Invoice: firstPage ? qboInvoices : [{ Id: "qbo-last", TotalAmt: 20, CurrencyRef: { value: "USD" } }] } }), { status: 200 })
@@ -1408,6 +1430,7 @@ test("provider sync follows Stripe, Wise, QuickBooks, and Xero page cursors", as
 		const wise = await fetchCasesFromIntegration({ integration: integration("wise", { profileId: "profile-1" }), credentials: { apiKey: "wise-test" } })
 		assert.equal(wise.recordsFetched, 101)
 		assert.equal(wise.cases.length, 101)
+		assert.ok(requests.some((url) => url.includes("https://api.wise-sandbox.com/2026Q4/transfers")))
 		assert.ok(requests.some((url) => url.includes("offset=100")))
 
 		const quickBooks = await fetchCasesFromIntegration({ integration: integration("quickbooks", { realmId: "realm-1" }), credentials: { accessToken: "qbo-test" } })
@@ -1421,6 +1444,8 @@ test("provider sync follows Stripe, Wise, QuickBooks, and Xero page cursors", as
 		assert.ok(requests.some((url) => url.includes("page=2&pageSize=1000")))
 	} finally {
 		global.fetch = previousFetch
+		if (previousWiseEnvironment === undefined) delete process.env.WISE_API_ENVIRONMENT
+		else process.env.WISE_API_ENVIRONMENT = previousWiseEnvironment
 	}
 })
 
@@ -1588,13 +1613,15 @@ test("QuickBooks and Xero payment applications stay separate from bank settlemen
 
 test("Stripe, Wise, and Xero incremental sync cursors use a five-minute overlap", async () => {
 	const previousFetch = global.fetch
+	const previousWiseEnvironment = process.env.WISE_API_ENVIRONMENT
+	process.env.WISE_API_ENVIRONMENT = "sandbox"
 	const requests: Array<{ url: URL; headers: Headers }> = []
 	global.fetch = (async (input, init) => {
 		requests.push({ url: new URL(String(input)), headers: new Headers(init?.headers) })
 		const url = String(input)
 		return new Response(url.includes("stripe.com")
 			? JSON.stringify({ data: [], has_more: false })
-			: url.includes("transferwise.com")
+			: url.includes("api.wise-sandbox.com")
 				? JSON.stringify([])
 				: JSON.stringify({ Invoices: [] }), { status: 200 })
 	}) as typeof fetch
@@ -1623,9 +1650,13 @@ test("Stripe, Wise, and Xero incremental sync cursors use a five-minute overlap"
 		const stripeSince = new Date(Date.parse(lastSuccessfulSyncAt) - 5 * 60 * 1000)
 		assert.equal(requests[0]?.url.searchParams.get("created[gte]"), String(Math.floor(stripeSince.getTime() / 1000)))
 		assert.equal(requests[1]?.url.searchParams.get("createdDateStart"), stripeSince.toISOString())
+		assert.equal(requests[1]?.url.origin, "https://api.wise-sandbox.com")
+		assert.equal(requests[1]?.url.pathname, "/2026Q4/transfers")
 		assert.equal(requests[2]?.headers.get("If-Modified-Since"), stripeSince.toISOString().slice(0, 19))
 	} finally {
 		global.fetch = previousFetch
+		if (previousWiseEnvironment === undefined) delete process.env.WISE_API_ENVIRONMENT
+		else process.env.WISE_API_ENVIRONMENT = previousWiseEnvironment
 	}
 })
 

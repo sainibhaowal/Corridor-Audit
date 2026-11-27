@@ -1,4 +1,5 @@
 import type { AccountMode, IntegrationAuthMode, IntegrationCategory } from "../db/schema"
+import { getWiseEnvironmentConfig } from "./wise-environment"
 
 export interface IntegrationFieldSpec {
 	key: string
@@ -77,7 +78,7 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 		defaultAuthMode: "oauth2",
 		description: "Import Wise transfer records and their reported source and destination amounts.",
 		dataReceived: "Transfer ID, source and destination currencies and amounts, reported rate, creation time, and reference",
-		oauthEnvVars: { clientId: "WISE_CLIENT_ID", clientSecret: "WISE_CLIENT_SECRET" },
+		oauthEnvVars: { clientId: "WISE_SANDBOX_CLIENT_ID", clientSecret: "WISE_SANDBOX_CLIENT_SECRET" },
 		fields: [
 			{ key: "apiKey", label: "Wise API Token", type: "password", placeholder: "Wise personal or business token", required: true, secret: true },
 			{ key: "profileId", label: "Wise Profile ID (optional)", type: "text", placeholder: "Auto-detected if blank", required: false },
@@ -237,6 +238,14 @@ export function getCatalogItem(provider: string): IntegrationCatalogItem | undef
 }
 
 export function isOAuthConfiguredForProvider(item: IntegrationCatalogItem): boolean {
+	if (item.provider === "wise") {
+		try {
+			const config = getWiseEnvironmentConfig()
+			return Boolean(process.env[config.clientIdEnv]?.trim() && process.env[config.clientSecretEnv]?.trim())
+		} catch {
+			return false
+		}
+	}
 	if (!item.oauthEnvVars) return false
 	return Boolean(
 		process.env[item.oauthEnvVars.clientId]?.trim() &&
