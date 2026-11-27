@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { normalizeInboundPayloadToCases } from "../src/core/ingest/normalize-upload"
+import { readRequestTextLimited, RequestBodyTooLargeError } from "../src/core/security/request-body"
 
 const invoice = {
 	invoiceId: "INV-1001",
@@ -50,4 +51,12 @@ test("invoice CSV uploads remain evidence-incomplete instead of implied payment"
 
 	assert.equal(settlementCase.settlementEvidence, "estimated")
 	assert.equal(settlementCase.wire.valueDate, "2026-10-31")
+})
+
+test("request body reader enforces its byte limit while streaming", async () => {
+	const request = new Request("http://localhost/upload", { method: "POST", body: "12345" })
+	await assert.rejects(readRequestTextLimited(request, 4), RequestBodyTooLargeError)
+
+	const smallRequest = new Request("http://localhost/upload", { method: "POST", body: "1234" })
+	assert.equal(await readRequestTextLimited(smallRequest, 4), "1234")
 })

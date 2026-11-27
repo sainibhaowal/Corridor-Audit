@@ -1,17 +1,38 @@
 import { NextResponse } from "next/server"
+import { z } from "zod"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
 import { normalizeInboundPayloadToCases, type UploadPayload } from "@/core/ingest/normalize-upload"
+import { readRequestTextLimited, RequestBodyTooLargeError } from "@/core/security/request-body"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+const MAX_UPLOAD_REQUEST_BYTES = 14 * 1024 * 1024
+const UploadPayloadSchema = z
+	.object({
+		filename: z.string().trim().min(1).max(255).optional(),
+		content: z.string().max(14 * 1024 * 1024).optional(),
+		base64: z.string().max(14 * 1024 * 1024).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/).optional(),
+		format: z.enum(["auto", "json", "mt103", "csv", "xml", "pdf", "text"]).optional(),
+	})
+	.strict()
+	.refine((body) => Boolean(body.content) !== Boolean(body.base64), {
+		message: "Provide exactly one of content or base64.",
+	})
 
 export async function POST(request: Request) {
 	const db = getCorridorDb()
 	let ingestionId: string | undefined
 
 	try {
-		const body = (await request.json()) as UploadPayload
+		const parsedBody = UploadPayloadSchema.safeParse(JSON.parse(await readRequestTextLimited(request, MAX_UPLOAD_REQUEST_BYTES)))
+		if (!parsedBody.success) {
+			return NextResponse.json({ error: parsedBody.error.issues[0]?.message || "Invalid upload request." }, { status: 400 })
+		}
+		const body: UploadPayload = parsedBody.data
+		if (body.base64 && Buffer.from(body.base64, "base64").byteLength > 10 * 1024 * 1024) {
+			return NextResponse.json({ error: "Decoded file exceeds the 10 MiB upload limit." }, { status: 413 })
+		}
 		const isBase64 = Boolean(body.base64 && !body.content)
 		const rawContent = body.content || body.base64 || ""
 		const filename = body.filename || (body.format ? `upload.${body.format}` : "manual-paste.txt")
@@ -60,6 +81,6 @@ export async function POST(request: Request) {
 				parseError: msg,
 			})
 		}
-		return NextResponse.json({ error: msg, ingestionId }, { status: 400 })
+		return NextResponse.json({ error: msg, ingestionId }, { status: err instanceof RequestBodyTooLargeError ? 413 : 400 })
 	}
 }

@@ -2,17 +2,19 @@ import { NextResponse } from "next/server"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
 import { normalizeInboundPayloadToCases } from "@/core/ingest/normalize-upload"
 import { verifyInboundWebhookRequest } from "@/core/security/webhook-signatures"
+import { readRequestTextLimited, RequestBodyTooLargeError } from "@/core/security/request-body"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024
 
 export async function POST(request: Request) {
 	const db = getCorridorDb()
 	let ingestionId: string | undefined
 
 	try {
-		const raw = await request.text()
+		const raw = await readRequestTextLimited(request, MAX_WEBHOOK_BODY_BYTES)
 		const workspace = db.getWorkspace(DEFAULT_WORKSPACE_ID)
 		const corridorSecret = db.getRawWebhookSecret(DEFAULT_WORKSPACE_ID)
 		const stripeSecret = db.getDecryptedCredentials(DEFAULT_WORKSPACE_ID, "stripe")?.webhookSecret
@@ -79,6 +81,6 @@ export async function POST(request: Request) {
 				parseError: msg,
 			})
 		}
-		return NextResponse.json({ error: msg, ingestionId }, { status: 400 })
+		return NextResponse.json({ error: msg, ingestionId }, { status: err instanceof RequestBodyTooLargeError ? 413 : 400 })
 	}
 }

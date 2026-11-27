@@ -2,17 +2,19 @@ import { NextResponse } from "next/server"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
 import { parseInboundEmailToCases, type InboundEmailPayload } from "@/core/integrations/email-parser"
 import { verifyInboundWebhookRequest } from "@/core/security/webhook-signatures"
+import { readRequestTextLimited, RequestBodyTooLargeError } from "@/core/security/request-body"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+const MAX_EMAIL_WEBHOOK_BODY_BYTES = 10 * 1024 * 1024
 
 export async function POST(request: Request) {
 	const db = getCorridorDb()
 	let ingestionId: string | undefined
 
 	try {
-		const raw = await request.text()
+		const raw = await readRequestTextLimited(request, MAX_EMAIL_WEBHOOK_BODY_BYTES)
 		const workspace = db.getWorkspace(DEFAULT_WORKSPACE_ID)
 		const corridorSecret = db.getRawWebhookSecret(DEFAULT_WORKSPACE_ID)
 
@@ -71,6 +73,6 @@ export async function POST(request: Request) {
 				parseError: msg,
 			})
 		}
-		return NextResponse.json({ ok: false, error: msg, ingestionId }, { status: 400 })
+		return NextResponse.json({ ok: false, error: msg, ingestionId }, { status: err instanceof RequestBodyTooLargeError ? 413 : 400 })
 	}
 }
