@@ -1,5 +1,5 @@
 import type { TrajectoryEvent } from "@/core/types"
-import { authorizeCorridorRequest } from "@/core/security/authorization"
+import { authorizeCorridorRequest, isCurrentCorridorViewerSession } from "@/core/security/authorization"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 
 export const runtime = "nodejs"
@@ -12,6 +12,8 @@ export async function GET(request: Request) {
 	const encoder = new TextEncoder()
 
 	let cleanup: (() => void) | null = null
+	let streamClosed = false
+	let checkingAuthorization = false
 
 	const stream = new ReadableStream<Uint8Array>({
 		start(controller) {
@@ -40,11 +42,28 @@ export async function GET(request: Request) {
 
 			orchestrator.state.subscribers.add(listener)
 			const heartbeat = setInterval(() => {
-				try {
-					controller.enqueue(encoder.encode(`: keepalive\n\n`))
-				} catch {
-					cleanup?.()
-				}
+				if (streamClosed || checkingAuthorization) return
+				checkingAuthorization = true
+				void isCurrentCorridorViewerSession(request).then((authorized) => {
+					if (!authorized) {
+						streamClosed = true
+						cleanup?.()
+						try {
+							controller.close()
+						} catch {
+							// The client may have closed the stream while authorization was checked.
+						}
+						return
+					}
+					try {
+						controller.enqueue(encoder.encode(`: keepalive\n\n`))
+					} catch {
+						streamClosed = true
+						cleanup?.()
+					}
+				}).finally(() => {
+					checkingAuthorization = false
+				})
 			}, 15_000)
 
 			cleanup = () => {
@@ -53,6 +72,7 @@ export async function GET(request: Request) {
 			}
 
 			request.signal.addEventListener("abort", () => {
+				streamClosed = true
 				cleanup?.()
 				try {
 					controller.close()

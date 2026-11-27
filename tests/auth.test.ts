@@ -8,7 +8,7 @@ import { NextRequest } from "next/server"
 import { GET as runtimeStatusRoute } from "../src/app/api/runtime/status/route"
 import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/core/db/database"
 import { issueCorridorSession, verifyCorridorSession } from "../src/core/security/auth"
-import { authorizeCorridorRequest } from "../src/core/security/authorization"
+import { authorizeCorridorRequest, isCurrentCorridorViewerSession } from "../src/core/security/authorization"
 import { middleware } from "../src/middleware"
 import { isHumanOverrideAuthorized } from "../src/runtime/interception/human-override"
 import { CORRIDOR_SCHEMA_SQL } from "../src/core/db/schema"
@@ -142,10 +142,12 @@ test("API authorization checks current team membership on every request", async 
 		const token = await issueCorridorSession({ sub: "viewer-1", email: invited.email, name: invited.name, role: "viewer" })
 		const request = new Request("http://localhost/api/history", { headers: { cookie: `ca_session=${token}` } })
 		assert.equal(await authorizeCorridorRequest(request, "viewer"), null)
+		assert.equal(await isCurrentCorridorViewerSession(request), true)
 
 		db.removeTeamMember(DEFAULT_WORKSPACE_ID, invited.id)
 		const denied = await authorizeCorridorRequest(request, "viewer")
 		assert.equal(denied?.status, 401)
+		assert.equal(await isCurrentCorridorViewerSession(request), false)
 		db.close()
 	} finally {
 		if (previousMode === undefined) delete process.env.CORRIDOR_AUTH_MODE

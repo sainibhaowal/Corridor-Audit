@@ -3,6 +3,18 @@ import { NextResponse } from "next/server"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "../db/database"
 import { authEnabled, requestCorridorSession, type CorridorRole } from "./auth"
 
+export async function isCurrentCorridorViewerSession(request: Request): Promise<boolean> {
+	if (!authEnabled()) return true
+	try {
+		const session = await requestCorridorSession(request)
+		if (!session) return false
+		const member = getCorridorDb().getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, session.sub)
+		return Boolean(member && member.role === session.role)
+	} catch {
+		return false
+	}
+}
+
 export async function authorizeCorridorRequest(
 	request: Request,
 	minimumRole: CorridorRole = "viewer",
