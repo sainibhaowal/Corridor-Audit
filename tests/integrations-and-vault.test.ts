@@ -2046,6 +2046,22 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 		}),
 	)
 	assert.equal(invalidMemberRole.status, 400)
+	const addedMember = await postWorkspaceRoute(
+		new Request("http://127.0.0.1/api/settings/workspace", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ action: "add_member", memberEmail: "pilot.analyst@acme.test", memberName: "Pilot Analyst", memberRole: "analyst" }),
+		}),
+	)
+	assert.equal(addedMember.status, 200)
+	const duplicateMember = await postWorkspaceRoute(
+		new Request("http://127.0.0.1/api/settings/workspace", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ action: "add_member", memberEmail: "PILOT.ANALYST@acme.test", memberName: "Pilot Analyst", memberRole: "viewer" }),
+		}),
+	)
+	assert.equal(duplicateMember.status, 409, "duplicate email is rejected without creating another membership")
 	const missingMemberId = await postWorkspaceRoute(
 		new Request("http://127.0.0.1/api/settings/workspace", {
 			method: "POST",

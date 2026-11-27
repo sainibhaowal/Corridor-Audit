@@ -91,6 +91,20 @@ export interface WorkspaceAuditEvent extends Omit<WorkspaceAuditEventInput, "met
 
 export const MAX_CASE_ATTEMPTS = 3
 
+export class TeamMemberConflictError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = "TeamMemberConflictError"
+	}
+}
+
+export class TeamMemberInputError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = "TeamMemberInputError"
+	}
+}
+
 export class CorridorDatabase {
 	private readonly db: DatabaseSync
 
@@ -786,23 +800,27 @@ export class CorridorDatabase {
 		role: TeamRole
 	}): TeamMemberRecord {
 		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
-		const id = `tm_${randomUUID().slice(0, 8)}`
-		const now = new Date().toISOString()
-		this.db
-			.prepare(
-				`INSERT INTO team_members (id, workspace_id, email, name, role, status, created_at)
-				VALUES (?, ?, ?, ?, ?, 'invited', ?)`,
-			)
-			.run(id, workspaceId, params.email.trim().toLowerCase(), params.name.trim(), params.role, now)
-		return {
-			id,
-			workspaceId,
-			email: params.email.trim().toLowerCase(),
-			name: params.name.trim(),
-			role: params.role,
-			status: "invited",
-			createdAt: now,
+		const email = params.email.trim().toLowerCase()
+		const name = params.name.trim()
+		if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+			throw new TeamMemberInputError("Enter a valid email address of no more than 254 characters.")
 		}
+		if (!name || name.length > 120) {
+			throw new TeamMemberInputError("Member name is required and must be no more than 120 characters.")
+		}
+		if (!(["owner", "controller", "analyst", "viewer"] as string[]).includes(params.role)) {
+			throw new TeamMemberInputError("Member role must be owner, controller, analyst, or viewer.")
+		}
+		return this.inTransaction(() => {
+			const existing = this.db.prepare(`SELECT id FROM team_members
+				WHERE workspace_id = ? AND lower(email) = ? LIMIT 1`).get(workspaceId, email) as { id: string } | undefined
+			if (existing) throw new TeamMemberConflictError("This email already has a team membership or pending invitation in this workspace.")
+			const id = `tm_${randomUUID().slice(0, 8)}`
+			const now = new Date().toISOString()
+			this.db.prepare(`INSERT INTO team_members (id, workspace_id, email, name, role, status, created_at)
+				VALUES (?, ?, ?, ?, ?, 'invited', ?)`).run(id, workspaceId, email, name, params.role, now)
+			return { id, workspaceId, email, name, role: params.role, status: "invited", createdAt: now }
+		})
 	}
 
 	activateVerifiedTeamMember(params: {

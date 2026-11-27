@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getCorridorDb } from "@/core/db/database"
+import { getCorridorDb, TeamMemberConflictError, TeamMemberInputError } from "@/core/db/database"
 import { authEnabled, requestCorridorSession } from "@/core/security/auth"
 import { authorizeCorridorRequest, authorizedRequestWorkspaceId } from "@/core/security/authorization"
 import type { AccountMode, TeamRole } from "@/core/db/schema"
@@ -140,7 +140,7 @@ export async function POST(request: Request) {
 	} catch (err) {
 		return NextResponse.json(
 			{ ok: false, error: err instanceof Error ? err.message : String(err) },
-			{ status: 400 },
+			{ status: err instanceof TeamMemberConflictError ? 409 : err instanceof TeamMemberInputError || err instanceof SyntaxError ? 400 : 500 },
 		)
 	}
 }

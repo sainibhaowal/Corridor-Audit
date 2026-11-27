@@ -41,6 +41,20 @@ test("verified invited identities activate with their assigned role; bootstrap o
 	assert.equal(db.getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, "cognito-owner-1")?.email, "owner@example.test")
 })
 
+test("team invitations normalize addresses and reject invalid or duplicate workspace members", () => {
+	const db = new CorridorDatabase(":memory:")
+	try {
+		const invited = db.addTeamMember({ email: "  Analyst@Example.test ", name: "Analyst", role: "analyst" })
+		assert.equal(invited.email, "analyst@example.test")
+		assert.throws(() => db.addTeamMember({ email: "analyst@example.test", name: "Second invite", role: "viewer" }), /already has a team membership or pending invitation/)
+		assert.throws(() => db.addTeamMember({ email: "not-an-email", name: "Invalid", role: "viewer" }), /valid email address/)
+		assert.throws(() => db.addTeamMember({ email: "valid@example.test", name: "Valid", role: "superadmin" as "viewer" }), /Member role must be/)
+		assert.equal(db.listTeamMembers(DEFAULT_WORKSPACE_ID).length, 1)
+	} finally {
+		db.close()
+	}
+})
+
 test("a verified email cannot rebind an invitation already linked to a different Cognito subject", () => {
 	const db = new CorridorDatabase(":memory:")
 	db.addTeamMember({ email: "analyst@example.test", name: "Analyst", role: "analyst" })
