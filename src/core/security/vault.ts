@@ -19,6 +19,9 @@ function resolveVaultKey(): Buffer {
 		cachedKey = createHash("sha256").update(envKey, "utf8").digest()
 		return cachedKey
 	}
+	if (process.env.NODE_ENV === "production") {
+		throw new Error("Production requires CORRIDOR_VAULT_KEY from managed secret storage. A local key file will not be created automatically.")
+	}
 
 	const keyPath = resolve(process.cwd(), process.env.CORRIDOR_VAULT_KEY_FILE || "data/.vault-key")
 	if (existsSync(keyPath)) {

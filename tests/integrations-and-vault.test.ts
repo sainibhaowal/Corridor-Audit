@@ -24,7 +24,7 @@ import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
 import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode, refreshOAuthCredentials } from "../src/core/integrations/oauth"
 import { runIntegrationSync } from "../src/runtime/workers/sync-worker"
 import { runWithDurableCaseRetries } from "../src/runtime/workers/durable-case-queue"
-import { decryptJson, decryptSecret, encryptJson, encryptSecret, maskSecret } from "../src/core/security/vault"
+import { decryptJson, decryptSecret, encryptJson, encryptSecret, maskSecret, resetVaultKeyCache } from "../src/core/security/vault"
 import {
 	verifyCorridorSignature,
 	verifyInboundWebhookRequest,
@@ -43,6 +43,23 @@ test("AES-256-GCM vault encrypts and decrypts secrets and JSON credentials", () 
 	const obj = { apiKey: "rk_123", webhookSecret: "whsec_abc" }
 	const encObj = encryptJson(obj)
 	assert.deepEqual(decryptJson(encObj), obj)
+})
+
+test("production vault refuses to generate an unconfigured local key", () => {
+	const priorNodeEnv = process.env.NODE_ENV
+	const priorVaultKey = process.env.CORRIDOR_VAULT_KEY
+	delete process.env.CORRIDOR_VAULT_KEY
+	Reflect.set(process.env, "NODE_ENV", "production")
+	resetVaultKeyCache()
+	try {
+		assert.throws(() => encryptSecret("must-not-create-a-production-key"), /Production requires CORRIDOR_VAULT_KEY/)
+	} finally {
+		if (priorNodeEnv === undefined) Reflect.deleteProperty(process.env, "NODE_ENV")
+		else Reflect.set(process.env, "NODE_ENV", priorNodeEnv)
+		if (priorVaultKey === undefined) delete process.env.CORRIDOR_VAULT_KEY
+		else process.env.CORRIDOR_VAULT_KEY = priorVaultKey
+		resetVaultKeyCache()
+	}
 })
 
 test("HMAC-SHA256 webhook signature verification supports Stripe, Wise, and Corridor signatures", () => {
