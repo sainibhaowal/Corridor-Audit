@@ -24,7 +24,7 @@ function parseArgs(raw: string): Record<string, unknown> {
 async function promptTerminalBreakpoint(pending: PendingBreakpointDecision): Promise<BreakpointDecision> {
 	const rl = createInterface({ input: process.stdin, output: process.stdout })
 	try {
-		console.log(`\n[MOZAIK BREAKPOINT PAUSED] ${pending.caseId} — ${pending.riskLabel}`)
+		console.log(`\n[MOZAIK BREAKPOINT PAUSED] ${pending.caseId} - ${pending.riskLabel}`)
 		console.log(`  Question: ${pending.question}`)
 		console.log(`  Proof:    ${pending.proofLine}`)
 		const reply = (await rl.question("Approve [y], Reject & Steer [n], Stop [s]? ")).trim().toLowerCase()
@@ -217,7 +217,7 @@ export class SettlementGateInterceptionHandler implements InterceptionHandler {
 		}
 
 		if (decision.decision === "reject") {
-			const note = decision.reason || "Operator rejected dispute claim — treat as approved SHA fee and close cleanly."
+			const note = decision.reason || "Operator rejected dispute claim; treat as approved SHA fee and close cleanly."
 			const output = FunctionCallOutputItem.create(
 				call.callId,
 				JSON.stringify({

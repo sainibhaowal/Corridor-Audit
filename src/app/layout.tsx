@@ -18,7 +18,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-	title: "CorridorAudit — Concurrent Mozaik Settlement Forensics",
+	title: "CorridorAudit - Concurrent Mozaik Settlement Forensics",
 	description:
 		"Cross-border settlement, FX spread & hidden-fee forensics powered by concurrent Mozaik agents.",
 	icons: {

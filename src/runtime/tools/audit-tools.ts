@@ -49,7 +49,7 @@ function buildDisputeLetter(params: {
 	auditRulesVersion: string
 }): string {
 	return [
-		`SUBJECT: Formal Fee Recovery Request — ${params.invoiceId} / Wire Ref ${params.transactionRef}`,
+		`SUBJECT: Formal Fee Recovery Request - ${params.invoiceId} / Wire Ref ${params.transactionRef}`,
 		`DATE: ${new Date().toISOString().slice(0, 10)}`,
 		``,
 		`To: Correspondent & Operations Fee Investigations Desk (${params.senderName})`,

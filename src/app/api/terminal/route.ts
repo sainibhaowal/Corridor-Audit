@@ -6,7 +6,7 @@ export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 const HELP = [
-	"CorridorAudit application console — commands run against the in-process Mozaik runtime.",
+	"CorridorAudit application console - commands run against the in-process Mozaik runtime.",
 	"  help                  Show available commands",
 	"  status                Show queue, provider, gate, and release status",
 	"  cases                 List loaded and completed cases",
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
 				ok: true,
 				output: [
 					`${caseId} · ${c.title}`,
-					`Corridor: ${c.invoice?.expectedAmount.currency ?? c.wire.instructedAmount?.currency ?? "—"} → ${c.wire.settledAmount.currency}`,
+					`Corridor: ${c.invoice?.expectedAmount.currency ?? c.wire.instructedAmount?.currency ?? "-"} → ${c.wire.settledAmount.currency}`,
 					`Specialists complete: ${agentNames.length ? agentNames.join(", ") : "none yet"}`,
 					verdict ? `Verdict: ${verdict.status} · ${verdict.plainEnglishSummary}` : state.pendingApprovals.has(caseId) ? "Status: paused at human review gate." : "Status: in progress; no final verdict yet.",
 				],

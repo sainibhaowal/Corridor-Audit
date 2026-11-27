@@ -229,7 +229,7 @@ export function CaseInspectorModal({
 						<div className="space-y-3">
 							<pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[#1c2a33] bg-[#080d12] p-4 font-mono text-xs text-[#c7d3d6]">
 								{v.disputeNotice ||
-									"No recoverable OUR fee breach on this case — clean audit certificate available in JSON export."}
+									"No recoverable OUR fee breach on this case - clean audit certificate available in JSON export."}
 							</pre>
 							<a
 								href={`/api/report/${encodeURIComponent(v.caseId)}?format=txt`}

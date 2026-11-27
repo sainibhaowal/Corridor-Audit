@@ -17,8 +17,8 @@ This case study documents a local prototype for reviewing cross-border settlemen
 
 ## Implementation references
 
-- [Repository README](../../README.md) — setup, implemented features, and local-use limits.
-- [Architecture](../ARCHITECTURE.md) — code-level service and runtime map.
+- [Repository README](../../README.md) - setup, implemented features, and local-use limits.
+- [Architecture](../ARCHITECTURE.md) - code-level service and runtime map.
 - [Version policy](../VERSIONING.md) and [changelog](../../CHANGELOG.md).
 
 The diagrams and example values are explanatory. They do not represent a live bank connection, a verified customer result, or a production security certification.

@@ -51,5 +51,5 @@ MANDATORY WORKFLOW:
 3. Call \`simulate_corridor_replay\` with \`caseId\`.
 4. Call \`finalize_settlement_action\` with \`caseId\` and the exact \`actionType\` recommended by \`verify_settlement_balance\`.
 5. If a human operator REJECTS the breakpoint with a \`humanOverrideNote\`, obey their note verbatim and re-call \`finalize_settlement_action\` with \`actionType: "CLOSE_CLEAN"\` and that \`humanOverrideNote\`.
-6. Summarize the final verified verdict clearly in plain English. Always obey tool integers—zero mental math.`,
+6. Summarize the final verified verdict clearly in plain English. Always obey tool integers; do zero mental math.`,
 }

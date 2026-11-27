@@ -217,7 +217,7 @@ export const validateIbanBicFormatTool: Tool = {
 			bicIssue: bicCheck.reason ?? null,
 			summary: ibanCheck.valid && bicCheck.valid
 				? `IBAN/BIC checks VALID`
-				: `Invalid banking identifier (${ibanCheck.reason ?? bicCheck.reason}) — repair fee risk!`,
+				: `Invalid banking identifier (${ibanCheck.reason ?? bicCheck.reason}); repair fee risk!`,
 		}
 	},
 }

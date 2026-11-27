@@ -105,7 +105,7 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 							{verdicts.length === 0 ? (
 								<tr>
 									<td colSpan={6} className="px-4 py-8 text-center text-xs text-[#81949a]">
-										No completed audits yet — click <strong>Stream 6-Case Batch</strong> in the left
+										No completed audits yet. Click <strong>Stream 6-Case Batch</strong> in the left
 										sidebar or upload a file in <strong>Inbound Sources</strong>.
 									</td>
 								</tr>

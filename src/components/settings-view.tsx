@@ -357,7 +357,7 @@ export function SettingsView({
 
 			{/* STABLE TWO-COLUMN SETTINGS WORKSPACE */}
 			<div className="grid min-h-[480px] gap-4 lg:grid-cols-[230px_1fr]">
-				{/* LEFT SETTINGS SIDEBAR — CLEAN SECTIONS ONLY */}
+				{/* LEFT SETTINGS SIDEBAR - CLEAN SECTIONS ONLY */}
 				<Card className="relative flex flex-col gap-1 p-3">
 					<div className="absolute right-2 bottom-2 flex gap-1">
 						<a
@@ -452,7 +452,7 @@ export function SettingsView({
 										className="max-w-sm"
 										options={PROVIDERS.map((p) => ({
 											value: p.id,
-											label: `${p.label} — ${p.subtitle}`,
+											label: `${p.label} - ${p.subtitle}`,
 										}))}
 									/>
 								</div>
@@ -472,7 +472,7 @@ export function SettingsView({
 							<div className="flex items-start gap-2.5 rounded-lg border border-[#1c2a33] border-l-4 border-l-emerald-600 bg-[#080d12] p-3 text-xs text-[#c7d3d6]">
 								<ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#62e1c3]" />
 								<div>
-									<strong>In-Memory Security:</strong> API keys remain strictly in server RAM for this session — never written to disk or Git.
+									<strong>In-Memory Security:</strong> API keys remain in server memory for this session and are never written to disk or Git.
 								</div>
 							</div>
 
@@ -499,7 +499,7 @@ export function SettingsView({
 												type={showApiKey ? "text" : "password"}
 												value={apiKey}
 												onChange={(e) => setApiKey(e.target.value)}
-												placeholder="Paste API key — click Discover Models to fetch live model list"
+									placeholder="Paste API key, then click Discover Models to fetch live model list"
 												className="h-9 w-full rounded-lg border border-[#32454d] bg-[#080d12] pr-9 pl-3 font-mono text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
 											/>
 											<button
@@ -677,7 +677,7 @@ export function SettingsView({
 							</div>
 							<div>
 								<label className="mb-1 block text-xs font-semibold text-[#c7d3d6]">
-									Variance Alert Threshold (Minor Units / Cents — e.g. 500 = $5.00)
+									Variance Alert Threshold (Minor Units / Cents, e.g. 500 = $5.00)
 								</label>
 								<input
 									type="number"

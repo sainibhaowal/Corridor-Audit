@@ -66,7 +66,7 @@ export function InboundSourcesView({ onIngested }: InboundSourcesViewProps) {
 					Data Sources &amp; Live Integrations
 				</h1>
 				<p className="mt-1 text-xs text-[#81949a]">
-					Connect B2C payout platforms, B2B accounting ERPs, Open Banking, or email forwarding — or drop one-off SWIFT MT103, ISO 20022 camt.053 XML, CSV, PDF, or JSON files below.
+					Connect B2C payout platforms, B2B accounting ERPs, Open Banking, or email forwarding. You can also upload SWIFT MT103, ISO 20022 camt.053 XML, CSV, PDF, or JSON files below.
 				</p>
 			</div>
 

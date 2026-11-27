@@ -19,7 +19,7 @@ async function main() {
 	const status = orchestrator.router.getPublicStatus()
 
 	console.log("====================================================================")
-	console.log(" CorridorAudit CLI — Concurrent Mozaik Settlement Forensics")
+	console.log(" CorridorAudit CLI - Concurrent Mozaik Settlement Forensics")
 	console.log(` Provider: ${status.label} (${status.modelName}) | Mode: ${status.mode.toUpperCase()}`)
 	console.log(` Source:   ${resolved}`)
 	console.log("====================================================================\n")

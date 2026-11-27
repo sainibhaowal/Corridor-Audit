@@ -1180,7 +1180,7 @@ export function CorridorWorkspace() {
 												autoFocus
 												value={steerReason}
 												onChange={(e) => setSteerReason(e.target.value)}
-												placeholder="Type instruction for AuditorAgent (e.g. Client agreed to split fee — treat as SHA)"
+												placeholder="Type instruction for AuditorAgent (e.g. Client agreed to split fee; treat as SHA)"
 												className="h-9 min-w-[240px] flex-1 rounded-md border border-[#32454d] bg-[#0d141b] px-3 text-xs text-[#e3edef] focus:border-emerald-600 focus:outline-none"
 											/>
 											<Button

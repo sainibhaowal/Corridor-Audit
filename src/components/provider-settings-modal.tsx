@@ -276,7 +276,7 @@ export function ProviderSettingsModal({
 							<div className="flex items-start gap-2.5 rounded-lg border border-[#1c2a33] border-l-4 border-l-emerald-600 bg-[#080d12] p-3 text-xs text-[#c7d3d6]">
 								<ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#62e1c3]" />
 								<div>
-									<strong>In-Memory Security:</strong> LLM API keys entered here remain strictly in server RAM for this session — never written to disk or Git.
+									<strong>In-Memory Security:</strong> LLM API keys entered here remain in server memory for this session and are never written to disk or Git.
 								</div>
 							</div>
 
@@ -387,7 +387,7 @@ export function ProviderSettingsModal({
 
 							<div>
 								<label className="mb-1 block text-xs font-semibold text-[#c7d3d6]">
-									Variance Alert Threshold (Minor Units / Cents — e.g. 500 = $5.00)
+									Variance Alert Threshold (Minor Units / Cents, e.g. 500 = $5.00)
 								</label>
 								<input
 									type="number"

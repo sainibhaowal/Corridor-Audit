@@ -230,7 +230,7 @@ export const matchOrphanWireTool: Tool = {
 							reasons: [`Explicit remittance reference :70:="${wire.remittanceInfo}"`],
 						}
 					: null,
-				summary: `Wire ${wire.wireId} carries explicit remittance reference "${wire.remittanceInfo}" — orphan matching not needed.`,
+				summary: `Wire ${wire.wireId} carries explicit remittance reference "${wire.remittanceInfo}"; orphan matching not needed.`,
 			}
 		}
 
