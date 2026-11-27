@@ -16,10 +16,12 @@ This is the live delivery record for production-readiness engineering. A row is 
 | 7 | Monitoring, audit logs, deployment configuration, threat review, and operational runbooks | In progress: authenticated API requests have SQLite-backed per-user limits in the local deployment; external edge limits, webhook limits, monitoring, and incident operations remain |
 | 8 | Provider and security validation evidence, controlled pilot release gates | Not started |
 
-## Phase 0 findings
+## Phase 0 baseline findings
+
+The following records the initial baseline and is historical. Current behavior and remaining gaps are maintained in [`01-current-state.md`](01-current-state.md) and the dated implementation entries below.
 
 - The application is local-only today. It uses a single fixed workspace ID, local SQLite, process-local agent runtime and queue, a process-local periodic sync timer, and local filesystem hot-folder watching.
-- Three data concerns are known blockers: invoice-only inputs can be represented with a generated equal-value wire; QuickBooks and Xero create matching placeholder wires; integrations do not preserve the original provider response consistently.
+- The initial baseline exposed three data concerns that have since been addressed in code: invoice-only inputs could be represented with an equal-value comparison wire, QuickBooks and Xero created matching placeholder wires, and provider responses were not consistently retained. Current limitations include incomplete provider-specific webhook and email schemas, limited payment and bank matching, and incomplete sync cursor coverage.
 - The workspace threshold and tax fields persist but are not consumed by audit policy. Team role labels are not authorization. Webhook signature enforcement defaults to disabled.
 - Existing product UI and workflow must remain. Production work may add authentication, evidence states, and controls while retaining the existing workbench layout and feature areas.
 - Production cloud target is not configured. The provisional recommendation is AWS managed services. User has asked to keep the current working environment local for now.
