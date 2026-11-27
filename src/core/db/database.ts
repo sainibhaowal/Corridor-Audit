@@ -26,6 +26,15 @@ import {
 
 export const DEFAULT_WORKSPACE_ID = "ws-default"
 
+function parseJsonStringArray(value: unknown): string[] {
+	try {
+		const parsed: unknown = JSON.parse(String(value ?? "[]"))
+		return Array.isArray(parsed) && parsed.every((item) => typeof item === "string") ? parsed : []
+	} catch {
+		return []
+	}
+}
+
 export interface WebhookReceiptResult {
 	duplicate: boolean
 	conflict: boolean
@@ -110,6 +119,7 @@ export class CorridorDatabase {
 		this.db.exec(CORRIDOR_SCHEMA_SQL)
 		this.ensureTeamIdentityColumn()
 		this.ensureCaseQueueColumns()
+		this.ensureSyncRunCaseIdsColumn()
 		this.ensureSensitiveJsonEncryptionColumns()
 		this.encryptLegacySensitiveJson()
 		this.ensureRawContentEncryptionColumn()
@@ -241,6 +251,13 @@ export class CorridorDatabase {
 			WHERE status = 'failed'`)
 		this.db.exec("CREATE INDEX IF NOT EXISTS idx_cases_queue_due ON cases(workspace_id, status, next_attempt_at, created_at)")
 		this.db.exec("CREATE INDEX IF NOT EXISTS idx_cases_queue_lease ON cases(workspace_id, status, lease_expires_at, created_at)")
+	}
+
+	private ensureSyncRunCaseIdsColumn(): void {
+		const columns = this.db.prepare("PRAGMA table_info(sync_runs)").all() as Array<{ name: string }>
+		if (!columns.some((column) => column.name === "case_ids_json")) {
+			this.db.exec("ALTER TABLE sync_runs ADD COLUMN case_ids_json TEXT NOT NULL DEFAULT '[]'")
+		}
 	}
 
 	private ensureTeamIdentityColumn(): void {
@@ -947,6 +964,7 @@ export class CorridorDatabase {
 			provider: params.provider,
 			trigger: params.trigger,
 			status: "running",
+			auditStatus: "not_queued",
 			recordsFetched: 0,
 			casesQueued: 0,
 			startedAt,
@@ -958,14 +976,15 @@ export class CorridorDatabase {
 		status: "success" | "failed"
 		recordsFetched: number
 		casesQueued: number
+		caseIds?: string[]
 		error?: string
 	}): void {
 		this.db.exec("BEGIN IMMEDIATE")
 		try {
 			const run = this.db.prepare(`UPDATE sync_runs
-				SET status = ?, records_fetched = ?, cases_queued = ?, error = ?, finished_at = ?
+				SET status = ?, records_fetched = ?, cases_queued = ?, case_ids_json = ?, error = ?, finished_at = ?
 				WHERE id = ? RETURNING workspace_id, provider, trigger_type`).get(
-				params.status, params.recordsFetched, params.casesQueued, params.error ?? null, new Date().toISOString(), params.id,
+				params.status, params.recordsFetched, params.casesQueued, JSON.stringify(params.caseIds ?? []), params.error ?? null, new Date().toISOString(), params.id,
 			) as { workspace_id: string; provider: string; trigger_type: string } | undefined
 			if (run) this.appendWorkspaceAuditEvent({
 				workspaceId: run.workspace_id,
@@ -987,19 +1006,43 @@ export class CorridorDatabase {
 		const rows = this.db
 			.prepare("SELECT * FROM sync_runs WHERE workspace_id = ? ORDER BY started_at DESC LIMIT ?")
 			.all(workspaceId, limit) as Array<Record<string, unknown>>
-		return rows.map((r) => ({
+		return rows.map((r) => {
+			const caseIds = parseJsonStringArray(r.case_ids_json)
+			const auditStatus = this.getSyncRunAuditStatus(String(r.workspace_id), String(r.status), Number(r.cases_queued), caseIds)
+			return ({
 			id: String(r.id),
 			integrationId: String(r.integration_id),
 			workspaceId: String(r.workspace_id),
 			provider: String(r.provider),
 			trigger: String(r.trigger_type) as "manual" | "cron" | "webhook",
 			status: String(r.status) as "running" | "success" | "failed",
+			auditStatus,
 			recordsFetched: Number(r.records_fetched),
 			casesQueued: Number(r.cases_queued),
 			error: r.error ? String(r.error) : undefined,
 			startedAt: String(r.started_at),
 			finishedAt: r.finished_at ? String(r.finished_at) : undefined,
-		}))
+			})
+		})
+	}
+
+	private getSyncRunAuditStatus(
+		workspaceId: string,
+		fetchStatus: string,
+		casesQueued: number,
+		caseIds: string[],
+	): SyncRunRecord["auditStatus"] {
+		if (casesQueued === 0) return fetchStatus === "running" ? "unknown" : "not_queued"
+		if (caseIds.length === 0 || caseIds.length !== casesQueued) return "unknown"
+		const statuses = caseIds.map((caseId) => this.getCaseQueueState(caseId, workspaceId)?.status)
+		if (statuses.some((status) => !status)) return "unknown"
+		const completed = statuses.filter((status) => status === "completed").length
+		const failed = statuses.filter((status) => status === "dead_letter").length
+		if (completed === statuses.length) return "completed"
+		if (failed === statuses.length) return "failed"
+		if (completed > 0 && failed > 0) return "partial"
+		if (statuses.includes("running")) return "running"
+		return "queued"
 	}
 
 	saveCase(settlementCase: SettlementCase, workspaceId = DEFAULT_WORKSPACE_ID): void {

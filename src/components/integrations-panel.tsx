@@ -43,6 +43,7 @@ interface SyncRunItem {
 	provider: string
 	trigger: string
 	status: "running" | "success" | "failed"
+	auditStatus?: "not_queued" | "queued" | "running" | "completed" | "failed" | "partial" | "unknown"
 	recordsFetched: number
 	casesQueued: number
 	error?: string
@@ -419,8 +420,11 @@ export function IntegrationsPanel({ onCasesQueued }: { onCasesQueued: () => void
 								<span>
 									fetched {run.recordsFetched} · queued {run.casesQueued}
 								</span>
-								<span className={run.status === "success" ? "text-[#75e4c7]" : "text-red-400"}>
-									{run.status}
+								<span className={run.status === "success" ? "text-[#75e4c7]" : run.status === "running" ? "text-amber-300" : "text-red-400"}>
+									{run.status === "success" ? "Fetch complete" : run.status === "running" ? "Fetching" : "Fetch failed"}
+								</span>
+								<span className={run.auditStatus === "completed" ? "text-[#75e4c7]" : run.auditStatus === "failed" || run.auditStatus === "partial" ? "text-amber-300" : "text-[#91a5ad]"}>
+									Audit {run.auditStatus === "not_queued" ? "no new cases" : run.auditStatus ?? "status unavailable"}
 								</span>
 							</div>
 						))}

@@ -90,6 +90,8 @@ export interface SyncRunRecord {
 	provider: string
 	trigger: "manual" | "cron" | "webhook"
 	status: "running" | "success" | "failed"
+	/** Provider fetch status. A successful fetch does not mean queued audits are complete. */
+	auditStatus: "not_queued" | "queued" | "running" | "completed" | "failed" | "partial" | "unknown"
 	recordsFetched: number
 	casesQueued: number
 	error?: string
@@ -228,6 +230,7 @@ CREATE TABLE IF NOT EXISTS sync_runs (
 	records_fetched INTEGER NOT NULL DEFAULT 0,
 	cases_queued INTEGER NOT NULL DEFAULT 0,
 	error TEXT,
+	case_ids_json TEXT NOT NULL DEFAULT '[]',
 	started_at TEXT NOT NULL,
 	finished_at TEXT
 );

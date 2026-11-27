@@ -159,6 +159,7 @@ export async function runIntegrationSync(params: {
 			status: "success",
 			recordsFetched: fetched.recordsFetched,
 			casesQueued: freshCases.length,
+			caseIds: freshCases.map((settlementCase) => settlementCase.caseId),
 		})
 		db.markIntegrationSyncState({
 			integrationId: integration.id,
@@ -171,6 +172,7 @@ export async function runIntegrationSync(params: {
 		return {
 			...run,
 			status: "success",
+			auditStatus: freshCases.length === 0 ? "not_queued" : "queued",
 			recordsFetched: fetched.recordsFetched,
 			casesQueued: freshCases.length,
 			finishedAt: now,
@@ -195,6 +197,7 @@ export async function runIntegrationSync(params: {
 		return {
 			...run,
 			status: "failed",
+			auditStatus: "not_queued",
 			error: msg,
 			finishedAt: now,
 		}

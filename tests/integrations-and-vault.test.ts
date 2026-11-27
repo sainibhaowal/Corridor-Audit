@@ -157,8 +157,23 @@ test("CorridorDatabase persists workspaces, team members, encrypted integrations
 	})
 	db.finishSyncRun({ id: syncRun.id, status: "success", recordsFetched: 4, casesQueued: 2 })
 	assert.equal(db.listRecentSyncRuns(DEFAULT_WORKSPACE_ID, 5)[0]?.casesQueued, 2)
+	assert.equal(db.listRecentSyncRuns(DEFAULT_WORKSPACE_ID, 5)[0]?.auditStatus, "unknown")
 	assert.equal(db.listWorkspaceAuditEvents(DEFAULT_WORKSPACE_ID).find((event) => event.action === "integration.sync.complete")?.metadata.recordsFetched, 4)
 	assert.equal(db.verifyWorkspaceAuditChain(DEFAULT_WORKSPACE_ID).valid, true)
+
+	db.saveCase({
+		caseId: "sync-audit-status-case",
+		title: "Sync audit status fixture",
+		channelLabel: "test",
+		settlementEvidence: "incomplete",
+		wire: { format: "test" },
+		createdAt: new Date().toISOString(),
+	} as never)
+	const trackedRun = db.createSyncRun({ integrationId: integration.id, workspaceId: DEFAULT_WORKSPACE_ID, provider: "wise", trigger: "manual" })
+	db.finishSyncRun({ id: trackedRun.id, status: "success", recordsFetched: 1, casesQueued: 1, caseIds: ["sync-audit-status-case"] })
+	assert.equal(db.listRecentSyncRuns(DEFAULT_WORKSPACE_ID, 5)[0]?.auditStatus, "queued")
+	db.markCaseDeadLetter("sync-audit-status-case", "test failure")
+	assert.equal(db.listRecentSyncRuns(DEFAULT_WORKSPACE_ID, 5)[0]?.auditStatus, "failed")
 
 	db.disconnectIntegration(DEFAULT_WORKSPACE_ID, "wise")
 	assert.equal(db.getIntegration(DEFAULT_WORKSPACE_ID, "wise")?.status, "disconnected")
