@@ -284,9 +284,7 @@ export class CorridorDatabase {
 			const secret = decryptSecret(String(row.webhook_signing_secret_enc))
 			secretMasked = maskSecret(secret)
 		} catch {
-			// Self-heal if local .vault-key was rotated/recreated after DB creation
-			const regenerated = this.rotateWebhookSecret(workspaceId)
-			secretMasked = maskSecret(regenerated)
+			throw new Error(`Cannot decrypt webhook signing secret for workspace ${workspaceId}. Verify the configured vault key.`)
 		}
 		return {
 			id: String(row.id),
@@ -312,7 +310,7 @@ export class CorridorDatabase {
 		try {
 			return decryptSecret(row.webhook_signing_secret_enc)
 		} catch {
-			return this.rotateWebhookSecret(workspaceId)
+			throw new Error(`Cannot decrypt webhook signing secret for workspace ${workspaceId}. Verify the configured vault key.`)
 		}
 	}
 

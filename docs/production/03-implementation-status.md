@@ -156,6 +156,12 @@ Update this section per milestone with the exact command, result, environment, a
 - This is a storage-layer safeguard, not completed multi-tenant support. API routes and sign-in still select `ws-default`, so workspace identity must be derived from the authenticated session and propagated through every API, job, SSE stream, and provider callback before multiple customer workspaces can be enabled.
 - `npm run typecheck`: passed. `npm test`: passed, 43 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
 
+### 2026-11-27 fail-closed webhook secret reads
+
+- Reading workspace settings or verifying inbound webhooks no longer replaces an undecryptable webhook secret. Both paths return a clear vault-key configuration error, preserving the stored ciphertext for recovery or an explicit operator rotation.
+- This prevents a wrong or lost vault key from silently invalidating webhook clients. Key recovery and rotation are still manual and need a managed key provider and documented rotation procedure for production.
+- `npm run typecheck`: passed. `npm test`: passed, 44 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
 ### 2026-11-27 durable review decision records
 
 - Review breakpoints are now stored in SQLite with the exact tool-call digest, question, proof, requested action, status, decision, reason, and reviewer identity. Decisions accept only approve, reject, or stop.

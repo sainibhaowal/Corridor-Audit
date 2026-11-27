@@ -161,6 +161,19 @@ test("CorridorDatabase persists workspaces, team members, encrypted integrations
 	db.close()
 })
 
+test("workspace secret decryption failures do not silently rotate webhook credentials", () => {
+	const db = new CorridorDatabase(":memory:")
+	const internal = db as unknown as { db: DatabaseSync }
+	internal.db.prepare("UPDATE workspaces SET webhook_signing_secret_enc = ? WHERE id = ?")
+		.run("invalid-ciphertext", DEFAULT_WORKSPACE_ID)
+	assert.throws(() => db.getWorkspace(DEFAULT_WORKSPACE_ID), /Cannot decrypt webhook signing secret/)
+	assert.throws(() => db.getRawWebhookSecret(DEFAULT_WORKSPACE_ID), /Cannot decrypt webhook signing secret/)
+	const stored = internal.db.prepare("SELECT webhook_signing_secret_enc FROM workspaces WHERE id = ?")
+		.get(DEFAULT_WORKSPACE_ID) as { webhook_signing_secret_enc: string }
+	assert.equal(stored.webhook_signing_secret_enc, "invalid-ciphertext")
+	db.close()
+})
+
 test("local case queue uses exclusive claims and recovers expired work", async () => {
 	const db = new CorridorDatabase(":memory:")
 	const queuedCase = {
