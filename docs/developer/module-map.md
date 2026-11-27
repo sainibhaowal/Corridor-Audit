@@ -39,8 +39,10 @@
 | Component | Responsibility |
 | :--- | :--- |
 | `src/components/corridor-workspace.tsx` | 3-panel workbench shell: navigation, sidebar drag-and-drop / click `Upload source` with live stage indicator (`uploading` → `processing` → `ingested`), top toast notification, auto-switch to Live Agent Stream, breakpoint resolution controls, and Cases / Artifacts / Ledger drawer. |
-| `src/components/corridor-summary-view.tsx` | KPI summary cards, per-case verdict table, and batch **Export Sheet (.csv)** / **Export All (.json)**. |
-| `src/components/case-inspector-modal.tsx` | Case Inspector modal with **Summary & Cent Ledger**, **In-Built File Preview** (inline `.pdf` iframe, parsed `.csv` table, `.txt`, `.json`), **Technical JSON**, and **Review Request Draft (.txt)**. |
+| `src/components/corridor-summary-view.tsx` | KPI summary cards, interactive `CorridorAnalyticsPanel`, per-case verdict table, and batch **Export Sheet (.csv)** / **Export All (.json)**. |
+| `src/components/corridor-analytics-panel.tsx` | Real-data interactive analytics widgets: Line/Area/Bar Trend chart, Stacked/Pie Cost & Leak breakdown, Model & Agent usage meter, Case Risk Heat-Graph, and Trust & Accuracy Proof card. |
+| `src/components/case-inspector-modal.tsx` | Case Inspector modal with **Summary & Cent Ledger**, **Trace Waterfall (Gantt)**, **In-Built File Preview** (inline `.pdf` iframe, parsed `.csv` table, `.txt`, `.json`), **Technical JSON**, and **Review Request Draft (.txt)**. |
+| `src/components/trace-waterfall.tsx` | Millisecond-accurate parallel execution Gantt chart showing concurrent specialist lanes, deterministic tool durations, `AuditorAgent`, and breakpoint pauses. |
 | `src/components/inbound-sources-view.tsx` | File drag-and-drop & paste uploader (`.csv`, `.txt`, `.xml`, `.json`, `.pdf`). |
 | `src/components/raw-vault-view.tsx` | Raw Data Vault browser with SHA-256 inspection, raw download, and reprocess triggers. |
 | `src/components/integrations-panel.tsx` | OAuth2 / API token connector cards and manual sync controls. |

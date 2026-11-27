@@ -31,7 +31,8 @@ In **Live Agent Stream**:
 ---
 
 ## 4. Inspect, Preview & Export (`.pdf`, `.csv`, `.txt`, `.json`)
+- Open **Corridor Summary** to explore the live **Trend Chart (Line / Area / Bar)**, **Stacked / Pie Leak Breakdown**, **Model & Agent Usage Meter**, **Case Risk Heat-Graph**, and **Trust & Accuracy Proof** scorecard, or click **Export Sheet (`.csv`)** / **Export All (`.json`)**.
 - Open any completed case in the **Case Inspector** (or click **Preview Files** in the right-hand **Artifacts** drawer):
+  - **Trace Waterfall (Gantt) Tab:** Inspect the parallel millisecond timeline proving the specialists ran concurrently before `AuditorAgent`.
   - **In-Built File Preview Tab:** View the live inline **`.pdf`** report (`<iframe>`), parsed **`.csv`** spreadsheet table, **`.txt`** review request draft, or **`.json`** audit payload without leaving the app.
-  - **Summary View:** Use **Export Sheet (`.csv`)** or **Export All (`.json`)** to download all processed cases at once.
 - Open **Raw Vault** to inspect the SHA-256 fingerprint, encrypted storage status, or reprocess/download the original source payload.
