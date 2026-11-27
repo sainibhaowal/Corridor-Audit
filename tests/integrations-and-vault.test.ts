@@ -21,6 +21,7 @@ import { POST as inboundWebhookRoute } from "../src/app/api/webhooks/inbound/rou
 import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/core/db/database"
 import { CORRIDOR_SCHEMA_SQL } from "../src/core/db/schema"
 import { parseInboundEmailToCases } from "../src/core/integrations/email-parser"
+import { deriveWebhookEventId } from "../src/core/security/webhook-event-id"
 import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
 import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublicly, fetchProvider, validateProviderEndpointUrl } from "../src/core/integrations/http"
 import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode, refreshOAuthCredentials } from "../src/core/integrations/oauth"
@@ -2087,6 +2088,28 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 	)
 	assert.equal(duplicateWebhookRes.status, 200)
 	assert.equal((await duplicateWebhookRes.json()).duplicate, true)
+	const busyWebhookPayload = JSON.stringify({ id: "evt-WH-BUSY-01", caseId: "WH-BUSY-01", title: "Busy webhook" })
+	const busyWebhookIdentity = deriveWebhookEventId(busyWebhookPayload, "corridor")
+	const db = getCorridorDb()
+	db.recordWebhookReceipt({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider: "corridor",
+		eventId: busyWebhookIdentity.eventId,
+		sourceChannel: "webhook",
+		filename: "busy-webhook.json",
+		format: "auto",
+		rawContent: busyWebhookPayload,
+	})
+	assert.equal(db.claimWebhookReceipt({ provider: "corridor", eventId: busyWebhookIdentity.eventId, ownerId: "active-webhook-worker" }), true)
+	const busyWebhookSignature = createHmac("sha256", secret).update(busyWebhookPayload, "utf8").digest("hex")
+	const busyWebhookRes = await inboundWebhookRoute(new Request("http://127.0.0.1/api/webhooks/inbound", {
+		method: "POST",
+		headers: { "Content-Type": "application/json", "x-corridor-signature": `sha256=${busyWebhookSignature}` },
+		body: busyWebhookPayload,
+	}))
+	assert.equal(busyWebhookRes.status, 503, "an active receipt must not be acknowledged as accepted work")
+	assert.equal(busyWebhookRes.headers.get("retry-after"), "5")
+	assert.equal((await busyWebhookRes.json()).retryable, true)
 	const conflictingPayload = payload.replace("Signed Webhook Case", "Changed Webhook Case")
 	const conflictingSig = createHmac("sha256", secret).update(conflictingPayload, "utf8").digest("hex")
 	const conflictingWebhookRes = await inboundWebhookRoute(
@@ -2140,6 +2163,27 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 		}),
 	)
 	assert.equal(duplicateEmailRes.status, 200)
+	const busyEmailBody = JSON.stringify({ from: "ap@vendor.test", subject: "Busy email", textBody: ":20:TXN-MAIL-BUSY\n:32A:261124EUR1200,00\n:71A:SHA" })
+	const busyEmailIdentity = deriveWebhookEventId(busyEmailBody, "email_inbound", true)
+	getCorridorDb().recordWebhookReceipt({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider: "email_inbound",
+		eventId: busyEmailIdentity.eventId,
+		sourceChannel: "email",
+		filename: "busy-email.json",
+		format: "json",
+		rawContent: busyEmailBody,
+	})
+	assert.equal(getCorridorDb().claimWebhookReceipt({ provider: "email_inbound", eventId: busyEmailIdentity.eventId, ownerId: "active-email-worker" }), true)
+	const busyEmailSignature = createHmac("sha256", secret).update(busyEmailBody, "utf8").digest("hex")
+	const busyEmailRes = await emailWebhookRoute(new Request("http://127.0.0.1/api/webhooks/email", {
+		method: "POST",
+		headers: { "Content-Type": "application/json", "x-corridor-signature": `sha256=${busyEmailSignature}` },
+		body: busyEmailBody,
+	}))
+	assert.equal(busyEmailRes.status, 503, "an active email receipt must be retried rather than acknowledged early")
+	assert.equal(busyEmailRes.headers.get("retry-after"), "5")
+	assert.equal((await busyEmailRes.json()).retryable, true)
 	const malformedEmail = "{not-json"
 	const malformedEmailSig = createHmac("sha256", secret).update(malformedEmail, "utf8").digest("hex")
 	const malformedEmailRes = await emailWebhookRoute(

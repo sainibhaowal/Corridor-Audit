@@ -68,7 +68,10 @@ export async function POST(request: Request) {
 		receiptOwnerId = randomUUID()
 		const claimed = db.claimWebhookReceipt({ ...identity, ownerId: receiptOwnerId })
 		if (!claimed) {
-			return NextResponse.json({ ok: true, duplicate: true, processing: true, ingestionId: receipt.ingestion.id, eventId: eventIdentity.eventId }, { status: 202 })
+			return NextResponse.json(
+				{ ok: false, retryable: true, error: "This webhook event is still being processed. Retry the delivery shortly.", ingestionId: receipt.ingestion.id, eventId: eventIdentity.eventId },
+				{ status: 503, headers: { "Retry-After": "5" } },
+			)
 		}
 		leaseHeartbeat = setInterval(() => {
 			try { db.renewWebhookReceiptLease({ ...identity, ownerId: receiptOwnerId! }) } catch { /* Lease expiry permits safe redelivery recovery. */ }
