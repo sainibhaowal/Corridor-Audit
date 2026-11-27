@@ -53,3 +53,15 @@ test("workspace audit events reject oversized metadata and invalid action labels
 	assert.throws(() => db.appendWorkspaceAuditEvent({ actorType: "local", action: "workspace.settings.update", targetType: "workspace", metadata: { note: "x".repeat(5_000) } }))
 	assert.equal(db.verifyWorkspaceAuditChain().eventCount, 0)
 })
+
+test("workspace mutation and audit append roll back together", () => {
+	const db = new CorridorDatabase(":memory:")
+	const originalName = db.getWorkspace(DEFAULT_WORKSPACE_ID).name
+	assert.throws(() => db.transaction(() => {
+		db.updateWorkspace(DEFAULT_WORKSPACE_ID, { name: "Partially changed" })
+		db.appendWorkspaceAuditEvent({ actorType: "local", action: "invalid action", targetType: "workspace" })
+	}))
+	assert.equal(db.getWorkspace(DEFAULT_WORKSPACE_ID).name, originalName)
+	assert.equal(db.verifyWorkspaceAuditChain().eventCount, 0)
+	db.close()
+})

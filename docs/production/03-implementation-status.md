@@ -331,3 +331,10 @@ Update this section per milestone with the exact command, result, environment, a
 - Review approval requests and provider sync starts now produce events in the same transaction as their durable rows. These complete the normal lifecycle trace from source receipt through parse status, case queue processing, review decision, verdict, provider sync, and operator replay.
 - Invalid webhook signatures are rejected before durable receipt creation and remain outside the workspace event log. Workspace/integration settings changes still append separately after the primary mutation. External anchoring, export, retention locking, alerting, and immutable storage remain unconfigured.
 - Typecheck: passed. Integration test file: 25 passed, 0 failed. Full test suite: 63 passed, 0 failed. Production build: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 atomic workspace and integration audit writes
+
+- Workspace setting updates, team member add/remove, webhook signing secret rotation, and integration connect/disconnect now wrap their mutation and audit append in one SQLite transaction. Removal events are emitted only when a row was actually removed. Disconnect events are emitted only when an integration row changed.
+- Added a rollback test that forces audit validation to fail after a workspace update and confirms neither the setting nor a partial audit event remains. Existing API response shapes and UI are unchanged.
+- The fixed `ws-default` route selection remains a separate multi-workspace isolation gap. Invalid webhook signature events remain outside persistent logs. Local hash-chain storage is not immutable or externally anchored.
+- Typecheck: passed. Full suite: 64 passed, 0 failed. Production build: passed. `git diff --check`: passed. Verification ran locally on Windows.

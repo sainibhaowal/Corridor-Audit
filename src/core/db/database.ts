@@ -97,6 +97,10 @@ export class CorridorDatabase {
 		}
 	}
 
+	transaction<T>(work: () => T): T {
+		return this.inTransaction(work)
+	}
+
 	constructor(dbPath?: string) {
 		const target = dbPath || process.env.CORRIDOR_DB_PATH || resolve(process.cwd(), "data/corridoraudit.db")
 		if (target !== ":memory:") {
@@ -640,8 +644,8 @@ export class CorridorDatabase {
 		return this.listTeamMembers(workspaceId).find((member) => member.email === email && member.status === "active") ?? null
 	}
 
-	removeTeamMember(workspaceId: string, memberId: string): void {
-		this.db.prepare("DELETE FROM team_members WHERE id = ? AND workspace_id = ?").run(memberId, workspaceId)
+	removeTeamMember(workspaceId: string, memberId: string): boolean {
+		return Number(this.db.prepare("DELETE FROM team_members WHERE id = ? AND workspace_id = ?").run(memberId, workspaceId).changes) === 1
 	}
 
 	private mapIntegrationRow(row: Record<string, unknown>): IntegrationRecord {
@@ -822,14 +826,15 @@ export class CorridorDatabase {
 		}
 	}
 
-	disconnectIntegration(workspaceId: string, provider: string): void {
-		this.db
+	disconnectIntegration(workspaceId: string, provider: string): boolean {
+		const result = this.db
 			.prepare(
 				`UPDATE integrations
 				SET status = 'disconnected', credentials_enc = NULL, last_error = NULL, updated_at = ?
 				WHERE workspace_id = ? AND provider = ?`,
 			)
 			.run(new Date().toISOString(), workspaceId, provider)
+		return Number(result.changes) === 1
 	}
 
 	markIntegrationSyncState(params: {

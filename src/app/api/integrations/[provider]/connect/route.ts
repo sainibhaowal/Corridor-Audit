@@ -65,25 +65,28 @@ export async function POST(
 		}
 
 		const db = getCorridorDb()
-		const record = db.upsertIntegration({
-			workspaceId: DEFAULT_WORKSPACE_ID,
-			provider,
-			category: spec.category,
-			authMode: resolvedMode,
-			status: "connected",
-			accountLabel: body.accountLabel?.trim() || spec.name,
-			externalAccountId: body.externalAccountId?.trim(),
-			credentials:
-				body.apiKey || body.webhookSecret
-					? {
-							apiKey: body.apiKey?.trim(),
-							webhookSecret: body.webhookSecret?.trim(),
-						}
-					: undefined,
-			config: body.config ?? {},
-		})
 		const session = authEnabled() ? await requestCorridorSession(request) : null
-		db.appendWorkspaceAuditEvent({ workspaceId: DEFAULT_WORKSPACE_ID, actorType: session ? "user" : "local", actorId: session?.sub, actorEmail: session?.email, actorRole: session?.role, action: "integration.connect", targetType: "integration", targetId: provider, requestId: request.headers.get("x-request-id") || undefined, metadata: { authMode: resolvedMode } })
+		const record = db.transaction(() => {
+			const connected = db.upsertIntegration({
+				workspaceId: DEFAULT_WORKSPACE_ID,
+				provider,
+				category: spec.category,
+				authMode: resolvedMode,
+				status: "connected",
+				accountLabel: body.accountLabel?.trim() || spec.name,
+				externalAccountId: body.externalAccountId?.trim(),
+				credentials:
+					body.apiKey || body.webhookSecret
+						? {
+								apiKey: body.apiKey?.trim(),
+								webhookSecret: body.webhookSecret?.trim(),
+							}
+						: undefined,
+				config: body.config ?? {},
+			})
+			db.appendWorkspaceAuditEvent({ workspaceId: DEFAULT_WORKSPACE_ID, actorType: session ? "user" : "local", actorId: session?.sub, actorEmail: session?.email, actorRole: session?.role, action: "integration.connect", targetType: "integration", targetId: provider, requestId: request.headers.get("x-request-id") || undefined, metadata: { authMode: resolvedMode } })
+			return connected
+		})
 
 		return NextResponse.json({ ok: true, integration: record })
 	} catch (err) {
