@@ -220,6 +220,7 @@ export interface AuditVerdict {
 }
 
 export interface PendingBreakpointDecision {
+	approvalId?: string
 	caseId: string
 	agentName: string
 	toolName: string

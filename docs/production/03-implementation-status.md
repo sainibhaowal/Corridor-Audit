@@ -9,7 +9,7 @@ This is the live delivery record for production-readiness engineering. A row is 
 | 0 | Baseline and code-backed production record | Complete |
 | 1 | Canonical evidence completeness, provider mapping correctness, upload validation, and accurate states | In progress |
 | 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | In progress |
-| 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Versioned tax and review policies implemented locally; durable approvals and summary hardening remain |
+| 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Versioned tax and review policies plus durable approval records implemented locally; approval UI and production workflow controls remain |
 | 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Local SQLite queue recovery and webhook deduplication slices complete; production queue not started |
 | 5 | Raw evidence object storage, encryption/key lifecycle, retention, backup, restore, and deletion | Local SQLite raw-payload encryption complete; managed storage and lifecycle not started |
 | 6 | Provider adapters with pagination, cursors, token refresh/revocation, event security, and reconciliation | Not started |
@@ -113,6 +113,14 @@ Update this section per milestone with the exact command, result, environment, a
 - The threshold is explicitly interpreted as minor units of the case settlement currency. API writes reject negative, non-integer, or unsafe threshold values.
 - This preserves the current UI field while making its unit explicit and adding calculation provenance. Per-currency threshold tables and historical policy replay remain future release work.
 - `npm run typecheck`: passed. `npm test`: passed, 33 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 durable review decision records
+
+- Review breakpoints are now stored in SQLite with the exact tool-call digest, question, proof, requested action, status, decision, reason, and reviewer identity. Decisions accept only approve, reject, or stop.
+- If the process restarts, a replayed identical tool call can consume its stored decision instead of losing the review. A rejected decision's exact reason is the only note accepted as a human override. A reviewer can record a pending decision even if no in-memory waiter is connected; the endpoint reports that it was stored and will resume on replay.
+- Authenticated decisions use the verified session subject, email, and role. Local terminal decisions are labeled as local operator actions.
+- This does not make agent execution durable by itself. There is no worker lease, approval expiry, full approval-history UI, maker/checker policy, or multi-instance consistency. Those remain release gates.
+- `npm run typecheck`: passed. `npm test`: passed, 34 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
 
 ### 2026-11-27 local raw-payload encryption slice
 

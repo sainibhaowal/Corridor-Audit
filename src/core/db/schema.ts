@@ -152,6 +152,24 @@ CREATE TABLE IF NOT EXISTS workspace_review_policies (
 	created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS review_approvals (
+	id TEXT PRIMARY KEY,
+	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+	case_id TEXT NOT NULL,
+	tool_name TEXT NOT NULL,
+	action_type TEXT NOT NULL,
+	args_sha256 TEXT NOT NULL,
+	pending_json TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	decision TEXT,
+	reason TEXT,
+	reviewer_sub TEXT,
+	reviewer_email TEXT,
+	reviewer_role TEXT,
+	requested_at TEXT NOT NULL,
+	decided_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS integrations (
 	id TEXT PRIMARY KEY,
 	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,

@@ -58,7 +58,10 @@ export class SettlementGateInterceptionHandler implements InterceptionHandler {
 		const caseId = String(args.caseId ?? "")
 		if (!caseId) return false
 		const pendingHumanOverride = state.humanOverrideNotesByCaseId.get(caseId)
-		if (isHumanOverrideAuthorized(pendingHumanOverride, args.humanOverrideNote)) return false
+		if (
+			isHumanOverrideAuthorized(pendingHumanOverride, args.humanOverrideNote) ||
+			(typeof args.humanOverrideNote === "string" && getCorridorDb().findStoredHumanOverride(caseId, args.humanOverrideNote))
+		) return false
 
 		const calc = computeCaseAuditNumbers(state, caseId)
 		if (!calc) return false
@@ -128,12 +131,27 @@ export class SettlementGateInterceptionHandler implements InterceptionHandler {
 			createdAt: new Date().toISOString(),
 		}
 
+		const db = getCorridorDb()
+		const storedDecision = db.findStoredReviewDecision(caseId, call.args)
 		let decision: BreakpointDecision
-		if (state.autoApproveBreakpoints) {
+		if (storedDecision) {
+			decision = { decision: storedDecision.decision, reason: storedDecision.reason }
+			if (decision.decision === "reject" && decision.reason) state.humanOverrideNotesByCaseId.set(caseId, decision.reason)
+		} else if (state.autoApproveBreakpoints) {
 			decision = { decision: "approve" }
-		} else if (state.subscribers.size === 0 && process.stdin.isTTY) {
-			decision = await promptTerminalBreakpoint(pendingInfo)
 		} else {
+			pendingInfo.approvalId = db.createPendingApproval(pendingInfo)
+			if (state.subscribers.size === 0 && process.stdin.isTTY) {
+				decision = await promptTerminalBreakpoint(pendingInfo)
+				db.resolvePendingApproval({
+					caseId,
+					decision: decision.decision,
+					reason: decision.reason,
+					reviewerSub: "local-terminal",
+					reviewerEmail: "local-operator",
+					reviewerRole: "owner",
+				})
+			} else {
 			state.emitTrajectory({
 				caseId,
 				kind: "phase.changed",
@@ -156,6 +174,7 @@ export class SettlementGateInterceptionHandler implements InterceptionHandler {
 				})
 			})
 			state.pendingApprovals.delete(caseId)
+			}
 		}
 
 		state.emitTrajectory({

@@ -202,6 +202,42 @@ test("raw ingestion payloads are encrypted in SQLite and decrypt through the vau
 	rmSync(dbPath, { force: true })
 })
 
+test("review decisions persist against the exact breakpoint call and retain human override provenance", () => {
+	const db = new CorridorDatabase(":memory:")
+	const pending = {
+		caseId: "CASE-APPROVAL-01",
+		agentName: "AuditorAgent",
+		toolName: "finalize_settlement_action",
+		actionType: "FILE_OUR_FEE_DISPUTE",
+		question: "Approve a fee dispute draft?",
+		proofLine: "Observed receiver fee exceeds contract",
+		recoverableMinor: 125,
+		currency: "USD",
+		argsJson: JSON.stringify({ caseId: "CASE-APPROVAL-01", actionType: "FILE_OUR_FEE_DISPUTE" }),
+		riskLabel: "Medium Risk",
+		createdAt: new Date().toISOString(),
+	}
+	db.createPendingApproval(pending)
+	const rejected = db.resolvePendingApproval({
+		caseId: pending.caseId,
+		decision: "reject",
+		reason: "Keep the relationship, treat this as SHA.",
+		reviewerSub: "user-123",
+		reviewerEmail: "controller@acme.test",
+		reviewerRole: "controller",
+	})
+	assert.ok(rejected)
+	assert.deepEqual(db.findStoredReviewDecision(pending.caseId, pending.argsJson), {
+		approvalId: rejected,
+		decision: "reject",
+		reason: "Keep the relationship, treat this as SHA.",
+	})
+	assert.equal(db.findStoredReviewDecision(pending.caseId, `${pending.argsJson} `), null)
+	assert.equal(db.findStoredHumanOverride(pending.caseId, "Keep the relationship, treat this as SHA."), true)
+	assert.equal(db.findStoredHumanOverride(pending.caseId, "model-invented note"), false)
+	db.close()
+})
+
 test("parseInboundEmailToCases extracts MT103 attachments from inbound email payloads", () => {
 	const mt103 = [
 		":20:TXN-EMAIL-01",

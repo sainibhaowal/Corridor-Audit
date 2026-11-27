@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import { decryptJson, decryptSecret, encryptJson, encryptSecret, maskSecret } from "../security/vault"
 import type { AuditVerdict, SettlementCase } from "../types"
+import type { PendingBreakpointDecision } from "../types"
 import {
 	CORRIDOR_SCHEMA_SQL,
 	type AccountMode,
@@ -30,6 +31,12 @@ export interface WebhookReceiptResult {
 	conflict: boolean
 	status: "received" | "queued" | "failed"
 	ingestion: RawIngestionRecord
+}
+
+export interface StoredReviewDecision {
+	decision: "approve" | "reject" | "stop"
+	reason?: string
+	approvalId: string
 }
 
 export class CorridorDatabase {
@@ -104,6 +111,57 @@ export class CorridorDatabase {
 			thresholdUnit: String(row.threshold_unit) as WorkspaceReviewPolicyRecord["thresholdUnit"],
 			createdAt: String(row.created_at),
 		}
+	}
+
+	createPendingApproval(pending: PendingBreakpointDecision, workspaceId = DEFAULT_WORKSPACE_ID): string {
+		const id = `approval_${randomUUID()}`
+		const requestedAt = pending.createdAt || new Date().toISOString()
+		const argsSha256 = createHash("sha256").update(pending.argsJson, "utf8").digest("hex")
+		this.db.prepare(`INSERT INTO review_approvals
+			(id, workspace_id, case_id, tool_name, action_type, args_sha256, pending_json, requested_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+			.run(id, workspaceId, pending.caseId, pending.toolName, pending.actionType, argsSha256, JSON.stringify(pending), requestedAt)
+		return id
+	}
+
+	resolvePendingApproval(params: {
+		caseId: string
+		decision: StoredReviewDecision["decision"]
+		reason?: string
+		reviewerSub: string
+		reviewerEmail: string
+		reviewerRole: string
+		workspaceId?: string
+	}): string | null {
+		const row = this.db.prepare(`SELECT id FROM review_approvals WHERE workspace_id = ? AND case_id = ? AND status = 'pending'
+			ORDER BY requested_at DESC, rowid DESC LIMIT 1`).get(params.workspaceId || DEFAULT_WORKSPACE_ID, params.caseId) as { id: string } | undefined
+		if (!row) return null
+		const decidedAt = new Date().toISOString()
+		const updated = this.db.prepare(`UPDATE review_approvals SET status = ?, decision = ?, reason = ?, reviewer_sub = ?,
+			reviewer_email = ?, reviewer_role = ?, decided_at = ? WHERE id = ? AND status = 'pending'`)
+			.run(params.decision === "approve" ? "approved" : params.decision === "reject" ? "rejected" : "stopped",
+				params.decision, params.reason ?? null, params.reviewerSub, params.reviewerEmail, params.reviewerRole, decidedAt, row.id)
+		return Number(updated.changes) === 1 ? row.id : null
+	}
+
+	findStoredReviewDecision(caseId: string, argsJson: string, workspaceId = DEFAULT_WORKSPACE_ID): StoredReviewDecision | null {
+		const argsSha256 = createHash("sha256").update(argsJson, "utf8").digest("hex")
+		const row = this.db.prepare(`SELECT id, decision, reason FROM review_approvals WHERE workspace_id = ? AND case_id = ?
+			AND args_sha256 = ? AND status IN ('approved', 'rejected', 'stopped')
+			ORDER BY decided_at DESC, rowid DESC LIMIT 1`).get(workspaceId, caseId, argsSha256) as {
+			id: string
+			decision: StoredReviewDecision["decision"]
+			reason: string | null
+		} | undefined
+		return row ? { approvalId: row.id, decision: row.decision, reason: row.reason ?? undefined } : null
+	}
+
+	findStoredHumanOverride(caseId: string, note: string, workspaceId = DEFAULT_WORKSPACE_ID): boolean {
+		if (!note.trim()) return false
+		const row = this.db.prepare(`SELECT 1 AS allowed FROM review_approvals WHERE workspace_id = ? AND case_id = ?
+			AND status = 'rejected' AND decision = 'reject' AND reason = ? ORDER BY decided_at DESC, rowid DESC LIMIT 1`)
+			.get(workspaceId, caseId, note) as { allowed: number } | undefined
+		return Boolean(row)
 	}
 
 	private ensureRawContentEncryptionColumn(): void {
