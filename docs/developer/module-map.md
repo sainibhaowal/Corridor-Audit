@@ -23,7 +23,7 @@
 ## 2. Mozaik Multi-Agent Runtime (`src/runtime/`)
 | Module | Responsibility |
 | :--- | :--- |
-| `src/runtime/corridor-runtime.ts` | `defineRuntime<CorridorState>()` with isolated per-role state slots (`termsByCaseId`, `fxByCaseId`, `wireByCaseId`, `anomalyByCaseId`, `auditByCaseId`, `pendingApprovals`), `requestSpecialistRerun` (max 2 retries per role), and checkpoint restoration in `registerCase`. |
+| `src/runtime/corridor-runtime.ts` | `defineRuntime<CorridorState>()` with isolated per-role state slots (`termsByCaseId`, `fxByCaseId`, `wireByCaseId`, `anomalyByCaseId`, `auditByCaseId`, `pendingApprovals`), `requestSpecialistRerun` (tracks feedback history with no hard cap so `AuditorAgent` decides when to stop), and checkpoint restoration in `registerCase`. |
 | `src/runtime/orchestrator.ts` | `CorridorOrchestrator` singleton: initializes Mozaik runtime, joins the 4+1 agents + observer, restores `case_checkpoints` on retry/restart, starts `./data/inbox/` hot-folder watcher, `startCaseQueueWorker`, `startBackgroundSyncWorker`, and serializes batches with `runWithDurableCaseRetries`. |
 | `src/runtime/agents/corridor-agents.ts` | Defines `TermsAgent`, `FxBenchmarkAgent`, `WireDetectiveAgent`, conditional `DuplicateAnomalyAgent` (skipping already-checkpointed roles and supporting targeted `specialist.rerun`), and reactive `AuditorAgent` (`onAllSpecialistsReady`). |
 | `src/runtime/agents/agent-prompts.ts` | System prompts enforcing tool-first execution and zero fabricated figures. |

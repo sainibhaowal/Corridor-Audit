@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { CorridorState } from "../src/runtime/corridor-runtime"
 import type { SettlementCase, TermsAssessment, WireAssessment } from "../src/core/types"
 
-test("requestSpecialistRerun clears only the targeted role, preserves other specialists, and caps at 2 reruns", () => {
+test("requestSpecialistRerun clears only the targeted role, preserves other specialists, and tracks feedback history without a hard cap", () => {
 	const state = new CorridorState()
 	const sampleCase: SettlementCase = {
 		caseId: "MT103-RERUN-1",
@@ -37,19 +37,19 @@ test("requestSpecialistRerun clears only the targeted role, preserves other spec
 	state.markRoleComplete("MT103-RERUN-1", "wire")
 
 	// 1st rerun of wire
-	const r1 = state.requestSpecialistRerun("MT103-RERUN-1", "wire")
-	assert.deepEqual(r1, { allowed: true, attempt: 1 })
+	const r1 = state.requestSpecialistRerun("MT103-RERUN-1", "wire", "Check :71G: receiver fee")
+	assert.deepEqual(r1, { attempt: 1, previousFeedbacks: [] })
 	assert.equal(state.wireByCaseId.has("MT103-RERUN-1"), false)
 	assert.equal(state.findingsByRole.get("MT103-RERUN-1")?.has("wire"), false)
 	// Terms specialist stays intact!
 	assert.equal(state.termsByCaseId.has("MT103-RERUN-1"), true)
 	assert.equal(state.findingsByRole.get("MT103-RERUN-1")?.has("terms"), true)
 
-	// 2nd rerun of wire
-	const r2 = state.requestSpecialistRerun("MT103-RERUN-1", "wire")
-	assert.deepEqual(r2, { allowed: true, attempt: 2 })
+	// 2nd rerun tracks previous feedback so the model decides when to stop
+	const r2 = state.requestSpecialistRerun("MT103-RERUN-1", "wire", "Verify repair fee line")
+	assert.deepEqual(r2, { attempt: 2, previousFeedbacks: ["Check :71G: receiver fee"] })
 
-	// 3rd rerun blocked by loop guard
-	const r3 = state.requestSpecialistRerun("MT103-RERUN-1", "wire")
-	assert.deepEqual(r3, { allowed: false, attempt: 2 })
+	// No hard limit blocks a 3rd rerun if the model genuinely needs it
+	const r3 = state.requestSpecialistRerun("MT103-RERUN-1", "wire", "Final check on :71F:")
+	assert.deepEqual(r3, { attempt: 3, previousFeedbacks: ["Check :71G: receiver fee", "Verify repair fee line"] })
 })

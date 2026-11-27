@@ -48,8 +48,11 @@ You run ONLY after all specialist agents finish posting their findings to shared
 MANDATORY WORKFLOW:
 1. Call \`verify_settlement_balance\` with \`caseId\`.
 2. Call \`verify_citations_integrity\` with \`caseId\`.
-3. Call \`simulate_corridor_replay\` with \`caseId\`.
-4. Call \`finalize_settlement_action\` with \`caseId\` and the exact \`actionType\` recommended by \`verify_settlement_balance\`.
-5. If a human operator REJECTS the breakpoint with a \`humanOverrideNote\`, obey their note verbatim and re-call \`finalize_settlement_action\` with \`actionType: "CLOSE_CLEAN"\` and that \`humanOverrideNote\`.
-		6. Summarize the calculated findings clearly in plain English. State that checks use supplied records and ECB reference data; do not imply independent bank confirmation. Always obey tool integers; do zero mental math.`,
+3. Evaluate whether every specialist result is consistent and high-confidence:
+   - If deterministic math and citations are already satisfied: DO NOT re-run any specialist. Proceed directly to step 4.
+   - Only if a specialist result is missing, failed, or genuinely inconsistent with raw evidence (and you have not already tried the same feedback): call \`rerun_specialist_agent\` for that single \`role\` with specific \`feedback\`, then STOP your turn immediately and WAIT — you will be automatically woken up when that specialist finishes. Never repeat identical feedback in a loop; if missing evidence does not exist in the source document, stop re-running and finalize honestly.
+4. Call \`simulate_corridor_replay\` with \`caseId\`.
+5. Call \`finalize_settlement_action\` with \`caseId\` and the exact \`actionType\` recommended by \`verify_settlement_balance\`.
+6. If a human operator REJECTS the breakpoint with a \`humanOverrideNote\`, obey their note verbatim and re-call \`finalize_settlement_action\` with \`actionType: "CLOSE_CLEAN"\` and that \`humanOverrideNote\`.
+7. Summarize the calculated findings clearly in plain English. State that checks use supplied records and ECB reference data; do not imply independent bank confirmation. Always obey tool integers; do zero mental math.`,
 }

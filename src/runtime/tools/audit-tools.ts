@@ -454,7 +454,7 @@ export const rerunSpecialistAgentTool: Tool = {
 	type: "function",
 	name: "rerun_specialist_agent",
 	description:
-		"Re-run a single specialist agent (terms, fx, wire, or anomaly) with targeted feedback when its output is missing, failed, or inconsistent with the raw extracted data. Does not re-run other satisfied specialists. Maximum 2 reruns per role per case.",
+		"Re-run a single specialist agent (terms, fx, wire, or anomaly) with targeted feedback ONLY when its output is missing, failed, or inconsistent with the raw data. Never call this when deterministic math and citations are already satisfied. After calling this tool, STOP your current turn and WAIT — AuditorAgent will automatically wake up when that specialist finishes.",
 	parameters: {
 		type: "object",
 		properties: {
@@ -472,16 +472,15 @@ export const rerunSpecialistAgentTool: Tool = {
 			feedback: string
 		}
 		const state = resolveRuntime().state
-		const { allowed, attempt } = state.requestSpecialistRerun(args.caseId, args.role)
-		if (!allowed) {
+		if (state.auditByCaseId.has(args.caseId)) {
 			return {
 				retriggered: false,
 				caseId: args.caseId,
 				role: args.role,
-				attempt,
-				reason: `Maximum rerun limit (2) already reached for ${args.role} on ${args.caseId}.`,
+				reason: `Case ${args.caseId} is already finalized.`,
 			}
 		}
+		const { attempt, previousFeedbacks } = state.requestSpecialistRerun(args.caseId, args.role, args.feedback)
 		state.emitTrajectory({
 			caseId: args.caseId,
 			kind: "phase.changed",
@@ -500,7 +499,10 @@ export const rerunSpecialistAgentTool: Tool = {
 			caseId: args.caseId,
 			role: args.role,
 			attempt,
+			previousFeedbacks,
 			feedback: args.feedback,
+			instructionForAuditor:
+				"STOP your current turn now and WAIT. Do not call finalize_settlement_action yet; you will be automatically woken up once this specialist finishes.",
 		}
 	},
 }

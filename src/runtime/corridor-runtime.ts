@@ -28,7 +28,7 @@ export class CorridorState extends RuntimeState {
 	// Parallel specialist synchronization (plugs seamlessly into AuditorAgent reactive barrier)
 	public expectedRolesByCaseId = new Map<string, Set<string>>()
 	public findingsByRole = new Map<string, Set<string>>()
-	public rerunCountByCaseRole = new Map<string, number>()
+	public rerunHistoryByCaseRole = new Map<string, string[]>()
 
 	// Isolated per-role slots preventing race conditions across concurrent agents
 	public termsByCaseId = new Map<string, TermsAssessment>()
@@ -124,7 +124,7 @@ export class CorridorState extends RuntimeState {
 		this.abortedCases.delete(settlementCase.caseId)
 		this.humanOverrideNotesByCaseId.delete(settlementCase.caseId)
 		for (const r of ["terms", "fx", "wire", "anomaly"]) {
-			this.rerunCountByCaseRole.delete(`${settlementCase.caseId}:${r}`)
+			this.rerunHistoryByCaseRole.delete(`${settlementCase.caseId}:${r}`)
 		}
 
 		const hasAnomalyTrigger =
@@ -160,12 +160,13 @@ export class CorridorState extends RuntimeState {
 	requestSpecialistRerun(
 		caseId: string,
 		role: "terms" | "fx" | "wire" | "anomaly",
-	): { allowed: boolean; attempt: number } {
+		feedback = "",
+	): { attempt: number; previousFeedbacks: string[] } {
 		const key = `${caseId}:${role}`
-		const prev = this.rerunCountByCaseRole.get(key) ?? 0
-		if (prev >= 2) return { allowed: false, attempt: prev }
-		const next = prev + 1
-		this.rerunCountByCaseRole.set(key, next)
+		const prev = this.rerunHistoryByCaseRole.get(key) ?? []
+		const previousFeedbacks = [...prev]
+		const nextHistory = [...prev, feedback]
+		this.rerunHistoryByCaseRole.set(key, nextHistory)
 		if (role === "terms") this.termsByCaseId.delete(caseId)
 		else if (role === "fx") this.fxByCaseId.delete(caseId)
 		else if (role === "wire") this.wireByCaseId.delete(caseId)
@@ -174,7 +175,7 @@ export class CorridorState extends RuntimeState {
 		const expected = this.expectedRolesByCaseId.get(caseId) ?? new Set<string>()
 		expected.add(role)
 		this.expectedRolesByCaseId.set(caseId, expected)
-		return { allowed: true, attempt: next }
+		return { attempt: nextHistory.length, previousFeedbacks }
 	}
 
 	resolveCaseWaiters(caseId: string, verdict: AuditVerdict): void {
