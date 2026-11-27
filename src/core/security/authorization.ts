@@ -8,8 +8,9 @@ export async function isCurrentCorridorViewerSession(request: Request): Promise<
 	try {
 		const session = await requestCorridorSession(request)
 		if (!session) return false
-		const member = getCorridorDb().getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, session.sub)
-		return Boolean(member && member.role === session.role)
+		const db = getCorridorDb()
+		const member = db.getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, session.sub)
+		return Boolean(member && member.role === session.role && db.isAuthSessionActive(session.sessionId, session.sub))
 	} catch {
 		return false
 	}
@@ -28,8 +29,9 @@ export async function authorizeCorridorRequest(
 	}
 	if (!session) return NextResponse.json({ error: "Authentication required." }, { status: 401 })
 
-	const member = getCorridorDb().getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, session.sub)
-	if (!member || member.role !== session.role) {
+	const db = getCorridorDb()
+	const member = db.getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, session.sub)
+	if (!member || member.role !== session.role || !db.isAuthSessionActive(session.sessionId, session.sub)) {
 		return NextResponse.json({ error: "Workspace membership changed. Sign in again." }, { status: 401 })
 	}
 	const origin = request.headers.get("origin")
@@ -53,7 +55,7 @@ export async function authorizeCorridorRequest(
 	const limit = bucketClass === "upload" ? 10 : bucketClass === "provider_sync" ? 6 : bucketClass === "read" ? 120 : 30
 	const subjectKey = createHash("sha256").update(`${DEFAULT_WORKSPACE_ID}:${session.sub}:${bucketClass}`).digest("hex")
 	try {
-		const rate = getCorridorDb().consumeApiRateLimit({ bucketKey: subjectKey, limit, windowMs: 60_000 })
+		const rate = db.consumeApiRateLimit({ bucketKey: subjectKey, limit, windowMs: 60_000 })
 		if (!rate.allowed) {
 			return NextResponse.json(
 				{ error: "Request limit reached. Wait before trying again." },

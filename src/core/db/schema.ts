@@ -136,6 +136,15 @@ CREATE TABLE IF NOT EXISTS team_members (
 	created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS auth_sessions (
+	session_id TEXT PRIMARY KEY,
+	identity_sub TEXT NOT NULL,
+	issued_at TEXT NOT NULL,
+	expires_at TEXT NOT NULL,
+	revoked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at);
+
 CREATE TABLE IF NOT EXISTS workspace_tax_policies (
 	id TEXT PRIMARY KEY,
 	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,

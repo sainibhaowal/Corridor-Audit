@@ -3,11 +3,16 @@ import { SignJWT, jwtVerify } from "jose"
 export type CorridorRole = "owner" | "controller" | "analyst" | "viewer"
 
 export interface CorridorSession {
+	sessionId: string
 	sub: string
 	email: string
 	name: string
 	role: CorridorRole
+	issuedAt: number
+	expiresAt: number
 }
+
+export type CorridorSessionInput = Pick<CorridorSession, "sub" | "email" | "name" | "role">
 
 export function authEnabled(): boolean {
 	return process.env.NODE_ENV === "production" || process.env.CORRIDOR_AUTH_MODE === "cognito"
@@ -41,9 +46,10 @@ export function sessionSigningKey(): Uint8Array {
 	return new TextEncoder().encode(secret)
 }
 
-export async function issueCorridorSession(session: CorridorSession): Promise<string> {
+export async function issueCorridorSession(session: CorridorSessionInput): Promise<string> {
 	return new SignJWT({ email: session.email, name: session.name, role: session.role })
 		.setProtectedHeader({ alg: "HS256", typ: "JWT" })
+		.setJti(globalThis.crypto.randomUUID())
 		.setSubject(session.sub)
 		.setIssuedAt()
 		.setExpirationTime("1h")
@@ -66,16 +72,22 @@ export async function verifyCorridorSession(token: string): Promise<CorridorSess
 	const { payload } = await jwtVerify(token, sessionSigningKey(), { algorithms: ["HS256"] })
 	if (
 		typeof payload.sub !== "string" ||
+		typeof payload.jti !== "string" ||
 		typeof payload.email !== "string" ||
 		typeof payload.name !== "string" ||
+		typeof payload.iat !== "number" ||
+		typeof payload.exp !== "number" ||
 		!(["owner", "controller", "analyst", "viewer"] as unknown[]).includes(payload.role)
 	) {
 		throw new Error("Invalid CorridorAudit session claims.")
 	}
 	return {
+		sessionId: payload.jti,
 		sub: payload.sub,
 		email: payload.email,
 		name: payload.name,
 		role: payload.role as CorridorRole,
+		issuedAt: payload.iat,
+		expiresAt: payload.exp,
 	}
 }

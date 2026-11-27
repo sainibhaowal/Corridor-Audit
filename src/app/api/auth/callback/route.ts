@@ -1,7 +1,7 @@
 import { createRemoteJWKSet, jwtVerify } from "jose"
 import { NextResponse } from "next/server"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
-import { cognitoSettings, issueCorridorSession } from "@/core/security/auth"
+import { cognitoSettings, issueCorridorSession, verifyCorridorSession } from "@/core/security/auth"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -80,9 +80,16 @@ export async function GET(request: Request) {
 			bootstrapOwner: Boolean(bootstrapOwnerEmail && bootstrapOwnerEmail === email),
 		})
 		if (!member) return fail("This verified account has no active workspace invitation.")
-		const session = await issueCorridorSession({ sub: payload.sub, email, name: member.name, role: member.role })
+		const sessionToken = await issueCorridorSession({ sub: payload.sub, email, name: member.name, role: member.role })
+		const session = await verifyCorridorSession(sessionToken)
+		getCorridorDb().createAuthSession({
+			sessionId: session.sessionId,
+			identitySub: session.sub,
+			issuedAt: new Date(session.issuedAt * 1000).toISOString(),
+			expiresAt: new Date(session.expiresAt * 1000).toISOString(),
+		})
 		const response = NextResponse.redirect(new URL(next?.startsWith("/") && !next.startsWith("//") ? next : "/", request.url))
-		response.cookies.set("ca_session", session, {
+		response.cookies.set("ca_session", sessionToken, {
 			httpOnly: true,
 			secure: process.env.NODE_ENV === "production",
 			sameSite: "lax",

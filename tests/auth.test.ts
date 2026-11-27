@@ -6,6 +6,7 @@ import { resolve } from "node:path"
 import test from "node:test"
 import { NextRequest } from "next/server"
 import { GET as runtimeStatusRoute } from "../src/app/api/runtime/status/route"
+import { POST as logoutRoute } from "../src/app/api/auth/logout/route"
 import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/core/db/database"
 import { issueCorridorSession, verifyCorridorSession } from "../src/core/security/auth"
 import { authorizeCorridorRequest, isCurrentCorridorViewerSession } from "../src/core/security/authorization"
@@ -83,12 +84,13 @@ test("signed sessions validate claims and reject tampering", async () => {
 	process.env.CORRIDOR_SESSION_SECRET = "test-session-secret-with-at-least-32-bytes"
 	try {
 		const token = await issueCorridorSession({ sub: "user-1", email: "user@example.test", name: "User", role: "analyst" })
-		assert.deepEqual(await verifyCorridorSession(token), {
-			sub: "user-1",
-			email: "user@example.test",
-			name: "User",
-			role: "analyst",
-		})
+		const session = await verifyCorridorSession(token)
+		assert.equal(session.sub, "user-1")
+		assert.equal(session.email, "user@example.test")
+		assert.equal(session.name, "User")
+		assert.equal(session.role, "analyst")
+		assert.ok(session.sessionId)
+		assert.ok(session.expiresAt > session.issuedAt)
 		const tokenParts = token.split(".")
 		tokenParts[2] = `${tokenParts[2]?.[0] === "a" ? "b" : "a"}${tokenParts[2]?.slice(1) || ""}`
 		await assert.rejects(verifyCorridorSession(tokenParts.join(".")))
@@ -140,14 +142,39 @@ test("API authorization checks current team membership on every request", async 
 		const invited = db.addTeamMember({ email: "viewer@example.test", name: "Viewer", role: "viewer" })
 		db.activateVerifiedTeamMember({ email: invited.email, name: invited.name, identitySub: "viewer-1" })
 		const token = await issueCorridorSession({ sub: "viewer-1", email: invited.email, name: invited.name, role: "viewer" })
+		const claims = await verifyCorridorSession(token)
+		db.createAuthSession({
+			sessionId: claims.sessionId,
+			identitySub: claims.sub,
+			issuedAt: new Date(claims.issuedAt * 1000).toISOString(),
+			expiresAt: new Date(claims.expiresAt * 1000).toISOString(),
+		})
 		const request = new Request("http://localhost/api/history", { headers: { cookie: `ca_session=${token}` } })
 		assert.equal(await authorizeCorridorRequest(request, "viewer"), null)
 		assert.equal(await isCurrentCorridorViewerSession(request), true)
+		const logout = await logoutRoute(new Request("http://localhost/api/auth/logout", {
+			method: "POST",
+			headers: { cookie: `ca_session=${token}` },
+		}))
+		assert.equal(logout.status, 303)
+		assert.equal((await authorizeCorridorRequest(request, "viewer"))?.status, 401)
+		assert.equal(await isCurrentCorridorViewerSession(request), false)
+
+		const activeToken = await issueCorridorSession({ sub: "viewer-1", email: invited.email, name: invited.name, role: "viewer" })
+		const activeClaims = await verifyCorridorSession(activeToken)
+		db.createAuthSession({
+			sessionId: activeClaims.sessionId,
+			identitySub: activeClaims.sub,
+			issuedAt: new Date(activeClaims.issuedAt * 1000).toISOString(),
+			expiresAt: new Date(activeClaims.expiresAt * 1000).toISOString(),
+		})
+		const activeRequest = new Request("http://localhost/api/history", { headers: { cookie: `ca_session=${activeToken}` } })
+		assert.equal(await isCurrentCorridorViewerSession(activeRequest), true)
 
 		db.removeTeamMember(DEFAULT_WORKSPACE_ID, invited.id)
-		const denied = await authorizeCorridorRequest(request, "viewer")
+		const denied = await authorizeCorridorRequest(activeRequest, "viewer")
 		assert.equal(denied?.status, 401)
-		assert.equal(await isCurrentCorridorViewerSession(request), false)
+		assert.equal(await isCurrentCorridorViewerSession(activeRequest), false)
 		db.close()
 	} finally {
 		if (previousMode === undefined) delete process.env.CORRIDOR_AUTH_MODE

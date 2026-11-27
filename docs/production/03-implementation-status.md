@@ -8,7 +8,7 @@ This is the live delivery record for production-readiness engineering. A row is 
 | --- | --- | --- |
 | 0 | Baseline and code-backed production record | Complete |
 | 1 | Canonical evidence completeness, provider mapping correctness, upload validation, and accurate states | In progress |
-| 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | Cognito role gates implemented but not configured; storage-level case and raw-record ownership guards added; live SSE rechecks session and membership every 15 seconds; route-level workspace context, email invitations, and server-side token revocation remain |
+| 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | Cognito role gates implemented but not configured; storage-level case and raw-record ownership guards added; SQLite-backed session revocation on logout and 15-second SSE revalidation implemented locally; route-level workspace context, email invitations, and a shared multi-host session store remain |
 | 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Versioned tax and review policies plus durable approval records implemented locally; approval UI and production workflow controls remain |
 | 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Local SQLite retries, atomic cross-process leases, expired-lease recovery, dead-letter listing, and controller replay implemented; transactional outbox, independent worker deployment, distributed queue, and production database remain open |
 | 5 | Raw evidence object storage, encryption/key lifecycle, retention, backup, restore, and deletion | Local SQLite encryption covers raw payloads, filenames, ingestion metadata and parse errors, normalized cases, verdicts, pending approval payloads, and integration credentials. ClamAV scanning is wired for uploads, email attachments, and hot-folder files, with production fail-closed behavior. An operator-run local backup with integrity verification and a restore test is implemented. Managed storage, KMS, key rotation, scheduled/off-site backups, restore drills, retention, deletion, and an actual scanner service remain open |
@@ -363,4 +363,10 @@ Update this section per milestone with the exact command, result, environment, a
 
 - The live `/api/events` stream now rechecks the signed session and current active team membership every 15 seconds. It closes the stream when the token expires, the membership is removed, or the stored role no longer matches the signed session. Disconnect cleanup removes the event subscriber and heartbeat timer.
 - This does not revoke an issued token on logout, scope the stream to a different workspace, or isolate the process-global agent runtime. Those remain separate identity and tenant-isolation gaps.
+- Typecheck: passed. Auth tests: 10 passed, 0 failed. Full suite: 68 passed, 0 failed. Production build: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 persisted session revocation
+
+- Signed app sessions now include a unique `jti` plus issue and expiry times. The Cognito callback persists the session ID and subject in SQLite before issuing the cookie. The logout endpoint revokes that ID. Authenticated Node API authorization and SSE revalidation reject revoked or unregistered sessions; expired and old-format tokens fail closed.
+- The Edge middleware validates JWT claims but cannot consult the SQLite session table, so a revoked cookie may still load a protected page shell until its next data API call. Production multi-instance deployment needs a shared session/revocation store. Cognito is not configured locally.
 - Typecheck: passed. Auth tests: 10 passed, 0 failed. Full suite: 68 passed, 0 failed. Production build: passed. `git diff --check`: passed. Verification ran locally on Windows.

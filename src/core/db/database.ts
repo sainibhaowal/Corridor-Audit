@@ -1521,6 +1521,28 @@ export class CorridorDatabase {
 		return stats
 	}
 
+	createAuthSession(params: { sessionId: string; identitySub: string; issuedAt: string; expiresAt: string }): void {
+		this.inTransaction(() => {
+			const now = new Date().toISOString()
+			this.db.prepare("DELETE FROM auth_sessions WHERE expires_at <= ? OR (revoked_at IS NOT NULL AND revoked_at <= ?)")
+				.run(now, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+			this.db.prepare("INSERT INTO auth_sessions (session_id, identity_sub, issued_at, expires_at, revoked_at) VALUES (?, ?, ?, ?, NULL)")
+				.run(params.sessionId, params.identitySub, params.issuedAt, params.expiresAt)
+		})
+	}
+
+	isAuthSessionActive(sessionId: string, identitySub: string, now = new Date().toISOString()): boolean {
+		const row = this.db.prepare(`SELECT 1 AS active FROM auth_sessions
+			WHERE session_id = ? AND identity_sub = ? AND revoked_at IS NULL AND expires_at > ?`)
+			.get(sessionId, identitySub, now) as { active: number } | undefined
+		return Boolean(row)
+	}
+
+	revokeAuthSession(sessionId: string, now = new Date().toISOString()): boolean {
+		return Number(this.db.prepare("UPDATE auth_sessions SET revoked_at = ? WHERE session_id = ? AND revoked_at IS NULL")
+			.run(now, sessionId).changes) === 1
+	}
+
 	consumeApiRateLimit(params: {
 		bucketKey: string
 		limit: number
