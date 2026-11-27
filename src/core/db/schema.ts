@@ -206,4 +206,16 @@ CREATE TABLE IF NOT EXISTS raw_ingestions (
 	case_ids_json TEXT NOT NULL DEFAULT '[]',
 	created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS webhook_receipts (
+	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+	provider TEXT NOT NULL,
+	event_id TEXT NOT NULL,
+	payload_sha256 TEXT NOT NULL,
+	ingestion_id TEXT NOT NULL REFERENCES raw_ingestions(id) ON DELETE CASCADE,
+	status TEXT NOT NULL DEFAULT 'received',
+	received_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	PRIMARY KEY (workspace_id, provider, event_id)
+);
 `

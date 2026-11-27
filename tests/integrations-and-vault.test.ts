@@ -276,6 +276,7 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 	assert.equal(wsPost.status, 200)
 
 	const payload = JSON.stringify({
+		id: "evt-WH-SIGNED-01",
 		caseId: "WH-SIGNED-01",
 		title: "Signed Webhook Case",
 		sourceType: "webhook",
@@ -314,6 +315,31 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 		}),
 	)
 	assert.equal(signedRes.status, 202)
+	const duplicateWebhookRes = await inboundWebhookRoute(
+		new Request("http://127.0.0.1/api/webhooks/inbound", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"x-corridor-signature": `sha256=${sig}`,
+			},
+			body: payload,
+		}),
+	)
+	assert.equal(duplicateWebhookRes.status, 200)
+	assert.equal((await duplicateWebhookRes.json()).duplicate, true)
+	const conflictingPayload = payload.replace("Signed Webhook Case", "Changed Webhook Case")
+	const conflictingSig = createHmac("sha256", secret).update(conflictingPayload, "utf8").digest("hex")
+	const conflictingWebhookRes = await inboundWebhookRoute(
+		new Request("http://127.0.0.1/api/webhooks/inbound", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"x-corridor-signature": `sha256=${conflictingSig}`,
+			},
+			body: conflictingPayload,
+		}),
+	)
+	assert.equal(conflictingWebhookRes.status, 409, "reused event IDs with changed payloads must be rejected")
 
 	// 3. Signed Email Webhook
 	const emailBody = JSON.stringify({
@@ -333,6 +359,17 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 		}),
 	)
 	assert.equal(emailRes.status, 202)
+	const duplicateEmailRes = await emailWebhookRoute(
+		new Request("http://127.0.0.1/api/webhooks/email", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"x-corridor-signature": `sha256=${emailSig}`,
+			},
+			body: emailBody,
+		}),
+	)
+	assert.equal(duplicateEmailRes.status, 200)
 
 	// Reset requireWebhookSignature back to false so other tests remain unaffected
 	await postWorkspaceRoute(

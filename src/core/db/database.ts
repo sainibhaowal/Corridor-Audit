@@ -24,6 +24,13 @@ import {
 
 export const DEFAULT_WORKSPACE_ID = "ws-default"
 
+export interface WebhookReceiptResult {
+	duplicate: boolean
+	conflict: boolean
+	status: "received" | "queued" | "failed"
+	ingestion: RawIngestionRecord
+}
+
 export class CorridorDatabase {
 	private readonly db: DatabaseSync
 
@@ -666,6 +673,72 @@ export class CorridorDatabase {
 				JSON.stringify(params.caseIds ?? []),
 				params.id,
 			)
+	}
+
+	recordWebhookReceipt(params: {
+		workspaceId?: string
+		provider: string
+		eventId: string
+		sourceChannel: "webhook" | "email"
+		filename: string
+		format: string
+		rawContent: string
+		metadata?: Record<string, string>
+	}): WebhookReceiptResult {
+		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
+		const sha256 = createHash("sha256").update(params.rawContent, "utf8").digest("hex")
+		const select = this.db.prepare(`SELECT payload_sha256, ingestion_id, status FROM webhook_receipts
+			WHERE workspace_id = ? AND provider = ? AND event_id = ?`)
+		const existing = select.get(workspaceId, params.provider, params.eventId) as {
+			payload_sha256: string
+			ingestion_id: string
+			status: WebhookReceiptResult["status"]
+		} | undefined
+
+		if (existing) {
+			const ingestion = this.getRawIngestion(existing.ingestion_id, true)
+			if (!ingestion) throw new Error("Webhook receipt references a missing raw ingestion record.")
+			return {
+				duplicate: true,
+				conflict: existing.payload_sha256 !== sha256,
+				status: existing.status,
+				ingestion,
+			}
+		}
+
+		this.db.exec("BEGIN IMMEDIATE")
+		try {
+			const ingestion = this.saveRawIngestion({
+				workspaceId,
+				sourceChannel: params.sourceChannel,
+				sourceProvider: params.provider,
+				filename: params.filename,
+				format: params.format,
+				rawContent: params.rawContent,
+				metadata: params.metadata,
+			})
+			const now = new Date().toISOString()
+			this.db.prepare(`INSERT INTO webhook_receipts
+				(workspace_id, provider, event_id, payload_sha256, ingestion_id, status, received_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, 'received', ?, ?)`)
+				.run(workspaceId, params.provider, params.eventId, sha256, ingestion.id, now, now)
+			this.db.exec("COMMIT")
+			return { duplicate: false, conflict: false, status: "received", ingestion }
+		} catch (error) {
+			this.db.exec("ROLLBACK")
+			throw error
+		}
+	}
+
+	markWebhookReceiptStatus(params: {
+		workspaceId?: string
+		provider: string
+		eventId: string
+		status: WebhookReceiptResult["status"]
+	}): void {
+		this.db.prepare(`UPDATE webhook_receipts SET status = ?, updated_at = ?
+			WHERE workspace_id = ? AND provider = ? AND event_id = ?`)
+			.run(params.status, new Date().toISOString(), params.workspaceId || DEFAULT_WORKSPACE_ID, params.provider, params.eventId)
 	}
 
 	listRawIngestions(params?: {

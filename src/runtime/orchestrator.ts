@@ -121,6 +121,7 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 	// Serialize queued cases cleanly so parallel specialists per case run concurrently
 	// without colliding on free-tier LLM rate limits.
 	let batchChain: Promise<unknown> = Promise.resolve()
+	const caseTasks = new Map<string, Promise<AuditVerdict>>()
 
 	const runSingleCase = async (settlementCase: SettlementCase): Promise<AuditVerdict> => {
 		state.registerCase(settlementCase)
@@ -175,12 +176,20 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 	}
 
 	const runCase = (settlementCase: SettlementCase): Promise<AuditVerdict> => {
+		const active = caseTasks.get(settlementCase.caseId)
+		if (active) return active
+		const completed = state.auditByCaseId.get(settlementCase.caseId)
+		if (completed) return Promise.resolve(completed)
 		// Persist before scheduling so accepted local work survives a process restart.
 		getCorridorDb().saveCase(settlementCase)
 		state.queueStats.waiting += 1
 		const task = batchChain.then(() => runSingleCase(settlementCase))
-		batchChain = task.catch(() => undefined)
-		return task
+		const tracked = task.finally(() => {
+			if (caseTasks.get(settlementCase.caseId) === tracked) caseTasks.delete(settlementCase.caseId)
+		})
+		caseTasks.set(settlementCase.caseId, tracked)
+		batchChain = tracked.catch(() => undefined)
+		return tracked
 	}
 
 	const enqueueBatch = async (cases: SettlementCase[]): Promise<AuditVerdict[]> => {

@@ -4,6 +4,7 @@ import { normalizeInboundPayloadToCases } from "@/core/ingest/normalize-upload"
 import { verifyInboundWebhookRequest } from "@/core/security/webhook-signatures"
 import { readRequestTextLimited, RequestBodyTooLargeError } from "@/core/security/request-body"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
+import { deriveWebhookEventId } from "@/core/security/webhook-event-id"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -12,6 +13,7 @@ const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024
 export async function POST(request: Request) {
 	const db = getCorridorDb()
 	let ingestionId: string | undefined
+	let receiptIdentity: { provider: string; eventId: string } | undefined
 
 	try {
 		const raw = await readRequestTextLimited(request, MAX_WEBHOOK_BODY_BYTES)
@@ -38,18 +40,30 @@ export async function POST(request: Request) {
 			)
 		}
 
-		const rec = db.saveRawIngestion({
+		const provider = sigCheck.scheme === "none" ? "http_webhook" : sigCheck.scheme
+		const eventIdentity = deriveWebhookEventId(raw, provider)
+		const identity = { provider, eventId: eventIdentity.eventId }
+		receiptIdentity = identity
+		const receipt = db.recordWebhookReceipt({
 			workspaceId: DEFAULT_WORKSPACE_ID,
+			...identity,
 			sourceChannel: "webhook",
-			sourceProvider: sigCheck.scheme === "none" ? "http_webhook" : sigCheck.scheme,
-			filename: `webhook-${Date.now()}.json`,
+			filename: `webhook-${eventIdentity.eventId.slice(-40)}.json`,
 			format: "auto",
 			rawContent: raw,
 			metadata: {
 				verifiedScheme: sigCheck.scheme,
+				eventIdSource: eventIdentity.source,
 				contentType: request.headers.get("content-type") || "application/json",
 			},
 		})
+		if (receipt.conflict) {
+			return NextResponse.json({ ok: false, error: "Webhook event ID was already received with a different payload." }, { status: 409 })
+		}
+		if (receipt.duplicate && receipt.status === "queued") {
+			return NextResponse.json({ ok: true, duplicate: true, ingestionId: receipt.ingestion.id, eventId: eventIdentity.eventId }, { status: 200 })
+		}
+		const rec = receipt.ingestion
 		ingestionId = rec.id
 
 		const orchestrator = initCorridorOrchestrator()
@@ -60,7 +74,10 @@ export async function POST(request: Request) {
 			caseIds: cases.map((c) => c.caseId),
 		})
 
-		void orchestrator.enqueueBatch(cases).catch((err) => {
+		const execution = orchestrator.enqueueBatch(cases)
+		db.markWebhookReceiptStatus({ ...identity, status: "queued" })
+		void execution.catch((err) => {
+			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
 			console.error(`Webhook ingestion ${rec.id} failed during audit processing:`, err)
 		})
 
@@ -68,6 +85,8 @@ export async function POST(request: Request) {
 			{
 				ok: true,
 				ingestionId: rec.id,
+				eventId: eventIdentity.eventId,
+				duplicate: receipt.duplicate,
 				verifiedScheme: sigCheck.scheme,
 				queuedCount: cases.length,
 				caseIds: cases.map((c) => c.caseId),
@@ -83,6 +102,7 @@ export async function POST(request: Request) {
 				parseError: msg,
 			})
 		}
+		if (receiptIdentity) db.markWebhookReceiptStatus({ ...receiptIdentity, status: "failed" })
 		return NextResponse.json({ error: msg, ingestionId }, { status: err instanceof RequestBodyTooLargeError ? 413 : 400 })
 	}
 }
