@@ -4,6 +4,7 @@ import type { IntegrationAuthMode } from "@/core/db/schema"
 import { getCatalogItem } from "@/core/integrations/catalog"
 import { createOAuthAuthorizationUrl } from "@/core/integrations/oauth"
 import { authorizeCorridorRequest } from "@/core/security/authorization"
+import { getCorridorPublicOrigin } from "@/core/security/public-origin"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -16,7 +17,7 @@ export async function GET(
 	if (denied) return denied
 	try {
 		const { provider } = await context.params
-		const origin = new URL(request.url).origin
+		const origin = getCorridorPublicOrigin(request)
 		const { url } = createOAuthAuthorizationUrl({
 			provider,
 			workspaceId: DEFAULT_WORKSPACE_ID,

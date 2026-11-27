@@ -273,3 +273,9 @@ Update this section per milestone with the exact command, result, environment, a
 - New raw ingestion filenames, metadata JSON, and parser error messages are encrypted through the existing AES-256-GCM vault. Reads for listing, inspect, download, and reprocessing decrypt them through the existing database mapper, so the UI data shape is unchanged. Database-open migrations encrypt legacy plaintext values, including existing filenames and error details.
 - Case identifiers, provider and channel labels, status fields, event IDs, and several operational columns remain visible in SQLite. This is local field encryption, not managed KMS, key rotation, immutable evidence, or a substitute for file-system access control.
 - A migration test checks ciphertext at rest, round-trip reads, and conversion of legacy plaintext fields. `npm run typecheck`: passed. `npm test`: 51 passed, 0 failed. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 OAuth redirect origin validation
+
+- Integration OAuth connect and callback now use `CORRIDOR_PUBLIC_BASE_URL` when configured, rather than trusting the incoming request host. Production requires a valid HTTPS origin without path, credentials, query, or fragment. Local development without the setting is restricted to loopback HTTP.
+- Added focused tests for spoofed request hosts, missing production configuration, non-HTTPS production origins, path rejection, and accepted local loopback origins. Provider console redirect URLs must match the configured public origin exactly. Production deployment is not configured here.
+- `npm run typecheck`: passed. `npm test`: 53 passed, 0 failed. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
