@@ -183,6 +183,7 @@ async function fetchQuickBooksCases(
 			title: `QuickBooks Invoice ${inv.DocNumber || inv.Id}`,
 			channelLabel: "QuickBooks Online",
 			settlementEvidence: "estimated",
+			evidenceGap: "QuickBooks invoice evidence was fetched, but this connector did not fetch a matching payment or bank settlement record. The zero-value unmatched wire is structural only and is not evidence that no payment occurred.",
 			createdAt: new Date().toISOString(),
 			invoice: {
 				invoiceId: inv.DocNumber || inv.Id,
@@ -196,7 +197,7 @@ async function fetchQuickBooksCases(
 				remittanceHint: inv.DocNumber || inv.Id,
 				sourceRefs: [
 					{
-						sourceType: "bank_csv",
+						sourceType: "platform_csv",
 						recordId: inv.Id,
 						field: "quickbooks.invoice",
 						rawExcerpt: JSON.stringify(inv),
@@ -204,16 +205,13 @@ async function fetchQuickBooksCases(
 				],
 			},
 			wire: {
-				wireId: `QBO-WIRE-${inv.Id}`,
-				transactionRef: inv.DocNumber || inv.Id,
+				wireId: `UNMATCHED-QBO-${inv.Id}`,
 				format: "bank_csv",
 				valueDate: inv.TxnDate || new Date().toISOString().slice(0, 10),
-				instructedAmount: { amountMinor: minor, currency: ccy },
-				settledAmount: { amountMinor: minor, currency: ccy },
+				settledAmount: { amountMinor: 0, currency: ccy },
 				chargeBearer: "SHA",
 				senderCharges: [],
 				receiverCharges: [],
-				remittanceInfo: inv.DocNumber || inv.Id,
 				sourceRefs: [],
 			},
 		}
@@ -259,6 +257,7 @@ async function fetchXeroCases(
 			title: `Xero Invoice ${inv.InvoiceNumber || inv.InvoiceID}`,
 			channelLabel: "Xero Accounting",
 			settlementEvidence: "estimated",
+			evidenceGap: "Xero invoice evidence was fetched, but this connector did not fetch a matching payment or bank settlement record. The zero-value unmatched wire is structural only and is not evidence that no payment occurred.",
 			createdAt: new Date().toISOString(),
 			invoice: {
 				invoiceId: inv.InvoiceNumber || inv.InvoiceID,
@@ -272,7 +271,7 @@ async function fetchXeroCases(
 				remittanceHint: inv.InvoiceNumber || inv.InvoiceID,
 				sourceRefs: [
 					{
-						sourceType: "bank_csv",
+						sourceType: "platform_csv",
 						recordId: inv.InvoiceID,
 						field: "xero.invoice",
 						rawExcerpt: JSON.stringify(inv),
@@ -280,16 +279,13 @@ async function fetchXeroCases(
 				],
 			},
 			wire: {
-				wireId: `XERO-WIRE-${inv.InvoiceID.slice(0, 8)}`,
-				transactionRef: inv.InvoiceNumber || inv.InvoiceID,
+				wireId: `UNMATCHED-XERO-${inv.InvoiceID.slice(0, 8)}`,
 				format: "bank_csv",
 				valueDate: (inv.DateString || new Date().toISOString()).slice(0, 10),
-				instructedAmount: { amountMinor: minor, currency: ccy },
-				settledAmount: { amountMinor: minor, currency: ccy },
+				settledAmount: { amountMinor: 0, currency: ccy },
 				chargeBearer: "SHA",
 				senderCharges: [],
 				receiverCharges: [],
-				remittanceInfo: inv.InvoiceNumber || inv.InvoiceID,
 				sourceRefs: [],
 			},
 		}

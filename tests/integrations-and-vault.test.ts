@@ -292,6 +292,41 @@ test("provider sync retains original API payloads and converts Wise currencies t
 		assert.equal(wise.rawPayload, wiseResponses[1])
 		assert.equal(wise.cases[0]?.wire.instructedAmount?.amountMinor, 1200)
 		assert.equal(wise.cases[0]?.wire.settledAmount.amountMinor, 4321)
+
+		const accountingIntegrations: Array<{ provider: string; config: Record<string, string>; payload: Record<string, unknown> }> = [
+			{
+				provider: "quickbooks",
+				config: { realmId: "realm-test" },
+				payload: { QueryResponse: { Invoice: [{ Id: "qbo-1", DocNumber: "INV-1", TotalAmt: 120, TxnDate: "2026-11-27", CurrencyRef: { value: "USD" } }] } },
+			},
+			{
+				provider: "xero",
+				config: { tenantId: "tenant-test" },
+				payload: { Invoices: [{ InvoiceID: "xero-1", InvoiceNumber: "INV-2", Total: 85, DateString: "2026-11-27", CurrencyCode: "EUR" }] },
+			},
+		]
+		for (const item of accountingIntegrations) {
+			const rawPayload = JSON.stringify(item.payload)
+			global.fetch = (async () => new Response(rawPayload, { status: 200 })) as typeof fetch
+			const result = await fetchCasesFromIntegration({
+				integration: {
+					id: `int_${item.provider}_test`,
+					workspaceId: DEFAULT_WORKSPACE_ID,
+					provider: item.provider,
+					category: "accounting",
+					authMode: "oauth2",
+					status: "connected",
+					config: item.config,
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString(),
+				},
+				credentials: { accessToken: "accounting-test" },
+			})
+			assert.equal(result.rawPayload, rawPayload)
+			assert.equal(result.cases[0]?.settlementEvidence, "estimated")
+			assert.equal(result.cases[0]?.wire.settledAmount.amountMinor, 0)
+			assert.match(result.cases[0]?.evidenceGap || "", /did not fetch a matching payment/)
+		}
 	} finally {
 		global.fetch = previousFetch
 	}

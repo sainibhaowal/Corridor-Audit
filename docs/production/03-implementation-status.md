@@ -130,6 +130,13 @@ Update this section per milestone with the exact command, result, environment, a
 - Pagination, incremental sync cursors, provider token refresh/revocation, exact payment-to-invoice matching, reconciliation fixtures, and a real provider acceptance test remain open.
 - `npm run typecheck`: passed. `npm test`: passed, 35 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
 
+### 2026-11-27 accounting invoice mapping correction
+
+- QuickBooks and Xero invoice-only cases no longer carry an equal-value synthetic payment. Their structurally required wire field has zero settled value, an unmatched ID, and an explicit evidence gap. The invoice amount remains preserved in the invoice record, and the case stays estimated and blocked from a complete-settlement verdict.
+- Their source references now identify accounting-platform records rather than bank CSV evidence.
+- Automated mocked connector coverage checks that both mappings preserve the provider response and do not imply that the invoice was paid. No provider credentials or live account data were used.
+- `npm run typecheck`: passed. `npm test`: passed, 35 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
 ### 2026-11-27 local raw-payload encryption slice
 
 - Newly ingested raw content is encrypted with AES-256-GCM before it is written to SQLite. Reads decrypt through the existing raw-vault API, so inspect, download, and reprocess retain their current behavior. SHA-256 continues to be computed over the original payload bytes.
