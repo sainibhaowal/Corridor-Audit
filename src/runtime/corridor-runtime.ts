@@ -127,34 +127,45 @@ export class CorridorState extends RuntimeState {
 			this.rerunHistoryByCaseRole.delete(`${settlementCase.caseId}:${r}`)
 		}
 
-		const hasAnomalyTrigger =
-			(settlementCase.candidateWires?.length ?? 0) > 0 ||
-			Boolean(settlementCase.invoice?.priorAccountRef && settlementCase.wire.beneficiaryAccountRef &&
-				settlementCase.invoice.priorAccountRef !== settlementCase.wire.beneficiaryAccountRef)
-
-		const roles = new Set<string>(["terms", "fx", "wire"])
-		if (hasAnomalyTrigger) roles.add("anomaly")
-		this.expectedRolesByCaseId.set(settlementCase.caseId, roles)
+		// Lead LLM (AuditorAgent) dynamically decides which subagents to hire on case.queued.
+		this.expectedRolesByCaseId.set(settlementCase.caseId, new Set<string>())
 
 		if (checkpoints) {
 			const done = this.findingsByRole.get(settlementCase.caseId)!
+			const restored = new Set<string>()
 			if (checkpoints.terms) {
 				this.termsByCaseId.set(settlementCase.caseId, checkpoints.terms as TermsAssessment)
 				done.add("terms")
+				restored.add("terms")
 			}
 			if (checkpoints.fx) {
 				this.fxByCaseId.set(settlementCase.caseId, checkpoints.fx as FxAssessment)
 				done.add("fx")
+				restored.add("fx")
 			}
 			if (checkpoints.wire) {
 				this.wireByCaseId.set(settlementCase.caseId, checkpoints.wire as WireAssessment)
 				done.add("wire")
+				restored.add("wire")
 			}
-			if (checkpoints.anomaly && roles.has("anomaly")) {
+			if (checkpoints.anomaly) {
 				this.anomalyByCaseId.set(settlementCase.caseId, checkpoints.anomaly as AnomalyAssessment)
 				done.add("anomaly")
+				restored.add("anomaly")
+			}
+			if (restored.size > 0) {
+				this.expectedRolesByCaseId.set(settlementCase.caseId, restored)
 			}
 		}
+	}
+
+	delegateSubagents(
+		caseId: string,
+		roles: Array<"terms" | "fx" | "wire" | "anomaly">,
+	): Array<"terms" | "fx" | "wire" | "anomaly"> {
+		const unique = [...new Set(roles)]
+		this.expectedRolesByCaseId.set(caseId, new Set<string>(unique))
+		return unique
 	}
 
 	requestSpecialistRerun(

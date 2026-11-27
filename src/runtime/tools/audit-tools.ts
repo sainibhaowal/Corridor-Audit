@@ -507,7 +507,70 @@ export const rerunSpecialistAgentTool: Tool = {
 	},
 }
 
+export const delegateSubagentsTool: Tool = {
+	type: "function",
+	name: "delegate_subagents",
+	description:
+		"Dynamically hire and launch only the specialist subagents needed for this settlement case (terms, fx, wire, anomaly). Call this during planning, then STOP your turn and WAIT for the subagents to finish.",
+	parameters: {
+		type: "object",
+		properties: {
+			caseId: { type: "string" },
+			roles: {
+				type: "array",
+				items: { type: "string", enum: ["terms", "fx", "wire", "anomaly"] },
+			},
+			rationale: { type: "string" },
+		},
+		required: ["caseId", "roles"],
+	},
+	strict: false,
+	invoke: async (rawArgs: unknown) => {
+		const args = rawArgs as {
+			caseId: string
+			roles: Array<"terms" | "fx" | "wire" | "anomaly">
+			rationale?: string
+		}
+		const state = resolveRuntime().state
+		const hired = state.delegateSubagents(args.caseId, args.roles)
+		const done = state.findingsByRole.get(args.caseId)
+		const alreadyDone = hired.length > 0 && hired.every((r) => done?.has(r))
+
+		state.emitTrajectory({
+			caseId: args.caseId,
+			kind: "phase.changed",
+			phase: `PHASE 1 · ${hired.length} PARALLEL SUBAGENT${hired.length === 1 ? "" : "S"} HIRED`,
+			agentName: "AuditorAgent",
+			text: `AuditorAgent hired [${hired.join(", ")}]${args.rationale ? ` — ${args.rationale}` : ""}`,
+			payload: {
+				caseInfo: {
+					caseId: args.caseId,
+					expectedRoles: hired,
+				},
+			},
+		})
+
+		if (alreadyDone) {
+			publishCorridorEvent("specialist.ready", "auditor", { caseId: args.caseId })
+		} else {
+			publishCorridorEvent("subagents.delegated", "auditor", {
+				caseId: args.caseId,
+				roles: hired,
+			})
+		}
+
+		return {
+			delegated: true,
+			caseId: args.caseId,
+			hiredRoles: hired,
+			instructionForAuditor:
+				"STOP your current turn now and WAIT. Do not call finalize_settlement_action yet; Mozaik will automatically wake you when the hired subagents complete.",
+		}
+	},
+}
+
 export const auditTools: Tool[] = [
+	delegateSubagentsTool,
 	verifySettlementBalanceTool,
 	verifyCitationsIntegrityTool,
 	simulateCorridorReplayTool,

@@ -47,9 +47,9 @@ Five peer Mozaik agents are created in [`src/runtime/agents/corridor-agents.ts`]
 | `FxBenchmarkAgent` | Rate lookup, currency normalization, FX spread, corridor fee benchmark | 4 |
 | `WireDetectiveAgent` | Wire parsing, fee analysis, orphan matching, split-payment reconciliation | 4 |
 | `DuplicateAnomalyAgent` | Duplicate-wire and supplied account-change checks, heuristic flags | 3 |
-| `AuditorAgent` | Reconciliation, SourceRef structure checks, corridor replay, model-guided `rerun_specialist_agent` (feedback history, no hard cap), verdict finalization | 5 |
+| `AuditorAgent` | Phase 0 Lead-LLM planner (`delegate_subagents`), Phase 2 reconciliation, SourceRef structure checks, corridor replay, model-guided `rerun_specialist_agent`, verdict finalization | 6 |
 
-The first four agents write to role-specific maps in [`src/runtime/corridor-runtime.ts`](../src/runtime/corridor-runtime.ts). The auditor is activated after the expected-role barrier and can trigger a targeted `specialist.rerun` for any single specialist with feedback without re-running satisfied agents. The tool inventory totals 21. Tool execution is mediated by the configured model provider; the audit tools perform the listed calculations deterministically, but the application does not authenticate source documents or eliminate judgment risk.
+`AuditorAgent` wakes first on `case.queued` (`onCaseQueuedPlan`), inspects the case, and dynamically hires only the needed specialist subagents via `delegate_subagents` (`subagents.delegated`). Those specialists write to role-specific maps in [`src/runtime/corridor-runtime.ts`](../src/runtime/corridor-runtime.ts), and `AuditorAgent` resumes after the `specialist.ready` barrier to verify and finalize. The tool inventory totals 22. Tool execution is mediated by the configured model provider; the audit tools perform the listed calculations deterministically, but the application does not authenticate source documents or eliminate judgment risk.
 
 ## Arithmetic and evidence
 

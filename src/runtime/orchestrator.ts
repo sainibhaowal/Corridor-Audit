@@ -202,7 +202,7 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 		const expected = state.expectedRolesByCaseId.get(settlementCase.caseId)
 		const done = state.findingsByRole.get(settlementCase.caseId)
 		const allSpecialistsCheckpointed =
-			Boolean(expected && done) && [...(expected ?? [])].every((role) => done?.has(role))
+			Boolean(expected && expected.size > 0 && done) && [...(expected ?? [])].every((role) => done?.has(role))
 
 		if (allSpecialistsCheckpointed) {
 			publishCorridorEvent("specialist.ready", observer.getId(), {

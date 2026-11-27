@@ -52,7 +52,7 @@ function createSpecialistAgent(params: {
 	const handler: SituationHandler = {
 		specification: new (class extends SituationSpecification {
 			isSatisfiedBy(ctx: SituationContext): boolean {
-				if (ctx.event.type !== "case.queued") return false
+				if (ctx.event.type !== "subagents.delegated") return false
 				const { caseId } = ctx.event.payload as { caseId: string }
 				const state = resolveRuntime().state
 				const expected = state.expectedRolesByCaseId.get(caseId)
@@ -180,6 +180,67 @@ export function createCorridorAgents() {
 
 	const gateHandler = new SettlementGateInterceptionHandler()
 
+	const onCaseQueuedPlan: SituationHandler = {
+		specification: new (class extends SituationSpecification {
+			isSatisfiedBy(ctx: SituationContext): boolean {
+				if (ctx.event.type !== "case.queued") return false
+				const { caseId } = ctx.event.payload as { caseId: string }
+				return !resolveRuntime().state.auditByCaseId.has(caseId)
+			}
+		})(),
+		processor: {
+			apply(ctx: SituationContext): void {
+				const agent = ctx.participant as Agent
+				const { caseId } = ctx.event.payload as { caseId: string }
+				const state = resolveRuntime().state
+				const c = state.casesById.get(caseId)
+				activeCaseByAgentId.set(agent.getId(), caseId)
+
+				state.emitTrajectory({
+					caseId,
+					kind: "phase.changed",
+					phase: "PHASE 0 · LEAD AGENT PLANNING",
+					agentName: "AuditorAgent",
+				})
+				state.emitTrajectory({
+					caseId,
+					kind: "agent.started",
+					agentName: "AuditorAgent",
+					phase: "PHASE 0 · LEAD AGENT PLANNING",
+					status: "running",
+				})
+
+				const summary = c
+					? JSON.stringify({
+							caseId: c.caseId,
+							title: c.title,
+							channelLabel: c.channelLabel,
+							settlementEvidence: c.settlementEvidence,
+							invoiced: c.invoice?.expectedAmount,
+							contractedChargeBearer: c.invoice?.contractedChargeBearer,
+							priorAccountRef: c.invoice?.priorAccountRef,
+							settled: c.wire.settledAmount,
+							beneficiaryAccountRef: c.wire.beneficiaryAccountRef,
+							candidateWiresCount: c.candidateWires?.length ?? 0,
+							rawTextPreview: c.wire.rawText?.slice(0, 600),
+						})
+					: `caseId=${caseId}`
+
+				const freshContext = ModelContext.create().addContextItem(
+					DeveloperMessageItem.create(agent.getDeveloperMessage()),
+				)
+				const prompt = `New settlement case ${caseId} arrived:\n${summary}\n\nInspect the case and call delegate_subagents(caseId="${caseId}", roles=[...], rationale="...") to hire only the specialist subagents needed (from "terms", "fx", "wire", "anomaly"), then STOP your turn and wait.`
+				runLoop(agent.getId(), prompt, {
+					model: ACTIVE_MODEL_SLOT,
+					maxOutputTokens: 2048,
+					streaming: true,
+					context: freshContext,
+					tools: agent.getTools(),
+				})
+			},
+		},
+	}
+
 	const onAllSpecialistsReady: SituationHandler = {
 		specification: new (class extends SituationSpecification {
 			isSatisfiedBy(ctx: SituationContext): boolean {
@@ -251,7 +312,7 @@ Run verify_settlement_balance, verify_citations_integrity, simulate_corridor_rep
 		capabilities: ["audit", "verify", "reconcile"],
 		instruction: AGENT_PROMPTS.auditor,
 		tools: instrumentTools("AuditorAgent", auditTools),
-		handlers: [onAllSpecialistsReady],
+		handlers: [onCaseQueuedPlan, onAllSpecialistsReady],
 	})
 
 	return {
