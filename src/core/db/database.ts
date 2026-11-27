@@ -490,6 +490,28 @@ export class CorridorDatabase {
 		return rows.map((r) => JSON.parse(r.payload_json) as SettlementCase)
 	}
 
+	listQueuedCases(workspaceId = DEFAULT_WORKSPACE_ID): SettlementCase[] {
+		const rows = this.db
+			.prepare("SELECT payload_json FROM cases WHERE workspace_id = ? AND status IN ('queued', 'running') ORDER BY created_at ASC")
+			.all(workspaceId) as Array<{ payload_json: string }>
+		return rows.map((r) => JSON.parse(r.payload_json) as SettlementCase)
+	}
+
+	markCaseRunning(caseId: string, workspaceId = DEFAULT_WORKSPACE_ID): void {
+		this.db.prepare("UPDATE cases SET status = 'running', updated_at = ? WHERE case_id = ? AND workspace_id = ?")
+			.run(new Date().toISOString(), caseId, workspaceId)
+	}
+
+	markCaseFailed(caseId: string, workspaceId = DEFAULT_WORKSPACE_ID): void {
+		this.db.prepare("UPDATE cases SET status = 'failed', updated_at = ? WHERE case_id = ? AND workspace_id = ?")
+			.run(new Date().toISOString(), caseId, workspaceId)
+	}
+
+	requeueInterruptedCases(workspaceId = DEFAULT_WORKSPACE_ID): void {
+		this.db.prepare("UPDATE cases SET status = 'queued', updated_at = ? WHERE workspace_id = ? AND status = 'running'")
+			.run(new Date().toISOString(), workspaceId)
+	}
+
 	listPersistedVerdicts(workspaceId = DEFAULT_WORKSPACE_ID): AuditVerdict[] {
 		const rows = this.db
 			.prepare("SELECT verdict_json FROM audit_verdicts WHERE workspace_id = ? ORDER BY completed_at ASC")

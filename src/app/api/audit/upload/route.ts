@@ -65,7 +65,9 @@ export async function POST(request: Request) {
 			})
 		}
 
-		void orchestrator.enqueueBatch(cases)
+		void orchestrator.enqueueBatch(cases).catch((err) => {
+			console.error(`Queued upload ${ingestionId || "without raw record"} failed during audit processing:`, err)
+		})
 		return NextResponse.json(
 			{
 				ok: true,

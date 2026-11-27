@@ -53,7 +53,9 @@ export async function POST(request: Request) {
 		})
 
 		const orchestrator = initCorridorOrchestrator()
-		void orchestrator.enqueueBatch(cases)
+		void orchestrator.enqueueBatch(cases).catch((err) => {
+			console.error(`Email ingestion ${rec.id} failed during audit processing:`, err)
+		})
 
 		return NextResponse.json(
 			{

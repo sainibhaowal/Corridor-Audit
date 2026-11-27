@@ -61,7 +61,9 @@ function startHotFolderWatcher(orchestrator: CorridorOrchestrator): void {
 						parseStatus: "parsed",
 						caseIds: cases.map((c) => c.caseId),
 					})
-					void orchestrator.enqueueBatch(cases)
+					void orchestrator.enqueueBatch(cases).catch((err) => {
+						console.error(`Hot-folder ingestion ${rec.id} failed during audit processing:`, err)
+					})
 				} catch {
 					// ignore transient partial write errors
 				}
@@ -90,6 +92,7 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 		options?.autoApprove ?? process.env.AUTO_APPROVE_BREAKPOINTS === "true"
 
 	const db = getCorridorDb()
+	db.requeueInterruptedCases()
 	for (const persistedCase of db.listPersistedCases()) {
 		state.casesById.set(persistedCase.caseId, persistedCase)
 	}
@@ -121,7 +124,7 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 
 	const runSingleCase = async (settlementCase: SettlementCase): Promise<AuditVerdict> => {
 		state.registerCase(settlementCase)
-		getCorridorDb().saveCase(settlementCase)
+		getCorridorDb().markCaseRunning(settlementCase.caseId)
 		state.queueStats.active += 1
 		if (state.queueStats.waiting > 0) state.queueStats.waiting -= 1
 
@@ -158,6 +161,7 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 			state.queueStats.done += 1
 			return verdict
 		} catch (err) {
+			getCorridorDb().markCaseFailed(settlementCase.caseId)
 			state.queueStats.failed += 1
 			state.emitTrajectory({
 				caseId: settlementCase.caseId,
@@ -171,6 +175,8 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 	}
 
 	const runCase = (settlementCase: SettlementCase): Promise<AuditVerdict> => {
+		// Persist before scheduling so accepted local work survives a process restart.
+		getCorridorDb().saveCase(settlementCase)
 		state.queueStats.waiting += 1
 		const task = batchChain.then(() => runSingleCase(settlementCase))
 		batchChain = task.catch(() => undefined)
@@ -198,5 +204,10 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 	globalStore.__corridorOrchestrator = orchestrator
 	startHotFolderWatcher(orchestrator)
 	startBackgroundSyncWorker(orchestrator)
+	for (const queuedCase of db.listQueuedCases()) {
+		void runCase(queuedCase).catch((err) => {
+			console.error(`Failed to resume queued case ${queuedCase.caseId}:`, err)
+		})
+	}
 	return orchestrator
 }

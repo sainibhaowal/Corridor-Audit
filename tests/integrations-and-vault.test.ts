@@ -122,6 +122,35 @@ test("CorridorDatabase persists workspaces, team members, encrypted integrations
 	db.close()
 })
 
+test("local case queue survives restart and recovers work interrupted while running", () => {
+	const db = new CorridorDatabase(":memory:")
+	const queuedCase = {
+		caseId: "CASE-RECOVERY-01",
+		title: "Restart recovery case",
+		channelLabel: "test",
+		settlementEvidence: "incomplete" as const,
+		wire: {
+			wireId: "WIRE-RECOVERY-01",
+			format: "bank_csv" as const,
+			valueDate: "2026-11-27",
+			settledAmount: { amountMinor: 1000, currency: "USD" },
+			senderCharges: [],
+			receiverCharges: [],
+		},
+		createdAt: new Date().toISOString(),
+	}
+
+	db.saveCase(queuedCase)
+	assert.deepEqual(db.listQueuedCases().map((item) => item.caseId), [queuedCase.caseId])
+	db.markCaseRunning(queuedCase.caseId)
+	assert.equal(db.listQueuedCases().length, 1, "running work is visible for restart recovery")
+	db.requeueInterruptedCases()
+	assert.deepEqual(db.listQueuedCases().map((item) => item.caseId), [queuedCase.caseId])
+	db.markCaseFailed(queuedCase.caseId)
+	assert.equal(db.listQueuedCases().length, 0, "failed work is not silently auto retried")
+	db.close()
+})
+
 test("parseInboundEmailToCases extracts MT103 attachments from inbound email payloads", () => {
 	const mt103 = [
 		":20:TXN-EMAIL-01",

@@ -60,7 +60,9 @@ export async function POST(request: Request) {
 			caseIds: cases.map((c) => c.caseId),
 		})
 
-		void orchestrator.enqueueBatch(cases)
+		void orchestrator.enqueueBatch(cases).catch((err) => {
+			console.error(`Webhook ingestion ${rec.id} failed during audit processing:`, err)
+		})
 
 		return NextResponse.json(
 			{

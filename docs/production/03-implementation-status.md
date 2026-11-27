@@ -10,7 +10,7 @@ This is the live delivery record for production-readiness engineering. A row is 
 | 1 | Canonical evidence completeness, provider mapping correctness, upload validation, and accurate states | In progress |
 | 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | In progress |
 | 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Not started |
-| 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Not started |
+| 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Local SQLite queue recovery slice complete; production queue not started |
 | 5 | Raw evidence object storage, encryption/key lifecycle, retention, backup, restore, and deletion | Not started |
 | 6 | Provider adapters with pagination, cursors, token refresh/revocation, event security, and reconciliation | Not started |
 | 7 | Monitoring, audit logs, deployment configuration, threat review, and operational runbooks | Not started |
@@ -88,3 +88,13 @@ Update this section per milestone with the exact command, result, environment, a
 - `npm audit --omit=dev`: 0 production dependency vulnerabilities reported.
 - `git diff --check`: passed. No external providers were contacted. These checks do not establish production readiness or provider certification.
 - The Phase 1 and Phase 2 states remain in progress. Durable approvals, provider-specific payload validation and mapping evidence, full workspace isolation, outbound team invitations, durable queueing, and operational cloud configuration remain open.
+
+### 2026-11-27 local queue recovery slice
+
+- New cases are written to SQLite before the in-process scheduler starts them. Queue state is recorded as queued, running, completed, or failed.
+- On local process startup, cases left queued or running are loaded again. Running cases are reset to queued because their in-memory agent execution was interrupted. This gives the current single-process local app restart recovery.
+- Failed cases remain failed and are not retried automatically. There is no attempt counter, backoff, operator replay, dead-letter review, transactional webhook inbox/outbox, or multi-worker claim/lease. This is not a production distributed queue.
+- Upload, webhook, email, hot-folder, and reprocess background failures are now caught and logged rather than becoming unhandled promise rejections. The initial acceptance response follows the local SQLite write and scheduling call.
+- Added a database test for queued work and interrupted running work recovery.
+- `npm run typecheck`: passed. `npm test`: passed, 29 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. These ran locally on Windows.
+- Cloud queue, independent workers, retry policy, idempotent webhook receipts, and durable approvals remain release blockers.
