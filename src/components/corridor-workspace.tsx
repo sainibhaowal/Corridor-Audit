@@ -1225,22 +1225,30 @@ export function CorridorWorkspace() {
 								</Card>
 							)}
 
-							<Card className="p-4 lg:p-5">
+							<Card className="relative overflow-hidden p-4 lg:p-5">
 								{!activeEntry ? (
-									<div className="mx-auto flex min-h-[270px] max-w-2xl flex-col justify-center py-7">
-										<div className="mb-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#75e4c7]"><span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />Operations workspace · ready</div>
-										<h2 className="max-w-xl text-2xl font-semibold tracking-tight text-[#e3edef] sm:text-[28px]">Review a settlement with the agent team.</h2>
-										<p className="mt-2 max-w-xl text-sm leading-6 text-[#a4b4b8]">Follow each specialist as it checks invoice terms, FX, wire fees, and exceptions. Tool results and the final cent reconciliation appear here as the run progresses.</p>
-										<div className="mt-5 flex flex-wrap gap-2">
-											<Button className="h-9 px-3.5" onClick={() => setView("inbound")}><FileUp className="h-3.5 w-3.5" />Upload source</Button>
-											<Button variant="outline" className="h-9 px-3.5" onClick={() => setView("settings")}>Configure LLM Key</Button>
+									<>
+										<div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-32 overflow-hidden">
+											<div className="absolute -bottom-14 left-[8%] h-28 w-56 animate-pulse rounded-full bg-sky-500/25 blur-3xl" />
+											<div className="absolute -bottom-16 left-[38%] h-32 w-64 animate-pulse rounded-full bg-rose-500/20 blur-3xl [animation-delay:700ms]" />
+											<div className="absolute -bottom-14 right-[8%] h-28 w-56 animate-pulse rounded-full bg-violet-500/25 blur-3xl [animation-delay:1400ms]" />
+											<div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-sky-400/30 via-fuchsia-400/40 to-emerald-400/30" />
 										</div>
-										<div className="mt-7 grid grid-cols-1 gap-2 border-t border-[#1c2a33] pt-4 text-[11px] text-[#81949a] sm:grid-cols-3">
-											<div><span className="block font-semibold text-[#c7d3d6]">01 · Investigate</span>Terms, FX, and wire specialists</div>
-											<div><span className="block font-semibold text-[#c7d3d6]">02 · Verify</span>Integer-unit balance checks</div>
-											<div><span className="block font-semibold text-[#c7d3d6]">03 · Review</span>Human gate on risky cases</div>
+										<div className="relative z-10 mx-auto flex min-h-[270px] max-w-2xl flex-col justify-center py-7">
+											<div className="mb-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#75e4c7]"><span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />Operations workspace · ready</div>
+											<h2 className="max-w-xl text-2xl font-semibold tracking-tight text-[#e3edef] sm:text-[28px]">Review a settlement with the agent team.</h2>
+											<p className="mt-2 max-w-xl text-sm leading-6 text-[#a4b4b8]">Follow each specialist as it checks invoice terms, FX, wire fees, and exceptions. Tool results and the final cent reconciliation appear here as the run progresses.</p>
+											<div className="mt-5 flex flex-wrap gap-2">
+												<Button className="h-9 px-3.5" onClick={() => setView("inbound")}><FileUp className="h-3.5 w-3.5" />Upload source</Button>
+												<Button variant="outline" className="h-9 px-3.5" onClick={() => setView("settings")}>Configure LLM Key</Button>
+											</div>
+											<div className="mt-7 grid grid-cols-1 gap-2 border-t border-[#1c2a33] pt-4 text-[11px] text-[#81949a] sm:grid-cols-3">
+												<div><span className="block font-semibold text-[#c7d3d6]">01 · Investigate</span>Terms, FX, and wire specialists</div>
+												<div><span className="block font-semibold text-[#c7d3d6]">02 · Verify</span>Integer-unit balance checks</div>
+												<div><span className="block font-semibold text-[#c7d3d6]">03 · Review</span>Human gate on risky cases</div>
+											</div>
 										</div>
-									</div>
+									</>
 								) : visibleAgents.length === 0 ? (
 									<div className="flex min-h-[200px] flex-col items-center justify-center gap-2 py-8 text-center">
 										<div className="text-sm font-bold text-[#e3edef]">
