@@ -297,3 +297,9 @@ Update this section per milestone with the exact command, result, environment, a
 - Added ClamAV `clamd` INSTREAM scanning for upload request content, inbound email attachments, and hot-folder files. Infected uploads are rejected, scanner failures return `503` through API intake, oversized files are rejected, and production requires `CORRIDOR_CLAMD_HOST`. Local development can run without the service and records `malwareScan: not_configured` in raw-ingestion metadata.
 - A local protocol test server verifies clean, infected, and scanner-error responses, plus production fail-closed behavior. No real ClamAV daemon or malware sample was used. The scanner endpoint must stay on a private network because ClamAV documents that its TCP protocol has no authentication or encryption. See [ClamAV protocol guidance](https://docs.clamav.net/manual/Usage/ClamdProtocol.html).
 - `npm run typecheck`: passed. `npm test`: 59 passed, 0 failed. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 webhook durable enqueue acknowledgment
+
+- `enqueueBatch` now lets synchronous database write failures escape before returning its execution promise. Both webhook routes therefore mark an event queued and return `202` only after every case row has been written to the durable queue. A failed write returns an error; retrying the same event resumes an existing receipt that was left received or failed.
+- An end-to-end test injects a case-write failure, verifies the endpoint does not return `202`, restores the write, retries the identical event, and verifies the saved queue row before acknowledgment. Receipt and cases are still separate SQLite transactions, so a crash between them relies on the provider retry; there is no separate transactional outbox.
+- `npm run typecheck`: passed. `npm test`: 60 passed, 0 failed. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.

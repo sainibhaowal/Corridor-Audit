@@ -218,7 +218,7 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 		return tracked
 	}
 
-	const enqueueBatch = async (cases: SettlementCase[]): Promise<AuditVerdict[]> => {
+	const enqueueBatch = (cases: SettlementCase[]): Promise<AuditVerdict[]> => {
 		const promises = cases.map((c) => runCase(c))
 		return Promise.all(promises)
 	}

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { createHmac } from "node:crypto"
 import { rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
@@ -153,6 +154,49 @@ test("upload and email attachment intake record local malware scan status", asyn
 		if (previousHost === undefined) delete env.CORRIDOR_CLAMD_HOST
 		else env.CORRIDOR_CLAMD_HOST = previousHost
 	}
+})
+
+test("webhook acknowledges only after case persistence and a provider retry recovers the failed enqueue", async () => {
+	const db = getCorridorDb()
+	const caseId = "WH-QUEUE-PERSISTENCE-01"
+	const raw = JSON.stringify({
+		id: "evt-QUEUE-PERSISTENCE-01",
+		caseId,
+		title: "Durable webhook case",
+		sourceType: "webhook",
+		wire: {
+			wireId: "WIRE-QUEUE-PERSISTENCE-01",
+			format: "bank_csv",
+			valueDate: "2026-11-27",
+			settledAmount: { amountMinor: 12500, currency: "USD" },
+			chargeBearer: "SHA",
+			senderCharges: [],
+			receiverCharges: [],
+			sourceRefs: [],
+		},
+	})
+	const secret = db.getRawWebhookSecret()
+	const signature = `sha256=${createHmac("sha256", secret).update(raw, "utf8").digest("hex")}`
+	const makeRequest = () => new Request("http://127.0.0.1/api/webhooks/inbound", {
+		method: "POST",
+		headers: { "Content-Type": "application/json", "x-corridor-signature": signature },
+		body: raw,
+	})
+	const originalSaveCase = db.saveCase.bind(db)
+	db.saveCase = ((settlementCase, workspaceId) => {
+		if (settlementCase.caseId === caseId) throw new Error("injected durable queue write failure")
+		originalSaveCase(settlementCase, workspaceId)
+	}) as typeof db.saveCase
+	try {
+		const failed = await inboundWebhookRoute(makeRequest())
+		assert.notEqual(failed.status, 202, "the event must not be acknowledged as queued if its case row could not be saved")
+	} finally {
+		db.saveCase = originalSaveCase
+	}
+
+	const retried = await inboundWebhookRoute(makeRequest())
+	assert.equal(retried.status, 202)
+	assert.ok(db.getPersistedCase(caseId), "the retried event must have a durable case queue row before acknowledgement")
 })
 
 test.after(() => {
