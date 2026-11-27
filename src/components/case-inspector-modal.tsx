@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import type { AccountingPaymentApplication, SettlementCase } from "@/core/types"
 import { type CaseStreamEntry, fmtClientMoney } from "./corridor-types"
 
 interface CaseInspectorModalProps {
@@ -24,6 +25,9 @@ export function CaseInspectorModal({
 	const v = entry.verdict
 	const ccy = v.numbers.settledCurrency
 	const tech = entry.technical as { fx?: { rateRecord?: { ecbRateDate?: string } } } | null
+	const rawCase = (entry.technical as { rawCase?: SettlementCase } | null)?.rawCase
+	const accountingPayments = rawCase?.accountingPayments ?? []
+	const hasIndependentSettlementEvidence = v.status !== "EVIDENCE_INCOMPLETE"
 	const ecbDate = tech?.fx?.rateRecord?.ecbRateDate || "reference"
 	const feesTotal = v.numbers.liftingAndRepairFeesMinor + v.numbers.platformFeeMinor
 
@@ -85,6 +89,40 @@ export function CaseInspectorModal({
 								</div>
 								<p className="text-sm text-[#c7d3d6]">{v.plainEnglishSummary}</p>
 							</div>
+							{accountingPayments.length > 0 && (
+								<Card className="space-y-2.5 p-4">
+									<div className="text-[11px] font-bold uppercase tracking-wider text-[#81949a]">
+										Accounting Payment Applications
+									</div>
+									<p className="text-xs text-amber-300">
+										These provider ledger entries do not independently confirm bank settlement or bank fees.
+									</p>
+									<div className="overflow-x-auto">
+										<table className="w-full border-collapse text-xs">
+											<thead>
+												<tr className="border-b border-[#1c2a33] text-left text-[11px] uppercase tracking-wider text-[#81949a]">
+													<th className="py-2 pr-3">Provider / Payment</th>
+													<th className="py-2 pr-3">Date</th>
+													<th className="py-2 pr-3 text-right">Applied amount</th>
+													<th className="py-2">Mapping</th>
+												</tr>
+											</thead>
+											<tbody className="divide-y divide-[#1c2a33]">
+												{accountingPayments.map((application: AccountingPaymentApplication) => (
+													<tr key={application.applicationId}>
+														<td className="py-2 pr-3 font-mono">{application.provider} / {application.paymentId}</td>
+														<td className="py-2 pr-3">{application.date || "Not supplied"}</td>
+														<td className="py-2 pr-3 text-right font-mono">
+															{application.amount ? fmtClientMoney(application.amount.amountMinor, application.amount.currency) : "Not allocated"}
+														</td>
+														<td className="py-2 text-[#a4b4b8]">{application.mappingIssue || application.status || "Mapped"}{application.reconciled === undefined ? "" : application.reconciled ? " · reconciled in provider" : " · unreconciled in provider"}</td>
+													</tr>
+												))}
+											</tbody>
+										</table>
+									</div>
+								</Card>
+							)}
 
 							<Card className="overflow-hidden">
 								<div className="overflow-x-auto">
@@ -143,11 +181,15 @@ export function CaseInspectorModal({
 												</tr>
 											)}
 											<tr className="bg-[#0d2725]/40">
-												<td className="px-4 py-2.5 font-semibold text-[#e3edef]">Net Cash Landed</td>
-												<td className="px-4 py-2.5 text-right font-mono font-bold tabular text-[#75e4c7]">
-													{fmtClientMoney(v.numbers.settledMinor, ccy)}
+												<td className="px-4 py-2.5 font-semibold text-[#e3edef]">
+													{hasIndependentSettlementEvidence ? "Recorded Settlement Amount" : "Independent Settlement Evidence"}
 												</td>
-												<td className="px-4 py-2.5 font-mono text-[#81949a]">[:32A:/SETTLED]</td>
+												<td className="px-4 py-2.5 text-right font-mono font-bold tabular text-[#75e4c7]">
+													{hasIndependentSettlementEvidence ? fmtClientMoney(v.numbers.settledMinor, ccy) : "Not evidenced"}
+												</td>
+												<td className="px-4 py-2.5 font-mono text-[#81949a]">
+													{hasIndependentSettlementEvidence ? "[:32A:/SETTLED]" : "A bank statement or settlement record is required"}
+												</td>
 											</tr>
 											<tr className="bg-[#080d12] font-bold">
 												<td className="px-4 py-2.5 text-[#e3edef]">Unexplained Variance</td>

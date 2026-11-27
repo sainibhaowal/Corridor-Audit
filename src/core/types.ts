@@ -25,6 +25,19 @@ export interface SourceRef {
 	url?: string
 }
 
+export interface AccountingPaymentApplication {
+	provider: "quickbooks" | "xero"
+	applicationId: string
+	paymentId: string
+	invoiceRecordId: string
+	date?: string
+	amount?: Money
+	status?: string
+	reconciled?: boolean
+	mappingIssue?: string
+	sourceRef: SourceRef
+}
+
 export interface InvoiceLineItem {
 	description: string
 	quantity: number
@@ -92,6 +105,8 @@ export interface SettlementCase {
 	/** `observed` requires an independent obligation and supplied settlement evidence. */
 	settlementEvidence: "observed" | "estimated" | "incomplete"
 	evidenceGap?: string
+	/** Accounting ledger payment applications are not independent bank settlement evidence. */
+	accountingPayments?: AccountingPaymentApplication[]
 	/** Points to the earlier case when a provider sends changed source data. */
 	sourceRevisionOf?: string
 	invoice?: InvoiceInput

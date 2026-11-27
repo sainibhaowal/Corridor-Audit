@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { extname, resolve } from "node:path"
 import type { IntegrationCredentials, IntegrationRecord } from "../db/schema"
 import { normalizeInboundPayloadToCases } from "../ingest/normalize-upload"
-import type { SettlementCase } from "../types"
+import type { AccountingPaymentApplication, SettlementCase, SourceRef } from "../types"
 import { parseDecimalStringToMinor } from "../money"
 import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublicly, fetchProvider, validateProviderEndpointUrl } from "./http"
 
@@ -17,6 +17,34 @@ const STRIPE_PAGE_SIZE = 100
 const WISE_PAGE_SIZE = 100
 const ACCOUNTING_PAGE_SIZE = 1000
 const SYNC_CURSOR_OVERLAP_MS = 5 * 60 * 1000
+
+function accountingPaymentGap(providerName: string, applications: AccountingPaymentApplication[]): string {
+	if (applications.length === 0) {
+		return `${providerName} invoice evidence was fetched, but no linked accounting payment application was fetched. The zero-value unmatched wire is structural only and is not evidence that no payment occurred.`
+	}
+	const mapped = applications.filter((application) => application.amount)
+	const note = applications.some((application) => application.mappingIssue)
+		? " Some linked records could not be allocated safely and are shown with a mapping issue."
+		: ""
+	return `${applications.length} linked ${providerName} accounting payment application(s) were fetched (${mapped.length} with an allocated amount). These ledger records do not independently confirm bank settlement or bank fees; the zero-value wire remains structural only.${note}`
+}
+
+function xeroPaymentDate(value?: string): string | undefined {
+	if (!value) return undefined
+	const isoDate = value.match(/^\d{4}-\d{2}-\d{2}/)?.[0]
+	if (isoDate) return providerDate(isoDate)
+	const timestamp = value.match(/^\/Date\((\d+)/)?.[1]
+	if (!timestamp) return undefined
+	const date = new Date(Number(timestamp))
+	return Number.isNaN(date.valueOf()) ? undefined : date.toISOString().slice(0, 10)
+}
+
+function providerDate(value?: string): string | undefined {
+	const date = value?.match(/^\d{4}-\d{2}-\d{2}/)?.[0]
+	if (!date) return undefined
+	const parsed = new Date(`${date}T00:00:00.000Z`)
+	return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === date ? date : undefined
+}
 
 function syncSince(lastSuccessfulSyncAt?: string): Date | undefined {
 	if (!lastSuccessfulSyncAt) return undefined
@@ -214,37 +242,91 @@ async function fetchQuickBooksCases(
 		CurrencyRef?: { value?: string }
 		CustomerRef?: { name?: string }
 	}> = []
+	const payments: Array<{
+		Id: string
+		TxnDate?: string
+		CurrencyRef?: { value?: string }
+		TxnStatus?: string
+		Line?: Array<{
+			Amount?: number
+			LinkedTxn?: Array<{ TxnId?: string; TxnType?: string }>
+		}>
+	}> = []
 	const rawPages: string[] = []
 	const since = syncSince(lastSuccessfulSyncAt)
-	for (let page = 0; page < MAX_PROVIDER_SYNC_PAGES; page += 1) {
-		const startPosition = page * ACCOUNTING_PAGE_SIZE + 1
-		const modifiedFilter = since ? ` WHERE MetaData.LastUpdatedTime > '${since.toISOString()}'` : ""
-		const query = encodeURIComponent(`SELECT * FROM Invoice${modifiedFilter} ORDERBY MetaData.LastUpdatedTime DESC STARTPOSITION ${startPosition} MAXRESULTS ${ACCOUNTING_PAGE_SIZE}`)
-		const res = await fetchProvider(`https://quickbooks.api.intuit.com/v3/company/${encodeURIComponent(realmId)}/query?query=${query}`, {
-			headers: { Authorization: authHeader(credentials), Accept: "application/json" },
-		})
-		if (!res.ok) throw new Error(`QuickBooks API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
-		const rawPage = await res.text()
-		rawPages.push(rawPage)
-		const json = JSON.parse(rawPage) as {
-			QueryResponse?: {
-				Invoice?: typeof invoices
+	const fetchQuickBooksPages = async <T,>(entity: "Invoice" | "Payment", target: T[]) => {
+		for (let page = 0; page < MAX_PROVIDER_SYNC_PAGES; page += 1) {
+			const startPosition = page * ACCOUNTING_PAGE_SIZE + 1
+			const modifiedFilter = since ? ` WHERE MetaData.LastUpdatedTime > '${since.toISOString()}'` : ""
+			const query = encodeURIComponent(`SELECT * FROM ${entity}${modifiedFilter} ORDERBY MetaData.LastUpdatedTime DESC STARTPOSITION ${startPosition} MAXRESULTS ${ACCOUNTING_PAGE_SIZE}`)
+			const res = await fetchProvider(`https://quickbooks.api.intuit.com/v3/company/${encodeURIComponent(realmId)}/query?query=${query}`, {
+				headers: { Authorization: authHeader(credentials), Accept: "application/json" },
+			})
+			if (!res.ok) throw new Error(`QuickBooks ${entity} API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
+			const rawPage = await res.text()
+			rawPages.push(rawPage)
+			const json = JSON.parse(rawPage) as { QueryResponse?: Record<string, T[]> }
+			const pageRecords = json.QueryResponse?.[entity] ?? []
+			target.push(...pageRecords)
+			if (pageRecords.length < ACCOUNTING_PAGE_SIZE) break
+			if (page === MAX_PROVIDER_SYNC_PAGES - 1) throw new Error(`QuickBooks ${entity.toLowerCase()} sync exceeded the ${MAX_PROVIDER_SYNC_PAGES}-page safety limit.`)
+		}
+	}
+	await fetchQuickBooksPages("Invoice", invoices)
+	await fetchQuickBooksPages("Payment", payments)
+	const invoicesById = new Map(invoices.map((invoice) => [invoice.Id, invoice]))
+	const applicationsByInvoice = new Map<string, AccountingPaymentApplication[]>()
+	const truncatedPaymentApplications = new Set<string>()
+	for (const payment of payments) {
+		for (const [lineIndex, line] of (payment.Line ?? []).entries()) {
+			const linkedInvoices = (line.LinkedTxn ?? []).filter((linked) => linked.TxnType === "Invoice" && linked.TxnId)
+			for (const linked of linkedInvoices) {
+				const invoice = invoicesById.get(linked.TxnId!)
+				if (!invoice) continue
+				const invoiceCurrency = (invoice.CurrencyRef?.value || "USD").toUpperCase()
+				const paymentCurrency = (payment.CurrencyRef?.value || invoiceCurrency).toUpperCase()
+				const mappingIssue = linkedInvoices.length > 1
+					? "This QuickBooks payment line links to multiple invoice records; its amount cannot be allocated to one invoice safely."
+					: paymentCurrency !== invoiceCurrency
+						? `Payment currency ${paymentCurrency} differs from invoice currency ${invoiceCurrency}; the amount was not converted or allocated.`
+						: typeof line.Amount !== "number" || !Number.isFinite(line.Amount)
+							? "QuickBooks did not provide a valid payment line amount."
+							: undefined
+				const sourceRef: SourceRef = {
+					sourceType: "platform_csv",
+					recordId: payment.Id,
+					field: `quickbooks.payment.Line[${lineIndex}]`,
+					rawExcerpt: JSON.stringify({ paymentId: payment.Id, txnDate: payment.TxnDate, amount: line.Amount, currency: paymentCurrency, linkedTxn: linkedInvoices }),
+				}
+				const application: AccountingPaymentApplication = {
+					provider: "quickbooks",
+					applicationId: `${payment.Id}:${lineIndex}:${invoice.Id}`,
+					paymentId: payment.Id,
+					invoiceRecordId: invoice.Id,
+					date: providerDate(payment.TxnDate),
+					amount: !mappingIssue ? { amountMinor: parseDecimalStringToMinor(String(line.Amount), invoiceCurrency), currency: invoiceCurrency } : undefined,
+					status: payment.TxnStatus,
+					mappingIssue,
+					sourceRef,
+				}
+				const current = applicationsByInvoice.get(invoice.Id) ?? []
+				if (current.length < 1000) current.push(application)
+				else truncatedPaymentApplications.add(invoice.Id)
+				applicationsByInvoice.set(invoice.Id, current)
 			}
 		}
-		const pageInvoices = json.QueryResponse?.Invoice ?? []
-		invoices.push(...pageInvoices)
-		if (pageInvoices.length < ACCOUNTING_PAGE_SIZE) break
-		if (page === MAX_PROVIDER_SYNC_PAGES - 1) throw new Error(`QuickBooks invoice sync exceeded the ${MAX_PROVIDER_SYNC_PAGES}-page safety limit.`)
 	}
 	const cases: SettlementCase[] = invoices.map((inv) => {
 		const ccy = (inv.CurrencyRef?.value || "USD").toUpperCase()
 		const minor = parseDecimalStringToMinor(String(inv.TotalAmt), ccy)
+		const accountingPayments = applicationsByInvoice.get(inv.Id) ?? []
 		return {
 			caseId: `QBO-${inv.DocNumber || inv.Id}`,
 			title: `QuickBooks Invoice ${inv.DocNumber || inv.Id}`,
 			channelLabel: "QuickBooks Online",
-			settlementEvidence: "estimated",
-			evidenceGap: "QuickBooks invoice evidence was fetched, but this connector did not fetch a matching payment or bank settlement record. The zero-value unmatched wire is structural only and is not evidence that no payment occurred.",
+			settlementEvidence: accountingPayments.length > 0 ? "incomplete" : "estimated",
+			evidenceGap: `${accountingPaymentGap("QuickBooks", accountingPayments)}${truncatedPaymentApplications.has(inv.Id) ? " More than 1,000 applications were linked; the displayed list is capped and the complete source response remains in the raw vault." : ""}`,
+			accountingPayments,
 			createdAt: new Date().toISOString(),
 			invoice: {
 				invoiceId: inv.DocNumber || inv.Id,
@@ -277,7 +359,7 @@ async function fetchQuickBooksCases(
 			},
 		}
 	})
-	return { recordsFetched: invoices.length, cases, rawPayload: combineRawPages(rawPages) }
+	return { recordsFetched: invoices.length + payments.length, cases, rawPayload: combineRawPages(rawPages) }
 }
 
 async function fetchXeroCases(
@@ -297,36 +379,84 @@ async function fetchXeroCases(
 		DateString?: string
 		Contact?: { Name?: string }
 	}> = []
+	const payments: Array<{
+		PaymentID: string
+		Date?: string
+		DateString?: string
+		Amount?: number
+		Status?: string
+		IsReconciled?: boolean
+		Invoice?: { InvoiceID?: string }
+	}> = []
 	const rawPages: string[] = []
 	const since = syncSince(lastSuccessfulSyncAt)
-	for (let page = 1; page <= MAX_PROVIDER_SYNC_PAGES; page += 1) {
-		const headers = new Headers({
-			Authorization: authHeader(credentials),
-			"Xero-tenant-id": tenantId,
-			Accept: "application/json",
-		})
-		if (since) headers.set("If-Modified-Since", since.toISOString().slice(0, 19))
-		const res = await fetchProvider(`https://api.xero.com/api.xro/2.0/Invoices?page=${page}&pageSize=${ACCOUNTING_PAGE_SIZE}`, {
-			headers,
-		})
-		if (!res.ok) throw new Error(`Xero API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
-		const rawPage = await res.text()
-		rawPages.push(rawPage)
-		const json = JSON.parse(rawPage) as { Invoices?: typeof invoices }
-		const pageInvoices = json.Invoices ?? []
-		invoices.push(...pageInvoices)
-		if (pageInvoices.length < ACCOUNTING_PAGE_SIZE) break
-		if (page === MAX_PROVIDER_SYNC_PAGES) throw new Error(`Xero invoice sync exceeded the ${MAX_PROVIDER_SYNC_PAGES}-page safety limit.`)
+	const fetchXeroPages = async <T,>(resource: "Invoices" | "Payments", target: T[]) => {
+		for (let page = 1; page <= MAX_PROVIDER_SYNC_PAGES; page += 1) {
+			const headers = new Headers({
+				Authorization: authHeader(credentials),
+				"Xero-tenant-id": tenantId,
+				Accept: "application/json",
+			})
+			if (since) headers.set("If-Modified-Since", since.toISOString().slice(0, 19))
+			const res = await fetchProvider(`https://api.xero.com/api.xro/2.0/${resource}?page=${page}&pageSize=${ACCOUNTING_PAGE_SIZE}`, { headers })
+			if (!res.ok) throw new Error(`Xero ${resource} API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
+			const rawPage = await res.text()
+			rawPages.push(rawPage)
+			const json = JSON.parse(rawPage) as Record<string, T[]>
+			const pageRecords = json[resource] ?? []
+			target.push(...pageRecords)
+			if (pageRecords.length < ACCOUNTING_PAGE_SIZE) break
+			if (page === MAX_PROVIDER_SYNC_PAGES) throw new Error(`Xero ${resource.toLowerCase()} sync exceeded the ${MAX_PROVIDER_SYNC_PAGES}-page safety limit.`)
+		}
+	}
+	await fetchXeroPages("Invoices", invoices)
+	await fetchXeroPages("Payments", payments)
+	const invoicesById = new Map(invoices.map((invoice) => [invoice.InvoiceID, invoice]))
+	const applicationsByInvoice = new Map<string, AccountingPaymentApplication[]>()
+	const truncatedPaymentApplications = new Set<string>()
+	for (const payment of payments) {
+		const invoiceId = payment.Invoice?.InvoiceID
+		if (!invoiceId || !invoicesById.has(invoiceId)) continue
+		const invoice = invoicesById.get(invoiceId)!
+		const ccy = (invoice.CurrencyCode || "USD").toUpperCase()
+		const mappingIssue = payment.Status !== "AUTHORISED"
+			? `Xero payment status is ${payment.Status || "missing"}; its amount was not allocated.`
+			: typeof payment.Amount !== "number" || !Number.isFinite(payment.Amount) || payment.Amount < 0
+				? "Xero did not provide a valid non-negative payment amount."
+				: undefined
+		const application: AccountingPaymentApplication = {
+			provider: "xero",
+			applicationId: payment.PaymentID,
+			paymentId: payment.PaymentID,
+			invoiceRecordId: invoiceId,
+			date: xeroPaymentDate(payment.DateString || payment.Date),
+			amount: !mappingIssue ? { amountMinor: parseDecimalStringToMinor(String(payment.Amount), ccy), currency: ccy } : undefined,
+			status: payment.Status,
+			reconciled: payment.IsReconciled,
+			mappingIssue,
+			sourceRef: {
+				sourceType: "platform_csv",
+				recordId: payment.PaymentID,
+				field: "xero.payment",
+				rawExcerpt: JSON.stringify({ paymentId: payment.PaymentID, date: payment.DateString || payment.Date, amount: payment.Amount, currency: ccy, status: payment.Status, isReconciled: payment.IsReconciled, invoiceId }),
+			},
+		}
+		const current = applicationsByInvoice.get(invoiceId) ?? []
+		if (current.length < 1000) current.push(application)
+		else truncatedPaymentApplications.add(invoiceId)
+		applicationsByInvoice.set(invoiceId, current)
 	}
 	const cases: SettlementCase[] = invoices.map((inv) => {
 		const ccy = (inv.CurrencyCode || "USD").toUpperCase()
 		const minor = parseDecimalStringToMinor(String(inv.Total ?? 0), ccy)
+		const accountingPayments = applicationsByInvoice.get(inv.InvoiceID) ?? []
 		return {
 			caseId: `XERO-${inv.InvoiceNumber || inv.InvoiceID.slice(0, 8)}`,
 			title: `Xero Invoice ${inv.InvoiceNumber || inv.InvoiceID}`,
 			channelLabel: "Xero Accounting",
-			settlementEvidence: "estimated",
-			evidenceGap: "Xero invoice evidence was fetched, but this connector did not fetch a matching payment or bank settlement record. The zero-value unmatched wire is structural only and is not evidence that no payment occurred.",
+			settlementEvidence: accountingPayments.length > 0 ? "incomplete" : "estimated",
+			evidenceGap: `${accountingPaymentGap("Xero", accountingPayments)}${truncatedPaymentApplications.has(inv.InvoiceID) ? " More than 1,000 applications were linked; the displayed list is capped and the complete source response remains in the raw vault." : ""}`,
+			accountingPayments,
 			createdAt: new Date().toISOString(),
 			invoice: {
 				invoiceId: inv.InvoiceNumber || inv.InvoiceID,
@@ -359,7 +489,7 @@ async function fetchXeroCases(
 			},
 		}
 	})
-	return { recordsFetched: invoices.length, cases, rawPayload: combineRawPages(rawPages) }
+	return { recordsFetched: invoices.length + payments.length, cases, rawPayload: combineRawPages(rawPages) }
 }
 
 function fetchHotFolderCases(config: Record<string, string>): ConnectorFetchResult {

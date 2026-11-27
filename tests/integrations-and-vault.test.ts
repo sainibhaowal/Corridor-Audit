@@ -779,7 +779,7 @@ test("QuickBooks token refresh is serialized and the rotated refresh token is pe
 		])
 		assert.ok(results.every((result) => result.status === "success"))
 		assert.equal(tokenRequests, 1)
-		assert.equal(apiRequests, 2)
+		assert.equal(apiRequests, 4)
 		assert.equal(db.getDecryptedCredentials(DEFAULT_WORKSPACE_ID, "quickbooks")?.accessToken, "new-access-token")
 		assert.equal(db.getDecryptedCredentials(DEFAULT_WORKSPACE_ID, "quickbooks")?.refreshToken, "rotated-refresh-token")
 	} finally {
@@ -1150,8 +1150,11 @@ test("provider sync retains original API payloads and converts Wise currencies t
 			},
 		]
 		for (const item of accountingIntegrations) {
-			const rawPayload = JSON.stringify(item.payload)
-			global.fetch = (async () => new Response(rawPayload, { status: 200 })) as typeof fetch
+			const invoiceRaw = JSON.stringify(item.payload)
+			const paymentRaw = item.provider === "quickbooks"
+				? JSON.stringify({ QueryResponse: { Payment: [] } })
+				: JSON.stringify({ Payments: [] })
+			global.fetch = (async (input) => new Response(String(input).includes("Payment") ? paymentRaw : invoiceRaw, { status: 200 })) as typeof fetch
 			const result = await fetchCasesFromIntegration({
 				integration: {
 					id: `int_${item.provider}_test`,
@@ -1166,10 +1169,10 @@ test("provider sync retains original API payloads and converts Wise currencies t
 				},
 				credentials: { accessToken: "accounting-test" },
 			})
-			assert.equal(result.rawPayload, rawPayload)
+			assert.deepEqual(JSON.parse(result.rawPayload || "{}").pageResponses, [invoiceRaw, paymentRaw])
 			assert.equal(result.cases[0]?.settlementEvidence, "estimated")
 			assert.equal(result.cases[0]?.wire.settledAmount.amountMinor, 0)
-			assert.match(result.cases[0]?.evidenceGap || "", /did not fetch a matching payment/)
+			assert.match(result.cases[0]?.evidenceGap || "", /no linked accounting payment application/)
 		}
 	} finally {
 		global.fetch = previousFetch
@@ -1243,13 +1246,111 @@ test("provider sync follows Stripe, Wise, QuickBooks, and Xero page cursors", as
 
 		const quickBooks = await fetchCasesFromIntegration({ integration: integration("quickbooks", { realmId: "realm-1" }), credentials: { accessToken: "qbo-test" } })
 		assert.equal(quickBooks.recordsFetched, 1001)
-		assert.equal(requests.filter((url) => url.includes("quickbooks.api.intuit.com")).length, 2)
+		assert.equal(requests.filter((url) => url.includes("quickbooks.api.intuit.com")).length, 3)
 		assert.ok(requests.some((url) => decodeURIComponent(url).includes("STARTPOSITION 1001")))
 
 		const xero = await fetchCasesFromIntegration({ integration: integration("xero", { tenantId: "tenant-1" }), credentials: { accessToken: "xero-test" } })
 		assert.equal(xero.recordsFetched, 1001)
-		assert.equal(requests.filter((url) => url.includes("api.xero.com")).length, 2)
+		assert.equal(requests.filter((url) => url.includes("api.xero.com")).length, 3)
 		assert.ok(requests.some((url) => url.includes("page=2&pageSize=1000")))
+	} finally {
+		global.fetch = previousFetch
+	}
+})
+
+test("QuickBooks and Xero payment applications stay separate from bank settlement evidence", async () => {
+	const previousFetch = global.fetch
+	global.fetch = (async (input) => {
+		const url = String(input)
+		if (url.includes("quickbooks.api.intuit.com")) {
+			const query = decodeURIComponent(new URL(url).searchParams.get("query") || "")
+			if (query.includes("FROM Invoice")) {
+				return new Response(JSON.stringify({ QueryResponse: { Invoice: [{
+					Id: "qbo-invoice-1",
+					DocNumber: "QBO-INV-1",
+					TotalAmt: 250,
+					CurrencyRef: { value: "USD" },
+					TxnDate: "2026-11-20",
+				}] } }), { status: 200 })
+			}
+			return new Response(JSON.stringify({ QueryResponse: { Payment: [{
+				Id: "qbo-payment-1",
+				TxnDate: "2026-11-26",
+				CurrencyRef: { value: "USD" },
+				Line: [{ Amount: 100.25, LinkedTxn: [{ TxnId: "qbo-invoice-1", TxnType: "Invoice" }] }],
+			}, {
+				Id: "qbo-payment-2",
+				TxnDate: "2026-11-26",
+				CurrencyRef: { value: "USD" },
+				Line: [{ Amount: 20, LinkedTxn: [{ TxnId: "qbo-invoice-1", TxnType: "Invoice" }, { TxnId: "other-invoice", TxnType: "Invoice" }] }],
+			}] } }), { status: 200 })
+		}
+		if (url.includes("api.xero.com")) {
+			if (url.includes("/Invoices?")) {
+				return new Response(JSON.stringify({ Invoices: [{
+					InvoiceID: "xero-invoice-1",
+					InvoiceNumber: "XERO-INV-1",
+					Total: 120,
+					CurrencyCode: "EUR",
+					DateString: "2026-11-20",
+				}] }), { status: 200 })
+			}
+			return new Response(JSON.stringify({ Payments: [{
+				PaymentID: "xero-payment-1",
+				DateString: "2026-11-26",
+				Amount: 40.5,
+				Status: "AUTHORISED",
+				IsReconciled: false,
+				Invoice: { InvoiceID: "xero-invoice-1" },
+			}, {
+				PaymentID: "xero-payment-voided",
+				DateString: "2026-11-25",
+				Amount: 12,
+				Status: "DELETED",
+				Invoice: { InvoiceID: "xero-invoice-1" },
+			}] }), { status: 200 })
+		}
+		throw new Error(`Unexpected accounting provider request: ${url}`)
+	}) as typeof fetch
+	const integration = (provider: "quickbooks" | "xero", config: Record<string, string>) => ({
+		id: `int_${provider}_payment_mapping`,
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		provider,
+		category: "accounting" as const,
+		authMode: "oauth2" as const,
+		status: "connected" as const,
+		config,
+		createdAt: new Date().toISOString(),
+		updatedAt: new Date().toISOString(),
+	})
+	try {
+		const quickBooks = await fetchCasesFromIntegration({
+			integration: integration("quickbooks", { realmId: "realm-payment-test" }),
+			credentials: { accessToken: "qbo-test" },
+		})
+		assert.equal(quickBooks.recordsFetched, 3)
+		assert.equal(quickBooks.cases[0]?.settlementEvidence, "incomplete")
+		assert.equal(quickBooks.cases[0]?.wire.settledAmount.amountMinor, 0)
+		assert.equal(quickBooks.cases[0]?.accountingPayments?.[0]?.amount?.amountMinor, 10025)
+		assert.match(quickBooks.cases[0]?.accountingPayments?.[1]?.mappingIssue || "", /multiple invoice records/)
+		assert.equal(quickBooks.cases[0]?.accountingPayments?.[1]?.amount, undefined)
+		assert.match(quickBooks.cases[0]?.evidenceGap || "", /do not independently confirm bank settlement/)
+
+		const xero = await fetchCasesFromIntegration({
+			integration: integration("xero", { tenantId: "tenant-payment-test" }),
+			credentials: { accessToken: "xero-test" },
+		})
+		assert.equal(xero.recordsFetched, 3)
+		assert.equal(xero.cases[0]?.settlementEvidence, "incomplete")
+		assert.equal(xero.cases[0]?.wire.settledAmount.amountMinor, 0)
+		assert.equal(xero.cases[0]?.accountingPayments?.[0]?.amount?.amountMinor, 4050)
+		assert.equal(xero.cases[0]?.accountingPayments?.[0]?.reconciled, false)
+		assert.match(xero.cases[0]?.accountingPayments?.[1]?.mappingIssue || "", /DELETED/)
+		assert.equal(xero.cases[0]?.accountingPayments?.[1]?.amount, undefined)
+		assert.match(xero.cases[0]?.evidenceGap || "", /do not independently confirm bank settlement/)
+		const db = getCorridorDb()
+		db.saveCase(quickBooks.cases[0]!)
+		assert.equal(db.getPersistedCase(quickBooks.cases[0]!.caseId)?.accountingPayments?.[1]?.mappingIssue, quickBooks.cases[0]?.accountingPayments?.[1]?.mappingIssue)
 	} finally {
 		global.fetch = previousFetch
 	}
@@ -1316,9 +1417,10 @@ test("QuickBooks incremental invoice sync filters on MetaData.LastUpdatedTime wi
 			lastSuccessfulSyncAt: "2026-11-27T12:00:00.000Z",
 		})
 		assert.equal(fetched.recordsFetched, 0)
-		assert.equal(requests.length, 1)
+		assert.equal(requests.length, 2)
 		assert.ok(decodeURIComponent(requests[0]!.searchParams.get("query")!).includes("WHERE MetaData.LastUpdatedTime > '2026-11-27T11:55:00.000Z'"))
 		assert.ok(decodeURIComponent(requests[0]!.searchParams.get("query")!).includes("ORDERBY MetaData.LastUpdatedTime DESC"))
+		assert.ok(decodeURIComponent(requests[1]!.searchParams.get("query")!).includes("SELECT * FROM Payment"))
 	} finally {
 		global.fetch = previousFetch
 	}
@@ -1340,7 +1442,7 @@ test("changed Xero invoice data creates an immutable source revision case", asyn
 	let fetchCount = 0
 	global.fetch = (async (_input, init) => {
 		fetchCount += 1
-		if (fetchCount === 1) assert.equal(new Headers(init?.headers).has("If-Modified-Since"), false)
+		if (fetchCount <= 2) assert.equal(new Headers(init?.headers).has("If-Modified-Since"), false)
 		else assert.equal(new Headers(init?.headers).has("If-Modified-Since"), true)
 		return new Response(JSON.stringify({ Invoices: [{
 			InvoiceID: "xero-source-revision-01",

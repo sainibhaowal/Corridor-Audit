@@ -1,5 +1,5 @@
 import { z } from "zod"
-import type { InvoiceInput, SettlementCase, WireOrBankInput } from "../types"
+import type { AccountingPaymentApplication, InvoiceInput, SettlementCase, WireOrBankInput } from "../types"
 
 const currency = z.string().regex(/^[A-Za-z]{3}$/, "Currency must be a three-letter ISO code.").transform((value) => value.toUpperCase())
 const money = z.object({
@@ -13,6 +13,19 @@ const sourceRef = z.object({
 	field: z.string().min(1).max(500),
 	rawExcerpt: z.string().max(20_000),
 	url: z.string().url().optional(),
+}).passthrough()
+
+const accountingPayment = z.object({
+	provider: z.enum(["quickbooks", "xero"]),
+	applicationId: z.string().min(1).max(500),
+	paymentId: z.string().min(1).max(500),
+	invoiceRecordId: z.string().min(1).max(500),
+	date: z.iso.date().optional(),
+	amount: money.optional(),
+	status: z.string().max(100).optional(),
+	reconciled: z.boolean().optional(),
+	mappingIssue: z.string().max(1000).optional(),
+	sourceRef,
 }).passthrough()
 
 const invoice = z.object({
@@ -69,6 +82,7 @@ const caseSchema = z.object({
 	channelLabel: z.string().trim().min(1).max(500).optional(),
 	settlementEvidence: z.enum(["observed", "estimated", "incomplete"]).optional(),
 	evidenceGap: z.string().max(2000).optional(),
+	accountingPayments: z.array(accountingPayment).max(1000).optional(),
 	invoice: invoice.optional(),
 	wire,
 	candidateWires: z.array(wire).max(10_000).optional(),
@@ -96,6 +110,7 @@ export function parseJsonSettlementCases(value: unknown): SettlementCase[] {
 			channelLabel: row.channelLabel || "JSON settlement import",
 			settlementEvidence,
 			evidenceGap,
+			accountingPayments: row.accountingPayments as AccountingPaymentApplication[] | undefined,
 			createdAt: row.createdAt || new Date().toISOString(),
 			invoice: row.invoice as InvoiceInput | undefined,
 			wire: {
