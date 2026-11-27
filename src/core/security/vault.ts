@@ -16,6 +16,9 @@ function resolveVaultKey(): Buffer {
 			cachedKey = Buffer.from(envKey, "hex")
 			return cachedKey
 		}
+		if (process.env.NODE_ENV === "production") {
+			throw new Error("Production CORRIDOR_VAULT_KEY must be exactly 64 hexadecimal characters encoding 32 random bytes.")
+		}
 		cachedKey = createHash("sha256").update(envKey, "utf8").digest()
 		return cachedKey
 	}

@@ -61,6 +61,14 @@ test("production vault refuses to generate an unconfigured local key", () => {
 	resetVaultKeyCache()
 	try {
 		assert.throws(() => encryptSecret("must-not-create-a-production-key"), /Production requires CORRIDOR_VAULT_KEY/)
+		process.env.CORRIDOR_VAULT_KEY = "weak-passphrase"
+		resetVaultKeyCache()
+		assert.throws(() => encryptSecret("must-not-hash-a-production-passphrase"), /exactly 64 hexadecimal characters/)
+		process.env.CORRIDOR_VAULT_KEY = "ab".repeat(32)
+		resetVaultKeyCache()
+		const ciphertext = encryptSecret("production-key-format-test")
+		assert.notEqual(ciphertext, "production-key-format-test")
+		assert.equal(decryptSecret(ciphertext), "production-key-format-test")
 	} finally {
 		if (priorNodeEnv === undefined) Reflect.deleteProperty(process.env, "NODE_ENV")
 		else Reflect.set(process.env, "NODE_ENV", priorNodeEnv)
