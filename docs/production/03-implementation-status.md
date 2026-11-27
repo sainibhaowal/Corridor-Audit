@@ -417,3 +417,8 @@ Update this section per milestone with the exact command, result, environment, a
 - The shared API authorization helper now checks mutation request `Origin` and Fetch Metadata before the local-auth bypass. Cross-origin and `Sec-Fetch-Site: cross-site` browser requests are rejected with `403`; same-origin local calls and requests without browser-origin metadata continue to work.
 - Signed webhook routes remain separate external entry points and keep their signature and event-receipt checks.
 - Verification in the local Windows environment: `npm run typecheck`, `npm test` (73 passed, 0 failed), and `npm run build` passed. This guard does not replace authentication, authorization, or host validation.
+
+### 2026-11-27 provider timeout cannot be overridden by caller signals
+
+- `fetchProvider` now composes a caller cancellation signal with its configured request deadline. Supplying a longer-lived signal no longer bypasses the 20 second provider request bound.
+- Verification in the local Windows environment: `npm run typecheck`, `npm test` (74 passed, 0 failed), and `npm run build` passed. A focused test verifies that an external 60 second signal cannot override a 5 millisecond helper deadline.

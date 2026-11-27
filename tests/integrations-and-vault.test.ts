@@ -564,6 +564,23 @@ test("provider HTTP helper aborts a stalled request at its configured timeout", 
 	}
 })
 
+test("provider HTTP helper keeps its timeout when a caller supplies a longer-lived signal", async () => {
+	const previousFetch = global.fetch
+	let receivedSignal: AbortSignal | undefined
+	global.fetch = ((_input, init) => new Promise((_resolve, reject) => {
+		receivedSignal = init?.signal as AbortSignal
+		receivedSignal.addEventListener("abort", () => reject(receivedSignal?.reason), { once: true })
+	})) as typeof fetch
+	try {
+		await assert.rejects(fetchProvider("https://provider.test/resource", { signal: AbortSignal.timeout(60_000) }, 5), (error: unknown) => {
+			return error instanceof DOMException && error.name === "TimeoutError"
+		})
+		assert.ok(receivedSignal?.aborted)
+	} finally {
+		global.fetch = previousFetch
+	}
+})
+
 test("generic provider endpoints reject insecure schemes and private DNS targets", async () => {
 	assert.throws(() => validateProviderEndpointUrl("http://api.example.test/records"), /HTTPS/)
 	assert.throws(() => validateProviderEndpointUrl("https://127.0.0.1/records", true), /private or reserved/)
