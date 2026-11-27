@@ -33,6 +33,7 @@ import { AuthLogout } from "@/components/auth-logout"
 import type { AuditVerdict, PendingBreakpointDecision, TrajectoryEvent } from "@/core/types"
 import { BUILD_PROVENANCE, formatBuildLabel } from "@/core/build-info"
 import { cn } from "@/lib/utils"
+import { AgentTraceTree } from "./agent-trace-tree"
 import { BrandLogo } from "./brand-logo"
 import { CaseInspectorModal } from "./case-inspector-modal"
 import { CorridorSummaryView } from "./corridor-summary-view"
@@ -1295,159 +1296,12 @@ export function CorridorWorkspace() {
 										</p>
 									</div>
 								) : (
-									<div className="space-y-4">
-										{/* Agentic IDE Live Run-Activity Header */}
-										<div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#1c2a33] bg-[#080d12] px-3 py-2 font-mono text-[11px]">
-											<div className="flex items-center gap-2">
-												<span
-													className={cn(
-														"h-2 w-2 rounded-full",
-														hasRunningAgent ? "animate-pulse bg-[#62e1c3]" : activeEntry.pending ? "bg-amber-500" : "bg-emerald-500",
-													)}
-												/>
-												<span className="font-bold text-[#e3edef]">{activeEntry.phase || "RUN ACTIVE"}</span>
-											</div>
-											<div className="flex items-center gap-3 text-[#81949a]">
-												<span>
-													Agents: <strong className="text-[#e3edef]">{visibleAgents.filter((ag) => ag.status === "done").length}/{visibleAgents.length}</strong>
-												</span>
-												<span>
-													Tools: <strong className="text-[#62e1c3]">{visibleAgents.reduce((sum, ag) => sum + Object.keys(ag.tools).length, 0)}</strong>
-												</span>
-												<span>
-													Elapsed:{" "}
-													<strong className="text-[#e3edef]">
-														{(((activeEntry.verdict ? Date.parse(activeEntry.verdict.completedAt) : timelineNow) - activeEntry.startedAt) / 1000).toFixed(1)}s
-													</strong>
-												</span>
-											</div>
-										</div>
-
-										<div className="relative space-y-4 pl-6 before:absolute before:top-2 before:bottom-2 before:left-[8.5px] before:w-[1.5px] before:bg-[#62e1c3]">
-										{visibleAgents.map((a) => {
-											const toolsArr = Object.values(a.tools)
-											const rKey = `${activeEntry.caseId}:${a.name}`
-											const rOpen = Boolean(openReasoning[rKey])
-											const finalMsg = a.finalText || a.streamText
-											const isLead = a.name === "AuditorAgent"
-											const liveSec = a.status === "running" ? `${((timelineNow - a.startedAt) / 1000).toFixed(1)}s` : a.elapsed
-											return (
-												<div key={a.name} className="relative">
-													<span
-														className={cn(
-															"absolute top-1 -left-[21px] h-3 w-3 rounded-full border-2 border-white",
-															a.status === "paused"
-																? "bg-amber-600"
-																: a.status === "done"
-																	? "bg-emerald-600"
-																	: "animate-pulse bg-[#62e1c3]",
-														)}
-													/>
-													<div className="flex flex-wrap items-center gap-2">
-														<span
-															className={cn(
-																"rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase tracking-wider",
-																isLead ? "bg-violet-950/60 text-violet-300 border border-violet-700/50" : "bg-sky-950/50 text-sky-300 border border-sky-800/50",
-															)}
-														>
-															{isLead ? "Lead Agent" : "Subagent"}
-														</span>
-														<span className="text-[13px] font-bold text-[#e3edef]">{AGENT_LANES.find((lane) => lane.name === a.name)?.label ?? a.name}</span>
-														{(a.thinking || a.status === "running") && (
-															<span className="inline-flex items-center gap-1.5 rounded-md border border-[#225b51] bg-[#081312] px-2 py-0.5 font-mono text-[11px] text-[#62e1c3]">
-																<span className="h-1.5 w-1.5 animate-ping rounded-full bg-[#62e1c3]" />
-																Thinking · {liveSec}
-															</span>
-														)}
-														{a.reasoning && (
-															<button
-																type="button"
-																onClick={() =>
-																	setOpenReasoning((p) => ({ ...p, [rKey]: !rOpen }))
-																}
-																className="inline-flex items-center gap-1 rounded border border-[#1c2a33] bg-[#101820] px-2 py-0.5 font-mono text-[11px] text-[#a4b4b8] hover:text-[#e3edef]"
-															>
-																{rOpen ? (
-																	<ChevronDown className="h-3 w-3" />
-																) : (
-																	<ChevronRight className="h-3 w-3" />
-																)}
-																Model Reasoning
-															</button>
-														)}
-														<span className="ml-auto font-mono text-[11px] text-[#71858c]">
-															{a.status === "done" ? a.elapsed : a.status}
-														</span>
-													</div>
-
-													{a.reasoning && rOpen && (
-														<pre className="mt-2 whitespace-pre-wrap rounded border-l-2 border-[#52656c] bg-[#080d12] p-2.5 font-mono text-[11px] text-[#a4b4b8]">
-															{a.reasoning}
-														</pre>
-													)}
-
-													{toolsArr.length > 0 && (
-														<div className="mt-2 flex flex-wrap gap-1.5">
-															{toolsArr.map((t) => {
-																const isOpen = Boolean(expandedTools[t.callId])
-																return (
-																	<div key={t.callId} className={cn(isOpen && "w-full")}>
-																		<button
-																			type="button"
-																			onClick={() =>
-																				setExpandedTools((p) => ({
-																					...p,
-																					[t.callId]: !isOpen,
-																				}))
-																			}
-																			className={cn(
-																				"inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[11px] transition-colors",
-																				t.status === "ok"
-																					? "border-[#225b51] bg-[#0d2725] text-[#75e4c7]"
-																					: t.status === "error"
-																						? "border-red-800/70 bg-red-950/40 text-red-300"
-																						: "border-[#2c4a43] bg-[#0d191c] text-[#c7d3d6]",
-																			)}
-																		>
-																			{isOpen ? (
-																				<ChevronDown className="h-3 w-3" />
-																			) : (
-																				<ChevronRight className="h-3 w-3" />
-																			)}
-																			<span
-																				className={cn(
-																					"h-1.5 w-1.5 rounded-full",
-																					t.status === "ok"
-																						? "bg-emerald-400"
-																						: t.status === "error"
-																							? "bg-red-400"
-																							: "animate-ping bg-amber-400",
-																				)}
-																			/>
-																			{t.toolName} ·{" "}
-																			{t.durationMs !== null ? `${t.durationMs}ms` : "running..."}
-																		</button>
-																		{isOpen && (
-																			<pre className="mt-1.5 whitespace-pre-wrap break-words rounded-md border border-[#1c2a33] bg-[#080d12] p-2.5 font-mono text-[11px] text-[#c7d3d6]">
-																				{`ARGS:   ${t.argsJson || "{}"}\nRESULT: ${t.resultJson || "running..."}`}
-																			</pre>
-																		)}
-																	</div>
-																)
-															})}
-														</div>
-													)}
-
-													{finalMsg && (
-														<div className="mt-1.5 whitespace-pre-wrap text-[13px] text-[#c7d3d6]">
-															{finalMsg}
-														</div>
-													)}
-												</div>
-											)
-										})}
-										</div>
-									</div>
+									<AgentTraceTree
+										entry={activeEntry}
+										visibleAgents={visibleAgents}
+										timelineNow={timelineNow}
+										agentLabels={Object.fromEntries(AGENT_LANES.map((l) => [l.name, l.label]))}
+									/>
 								)}
 							</Card>
 
