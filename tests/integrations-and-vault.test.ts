@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto"
 import { rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
+import { DatabaseSync } from "node:sqlite"
 import test from "node:test"
 
 const TEST_DB_PATH = resolve(tmpdir(), `corridor-test-${process.pid}-${Date.now()}.db`)
@@ -149,6 +150,43 @@ test("local case queue survives restart and recovers work interrupted while runn
 	db.markCaseFailed(queuedCase.caseId)
 	assert.equal(db.listQueuedCases().length, 0, "failed work is not silently auto retried")
 	db.close()
+})
+
+test("raw ingestion payloads are encrypted in SQLite and decrypt through the vault API", () => {
+	const dbPath = resolve(tmpdir(), `corridor-encrypted-vault-${process.pid}-${Date.now()}.db`)
+	const raw = JSON.stringify({ invoiceNumber: "PRIVATE-INV-01", amount: 37500 })
+	const db = new CorridorDatabase(dbPath)
+	const ingestion = db.saveRawIngestion({
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		sourceChannel: "manual_upload",
+		sourceProvider: "test",
+		filename: "private.json",
+		format: "json",
+		rawContent: raw,
+	})
+	assert.equal(ingestion.rawContent, raw)
+	db.close()
+
+	const inspection = new DatabaseSync(dbPath)
+	const stored = inspection.prepare("SELECT raw_content, raw_content_encrypted FROM raw_ingestions WHERE id = ?")
+		.get(ingestion.id) as { raw_content: string; raw_content_encrypted: number }
+	assert.equal(stored.raw_content_encrypted, 1)
+	assert.ok(stored.raw_content.startsWith("v1:"))
+	assert.ok(!stored.raw_content.includes("PRIVATE-INV-01"))
+	inspection.prepare("UPDATE raw_ingestions SET raw_content = ?, raw_content_encrypted = 0 WHERE id = ?")
+		.run(raw, ingestion.id)
+	inspection.close()
+
+	const reopened = new CorridorDatabase(dbPath)
+	assert.equal(reopened.getRawIngestion(ingestion.id, true)?.rawContent, raw)
+	reopened.close()
+	const migrated = new DatabaseSync(dbPath)
+	const migratedRow = migrated.prepare("SELECT raw_content, raw_content_encrypted FROM raw_ingestions WHERE id = ?")
+		.get(ingestion.id) as { raw_content: string; raw_content_encrypted: number }
+	assert.equal(migratedRow.raw_content_encrypted, 1)
+	assert.ok(migratedRow.raw_content.startsWith("v1:"))
+	migrated.close()
+	rmSync(dbPath, { force: true })
 })
 
 test("parseInboundEmailToCases extracts MT103 attachments from inbound email payloads", () => {

@@ -33,7 +33,24 @@ export class CorridorDatabase {
 		}
 		this.db = new DatabaseSync(target)
 		this.db.exec(CORRIDOR_SCHEMA_SQL)
+		this.ensureRawContentEncryptionColumn()
+		this.encryptLegacyRawContent()
 		this.ensureDefaultWorkspace()
+	}
+
+	private ensureRawContentEncryptionColumn(): void {
+		const columns = this.db.prepare("PRAGMA table_info(raw_ingestions)").all() as Array<{ name: string }>
+		if (!columns.some((column) => column.name === "raw_content_encrypted")) {
+			this.db.exec("ALTER TABLE raw_ingestions ADD COLUMN raw_content_encrypted INTEGER NOT NULL DEFAULT 0")
+		}
+	}
+
+	private encryptLegacyRawContent(): void {
+		const rows = this.db
+			.prepare("SELECT id, raw_content FROM raw_ingestions WHERE raw_content_encrypted = 0")
+			.all() as Array<{ id: string; raw_content: string }>
+		const update = this.db.prepare("UPDATE raw_ingestions SET raw_content = ?, raw_content_encrypted = 1 WHERE id = ?")
+		for (const row of rows) update.run(encryptSecret(row.raw_content), row.id)
 	}
 
 	private ensureDefaultWorkspace(): void {
@@ -529,7 +546,9 @@ export class CorridorDatabase {
 			format: String(row.format),
 			sha256: String(row.sha256),
 			sizeBytes: Number(row.size_bytes),
-			rawContent: includeContent ? String(row.raw_content) : undefined,
+			rawContent: includeContent
+				? (Boolean(row.raw_content_encrypted) ? decryptSecret(String(row.raw_content)) : String(row.raw_content))
+				: undefined,
 			isBase64: Boolean(row.is_base64),
 			metadata: JSON.parse(String(row.metadata_json || "{}")) as Record<string, string>,
 			parseStatus: String(row.parse_status) as RawIngestionParseStatus,
@@ -565,9 +584,9 @@ export class CorridorDatabase {
 			.prepare(
 				`INSERT INTO raw_ingestions (
 					id, workspace_id, source_channel, source_provider, filename, format,
-					sha256, size_bytes, raw_content, is_base64, metadata_json,
+					sha256, size_bytes, raw_content, raw_content_encrypted, is_base64, metadata_json,
 					parse_status, parse_error, case_ids_json, created_at
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
 			)
 			.run(
 				id,
@@ -578,7 +597,7 @@ export class CorridorDatabase {
 				params.format,
 				sha256,
 				sizeBytes,
-				params.rawContent,
+				encryptSecret(params.rawContent),
 				Number(Boolean(params.isBase64)),
 				JSON.stringify(params.metadata ?? {}),
 				params.parseStatus ?? "parsed",

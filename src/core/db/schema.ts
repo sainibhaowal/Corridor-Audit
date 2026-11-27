@@ -180,6 +180,7 @@ CREATE TABLE IF NOT EXISTS raw_ingestions (
 	sha256 TEXT NOT NULL,
 	size_bytes INTEGER NOT NULL,
 	raw_content TEXT NOT NULL,
+	raw_content_encrypted INTEGER NOT NULL DEFAULT 0,
 	is_base64 INTEGER NOT NULL DEFAULT 0,
 	metadata_json TEXT NOT NULL DEFAULT '{}',
 	parse_status TEXT NOT NULL DEFAULT 'parsed',
