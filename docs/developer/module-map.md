@@ -23,9 +23,9 @@
 ## 2. Mozaik Multi-Agent Runtime (`src/runtime/`)
 | Module | Responsibility |
 | :--- | :--- |
-| `src/runtime/corridor-runtime.ts` | `defineRuntime<CorridorState>()` with isolated per-role state slots (`termsByCaseId`, `fxByCaseId`, `wireByCaseId`, `anomalyByCaseId`, `auditByCaseId`, `pendingApprovals`) and checkpoint restoration in `registerCase`. |
+| `src/runtime/corridor-runtime.ts` | `defineRuntime<CorridorState>()` with isolated per-role state slots (`termsByCaseId`, `fxByCaseId`, `wireByCaseId`, `anomalyByCaseId`, `auditByCaseId`, `pendingApprovals`), `requestSpecialistRerun` (max 2 retries per role), and checkpoint restoration in `registerCase`. |
 | `src/runtime/orchestrator.ts` | `CorridorOrchestrator` singleton: initializes Mozaik runtime, joins the 4+1 agents + observer, restores `case_checkpoints` on retry/restart, starts `./data/inbox/` hot-folder watcher, `startCaseQueueWorker`, `startBackgroundSyncWorker`, and serializes batches with `runWithDurableCaseRetries`. |
-| `src/runtime/agents/corridor-agents.ts` | Defines `TermsAgent`, `FxBenchmarkAgent`, `WireDetectiveAgent`, conditional `DuplicateAnomalyAgent` (skipping already-checkpointed roles), and reactive `AuditorAgent` (`onAllSpecialistsReady`). |
+| `src/runtime/agents/corridor-agents.ts` | Defines `TermsAgent`, `FxBenchmarkAgent`, `WireDetectiveAgent`, conditional `DuplicateAnomalyAgent` (skipping already-checkpointed roles and supporting targeted `specialist.rerun`), and reactive `AuditorAgent` (`onAllSpecialistsReady`). |
 | `src/runtime/agents/agent-prompts.ts` | System prompts enforcing tool-first execution and zero fabricated figures. |
 | `src/runtime/agents/trajectory-observer.ts` | Streams Mozaik lifecycle & tool events to `TrajectoryEvent[]` for the UI live console & SSE (`/api/events`), and persists encrypted specialist checkpoints to SQLite on role completion. |
 | `src/runtime/interception/settlement-gate.ts` | `SettlementGateInterceptionHandler` pausing `finalize_settlement_action` for human review (`Approve`, `Reject & Steer`, `Stop`). |
@@ -50,4 +50,4 @@
 ---
 
 ## 4. Verification Suite (`tests/`)
-All **98 tests** run via `npm test` (`node --import tsx --test tests/*.test.ts`), covering auth/RBAC, money math, parsers (`mt103`, `camt053`, `csv`, `pdf`, hybrid Vision + `tesseract.js` OCR), vault encryption, OAuth PKCE, SSRF DNS pinning, provider sync cursors, ClamAV scanning, durable retries, persistent case sequences, encrypted agent checkpoints, SHA-256 upload deduplication, audit log hash-chaining, and report exports (`.txt`, `.csv`, `.pdf`, `.json`).
+All **99 tests** run via `npm test` (`node --import tsx --test tests/*.test.ts`), covering auth/RBAC, money math, parsers (`mt103`, `camt053`, `csv`, `pdf`, hybrid Vision + `tesseract.js` OCR), vault encryption, OAuth PKCE, SSRF DNS pinning, provider sync cursors, ClamAV scanning, durable retries, persistent case sequences, encrypted agent checkpoints, SHA-256 upload deduplication, targeted single-specialist re-runs, audit log hash-chaining, and report exports (`.txt`, `.csv`, `.pdf`, `.json`).
