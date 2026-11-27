@@ -404,3 +404,10 @@ Update this section per milestone with the exact command, result, environment, a
 - Integration cards now disclose whether the connection is a native provider API, generic JSON endpoint, local folder adapter, or email webhook adapter, including the actual data scope and missing payment/bank matching. The email card shows the application webhook URL and states that no mailbox is provisioned.
 - Generic catalog connectors now require an endpoint URL before a connection can be saved. Remote HTTP endpoints, private or reserved IP destinations, and redirect responses are rejected before a configured bearer token can be forwarded.
 - DNS is checked immediately before connection and again before polling, but the runtime does not pin DNS resolution to the outbound socket. A production deployment still needs egress firewall rules or an endpoint allowlist. No external provider was contacted and no cloud services were configured.
+
+### 2026-11-27 production generic endpoint allowlist
+
+- Generic provider URLs now require an exact hostname entry in `CORRIDOR_PROVIDER_ENDPOINT_HOSTS` when `NODE_ENV=production`, and production requests must use standard HTTPS port 443. The check runs when saving a connection and again before each poll. Production generic endpoint connections fail closed if the allowlist is empty or the host is absent. `.env.example` documents the new setting.
+- Local development continues to allow configured public HTTPS endpoints without a production allowlist. Private and reserved address checks still apply, and requests still reject redirects.
+- DNS-to-socket pinning and production network egress rules remain necessary to close DNS rebinding risk. This local verification does not contact a provider or configure an allowlist.
+- Verification in the local Windows environment: `npm run typecheck`, `npm test` (72 passed, 0 failed), and `npm run build` passed. No provider or cloud service was contacted.

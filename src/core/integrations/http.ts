@@ -54,6 +54,9 @@ export function validateProviderEndpointUrl(value: string, production = process.
 	if (url.protocol !== "https:" && !(url.protocol === "http:" && !production && loopbackHost)) {
 		throw new Error("Provider API endpoints must use HTTPS. HTTP is allowed only for a local loopback endpoint in development.")
 	}
+	if (production && url.port && url.port !== "443") {
+		throw new Error("Production provider API endpoints must use the standard HTTPS port.")
+	}
 	if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) {
 		if (production || !loopbackHost) throw new Error("Provider API endpoint must use a public DNS host.")
 	}
@@ -61,6 +64,22 @@ export function validateProviderEndpointUrl(value: string, production = process.
 		throw new Error("Provider API endpoint cannot target a private or reserved IP address.")
 	}
 	return url
+}
+
+export function assertProviderEndpointHostAllowed(
+	url: URL,
+	allowedHosts = process.env.CORRIDOR_PROVIDER_ENDPOINT_HOSTS,
+	production = process.env.NODE_ENV === "production",
+): void {
+	if (!production) return
+	const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "")
+	const allowlist = (allowedHosts || "").split(",").map((entry) => entry.trim().toLowerCase()).filter(Boolean)
+	if (allowlist.length === 0) {
+		throw new Error("Generic provider endpoints are disabled in production until CORRIDOR_PROVIDER_ENDPOINT_HOSTS is configured.")
+	}
+	if (!allowlist.includes(host)) {
+		throw new Error(`Provider API host \"${host}\" is not in CORRIDOR_PROVIDER_ENDPOINT_HOSTS.`)
+	}
 }
 
 export async function assertProviderEndpointResolvesPublicly(

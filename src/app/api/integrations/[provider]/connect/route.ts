@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
 import type { IntegrationAuthMode } from "@/core/db/schema"
 import { getCatalogItem } from "@/core/integrations/catalog"
-import { assertProviderEndpointResolvesPublicly, validateProviderEndpointUrl } from "@/core/integrations/http"
+import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublicly, validateProviderEndpointUrl } from "@/core/integrations/http"
 import { createOAuthAuthorizationUrl } from "@/core/integrations/oauth"
 import { authorizeCorridorRequest } from "@/core/security/authorization"
 import { getCorridorPublicOrigin } from "@/core/security/public-origin"
@@ -75,6 +75,7 @@ export async function POST(
 		for (const field of spec.fields.filter((entry) => entry.type === "url" && typeof body.config?.[entry.key] === "string")) {
 			try {
 				const endpoint = validateProviderEndpointUrl(body.config![field.key]!)
+				assertProviderEndpointHostAllowed(endpoint)
 				await assertProviderEndpointResolvesPublicly(endpoint)
 			} catch (error) {
 				return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Invalid provider endpoint." }, { status: 400 })

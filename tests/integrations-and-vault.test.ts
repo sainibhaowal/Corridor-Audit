@@ -21,7 +21,7 @@ import { POST as inboundWebhookRoute } from "../src/app/api/webhooks/inbound/rou
 import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/core/db/database"
 import { parseInboundEmailToCases } from "../src/core/integrations/email-parser"
 import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
-import { assertProviderEndpointResolvesPublicly, fetchProvider, validateProviderEndpointUrl } from "../src/core/integrations/http"
+import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublicly, fetchProvider, validateProviderEndpointUrl } from "../src/core/integrations/http"
 import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode, refreshOAuthCredentials } from "../src/core/integrations/oauth"
 import { runIntegrationSync } from "../src/runtime/workers/sync-worker"
 import { runWithDurableCaseRetries } from "../src/runtime/workers/durable-case-queue"
@@ -567,7 +567,11 @@ test("provider HTTP helper aborts a stalled request at its configured timeout", 
 test("generic provider endpoints reject insecure schemes and private DNS targets", async () => {
 	assert.throws(() => validateProviderEndpointUrl("http://api.example.test/records"), /HTTPS/)
 	assert.throws(() => validateProviderEndpointUrl("https://127.0.0.1/records", true), /private or reserved/)
+	assert.throws(() => validateProviderEndpointUrl("https://api.example.test:8443/records", true), /standard HTTPS port/)
 	const publicEndpoint = validateProviderEndpointUrl("https://api.example.test/v1/records", true)
+	assert.throws(() => assertProviderEndpointHostAllowed(publicEndpoint, "", true), /disabled in production/)
+	assert.throws(() => assertProviderEndpointHostAllowed(publicEndpoint, "other.example.test", true), /not in CORRIDOR_PROVIDER_ENDPOINT_HOSTS/)
+	assert.doesNotThrow(() => assertProviderEndpointHostAllowed(publicEndpoint, "api.example.test", true))
 	await assert.doesNotReject(assertProviderEndpointResolvesPublicly(publicEndpoint, async () => [{ address: "8.8.8.8", family: 4 }]))
 	await assert.rejects(
 		assertProviderEndpointResolvesPublicly(publicEndpoint, async () => [{ address: "169.254.169.254", family: 4 }]),
