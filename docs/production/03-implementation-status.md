@@ -486,3 +486,9 @@ Update this section per milestone with the exact command, result, environment, a
 - QuickBooks and Xero now request missing invoice IDs referenced by fetched payment records, in batches of up to 40 and a maximum of 20 batches per sync. Returned source pages are retained with the sync's encrypted raw evidence and mapped through the existing accounting-payment path.
 - Links still unresolved after the bounded lookup remain unmapped and produce a warning in recent sync activity. Sync status stays successful when provider fetching succeeded; the warning describes a mapping gap, not a transport failure. No bank settlement is inferred.
 - Verified mocked lookups for both providers, unresolved-link warning behavior, raw response retention, and mapped payment applications. `npm test` passed (79 tests), `npm run typecheck` passed, and `npm run build` passed. Live provider credentials and account conformance were not used.
+
+### 2026-11-27 production timestamp requirement for email webhooks
+
+- The email adapter now requires the same timestamped Corridor HMAC format as the inbound JSON webhook when `NODE_ENV=production`. Local development continues to accept the legacy raw-body signature for compatibility.
+- Durable event-ID or exact-payload deduplication remains the replay protection for duplicate deliveries. This does not add a signed timestamp capability to Wise requests.
+- Verified the shared signature helper's timestamp enforcement in existing tests, email webhook integration tests, typecheck, and production build. No external webhook provider was contacted.
