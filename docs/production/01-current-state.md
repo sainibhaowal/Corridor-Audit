@@ -45,7 +45,7 @@ Uploads and inbound webhooks parse in the request process. Upload and webhook bo
 
 ## Important source limitations
 
-The ingestion normalizer still accepts nested JSON cases using TypeScript casts and format heuristics. Invoice-only CSV, text, PDF, and supported JSON normalization now marks generated comparison wires as estimated. QuickBooks and Xero invoice mappings are also marked estimated. Those records finalize as `EVIDENCE_INCOMPLETE` and cannot create fee-dispute drafts. Strict nested input validation and complete evidence validation across all ingestion paths remain open work.
+Supported JSON case arrays and case objects now pass Zod validation for core amount, currency, date, invoice, wire, and fee fields. A JSON case is only marked observed when invoice and wire evidence have distinct source references and both charge lists are present. Provider webhook payloads and email-adapter payloads still need their own strict schemas. Invoice-only CSV, text, PDF, and supported JSON normalization marks generated comparison wires as estimated. Wire-only records and payments whose invoice expectation is derived from the same MT103/camt.053 or payout row are incomplete. QuickBooks and Xero invoice mappings are marked estimated. These records finalize as `EVIDENCE_INCOMPLETE` and cannot create fee-dispute drafts. Complete evidence validation across all ingestion paths remains open work.
 
 Stripe polling currently requests a limited payout page. Wise polling requests a limited transfer page. QuickBooks and Xero poll invoices and create comparison wires marked estimated because they do not prove payment. The connector implementation is in [`src/core/integrations/connectors.ts`](../../src/core/integrations/connectors.ts).
 

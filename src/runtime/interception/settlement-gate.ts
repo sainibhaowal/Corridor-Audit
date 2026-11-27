@@ -13,6 +13,7 @@ import { BUILD_PROVENANCE } from "../../core/build-info"
 import type { AuditVerdict, PendingBreakpointDecision } from "../../core/types"
 import { type BreakpointDecision, resolveRuntime } from "../corridor-runtime"
 import { computeCaseAuditNumbers } from "../tools/audit-tools"
+import { isHumanOverrideAuthorized } from "./human-override"
 
 function parseArgs(raw: string): Record<string, unknown> {
 	try {
@@ -56,7 +57,8 @@ export class SettlementGateInterceptionHandler implements InterceptionHandler {
 		const args = parseArgs(call.args)
 		const caseId = String(args.caseId ?? "")
 		if (!caseId) return false
-		if (args.humanOverrideNote) return false
+		const pendingHumanOverride = state.humanOverrideNotesByCaseId.get(caseId)
+		if (isHumanOverrideAuthorized(pendingHumanOverride, args.humanOverrideNote)) return false
 
 		const calc = computeCaseAuditNumbers(state, caseId)
 		if (!calc) return false
@@ -220,6 +222,7 @@ export class SettlementGateInterceptionHandler implements InterceptionHandler {
 
 		if (decision.decision === "reject") {
 			const note = decision.reason || "Operator rejected dispute claim; treat as approved SHA fee and close cleanly."
+			state.humanOverrideNotesByCaseId.set(caseId, note)
 			const output = FunctionCallOutputItem.create(
 				call.callId,
 				JSON.stringify({

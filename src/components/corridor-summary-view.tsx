@@ -50,7 +50,7 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 						{verdicts.length}
 					</div>
 					<div className="text-[11px] text-[#71858c]">
-						{incompleteCount} awaiting payment evidence
+						{incompleteCount} need required evidence
 					</div>
 				</Card>
 
@@ -86,7 +86,7 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 						{varianceCount}
 					</div>
 					<div className="text-[11px] text-[#71858c]">
-						{withinThresholdCount} within threshold · {incompleteCount} need evidence
+						{withinThresholdCount} within threshold · {incompleteCount} incomplete
 					</div>
 				</Card>
 			</div>

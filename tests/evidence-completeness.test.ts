@@ -12,6 +12,7 @@ const invoice = {
 	expectedSettlementCurrency: "USD",
 	contractedChargeBearer: "SHA" as const,
 	withholdingTaxRateBps: 0,
+	sourceRefs: [{ sourceType: "invoice", recordId: "INV-1001", field: "invoice.amount", rawExcerpt: "invoice 125.00 USD" }],
 }
 
 test("invoice-only JSON is marked estimated and uses the invoice due date", () => {
@@ -33,6 +34,7 @@ test("a supplied wire is treated as observed payment evidence", () => {
 		settledAmount: { amountMinor: 12400, currency: "USD" },
 		senderCharges: [],
 		receiverCharges: [],
+		sourceRefs: [{ sourceType: "bank_csv" as const, recordId: "PAY-1001", field: "settled_amount", rawExcerpt: "124.00 USD" }],
 	}
 	const [settlementCase] = normalizeInboundPayloadToCases({
 		format: "json",
@@ -41,6 +43,63 @@ test("a supplied wire is treated as observed payment evidence", () => {
 
 	assert.equal(settlementCase.settlementEvidence, "observed")
 	assert.equal(settlementCase.wire.wireId, wire.wireId)
+})
+
+test("wire-only JSON cannot imply an invoice or completed reconciliation", () => {
+	const [settlementCase] = normalizeInboundPayloadToCases({
+		format: "json",
+		content: JSON.stringify({
+			wire: {
+				wireId: "WIRE-ONLY-1",
+				format: "bank_csv",
+				valueDate: "2026-10-30",
+				settledAmount: { amountMinor: 12400, currency: "USD" },
+				senderCharges: [],
+				receiverCharges: [],
+			},
+		}),
+	})
+
+	assert.equal(settlementCase.settlementEvidence, "incomplete")
+	assert.match(settlementCase.evidenceGap || "", /independent invoice/i)
+})
+
+test("MT103 amount is not reused as independent invoice evidence", () => {
+	const [settlementCase] = normalizeInboundPayloadToCases({
+		filename: "payment.mt103",
+		format: "mt103",
+		content: [":20:TXN-3001", ":32A:261030USD124,00", ":33B:USD125,00", ":50K:Example Buyer", ":59:Example Supplier", ":71A:SHA"].join("\n"),
+	})
+
+	assert.equal(settlementCase.settlementEvidence, "incomplete")
+	assert.match(settlementCase.evidenceGap || "", /independent invoice/i)
+})
+
+test("JSON settlement input rejects invalid money and missing charge evidence cannot be observed", () => {
+	assert.throws(
+		() => normalizeInboundPayloadToCases({
+			format: "json",
+			content: JSON.stringify({ invoice, wire: { wireId: "bad", format: "bank_csv", valueDate: "2026-10-30", settledAmount: { amountMinor: "12400", currency: "USD" } } }),
+		}),
+		/Invalid settlement JSON.*amountMinor/,
+	)
+
+	const [settlementCase] = normalizeInboundPayloadToCases({
+		format: "json",
+		content: JSON.stringify({
+			invoice,
+			wire: {
+				wireId: "WIRE-MISSING-FEES",
+				format: "bank_csv",
+				valueDate: "2026-10-30",
+				settledAmount: { amountMinor: 12400, currency: "USD" },
+				senderCharges: [],
+				sourceRefs: [{ sourceType: "bank_csv", recordId: "PAY-2001", field: "settled_amount", rawExcerpt: "124.00 USD" }],
+			},
+		}),
+	})
+	assert.equal(settlementCase.settlementEvidence, "incomplete")
+	assert.match(settlementCase.evidenceGap || "", /charge fields/i)
 })
 
 test("invoice CSV uploads remain evidence-incomplete instead of implied payment", () => {

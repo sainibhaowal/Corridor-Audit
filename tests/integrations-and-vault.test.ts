@@ -200,9 +200,11 @@ test("Integration, Email Webhook, Signed Inbound Webhook, and Workspace APIs wor
 		wire: {
 			wireId: "W-SIGNED-01",
 			transactionRef: "TXN-SIGNED-01",
+			format: "bank_csv",
 			valueDate: "2026-11-24",
 			settledAmount: { amountMinor: 150000, currency: "USD" },
 			chargeBearer: "SHA",
+			senderCharges: [],
 			receiverCharges: [],
 			sourceRefs: [],
 		},

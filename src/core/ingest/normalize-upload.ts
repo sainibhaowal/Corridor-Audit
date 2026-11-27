@@ -3,6 +3,7 @@ import { parseInvoicesCsv, parseWiresCsv } from "../parsers/csv-parser"
 import { parseMt103Blocks } from "../parsers/mt103-parser"
 import { extractTextFromPdfBuffer, parseInvoiceFromExtractedText } from "../parsers/pdf-parser"
 import type { InvoiceInput, SettlementCase, WireOrBankInput } from "../types"
+import { parseJsonSettlementCases } from "./case-schema"
 
 export interface UploadPayload {
 	filename?: string
@@ -12,10 +13,39 @@ export interface UploadPayload {
 }
 
 function markSuppliedWireEvidence(cases: SettlementCase[]): SettlementCase[] {
-	return cases.map((settlementCase) => ({
-		...settlementCase,
-		settlementEvidence: settlementCase.settlementEvidence ?? "observed",
-	}))
+	return cases.map((settlementCase) => {
+		if (settlementCase.settlementEvidence === "estimated" || settlementCase.settlementEvidence === "incomplete") {
+			return settlementCase
+		}
+		if (!settlementCase.invoice) {
+			return {
+				...settlementCase,
+				settlementEvidence: "incomplete",
+				evidenceGap: "Independent invoice or contractual obligation evidence is missing.",
+			}
+		}
+		const invoiceRefs = settlementCase.invoice.sourceRefs ?? []
+		const wireRefs = settlementCase.wire.sourceRefs ?? []
+		const referencesAreDistinct = invoiceRefs.some((invoiceRef) =>
+			wireRefs.some((wireRef) => invoiceRef.recordId !== wireRef.recordId && invoiceRef.sourceType !== wireRef.sourceType),
+		)
+		if (!referencesAreDistinct) {
+			return {
+				...settlementCase,
+				settlementEvidence: "incomplete",
+				evidenceGap: "Invoice and payment evidence need distinct source references before they can be reconciled.",
+			}
+		}
+		const wire = settlementCase.wire as unknown as { senderCharges?: unknown; receiverCharges?: unknown }
+		if (!Array.isArray(wire.senderCharges) || !Array.isArray(wire.receiverCharges)) {
+			return {
+				...settlementCase,
+				settlementEvidence: "incomplete",
+				evidenceGap: "The source does not provide both sender and receiver charge fields, so a complete fee reconciliation is not possible.",
+			}
+		}
+		return { ...settlementCase, settlementEvidence: "observed" }
+	})
 }
 
 export function normalizeInboundPayloadToCases(input: UploadPayload): SettlementCase[] {
@@ -37,19 +67,21 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 	if (fmt === "json" || name.endsWith(".json") || trimmed.startsWith("{") || trimmed.startsWith("[")) {
 		const parsed = JSON.parse(trimmed) as unknown
 		if (Array.isArray(parsed)) {
-			return markSuppliedWireEvidence(parsed as SettlementCase[])
+			return markSuppliedWireEvidence(parseJsonSettlementCases(parsed))
+		}
+		if (!parsed || typeof parsed !== "object") {
+			throw new Error("Invalid settlement JSON: expected an object or an array of cases.")
 		}
 		const obj = parsed as Record<string, unknown>
 		if (Array.isArray(obj.cases)) {
-			return markSuppliedWireEvidence(obj.cases as SettlementCase[])
+			return markSuppliedWireEvidence(parseJsonSettlementCases(obj.cases))
 		}
 		if (obj.caseId && obj.wire) {
-			return markSuppliedWireEvidence([obj as unknown as SettlementCase])
+			return markSuppliedWireEvidence(parseJsonSettlementCases(obj))
 		}
 		if (obj.wire || obj.invoice) {
 			const id = String(obj.caseId || `WH-${Date.now().toString().slice(-5)}`)
-			return [
-				{
+			const settlementCase = {
 					caseId: id,
 					title: String(obj.title || `Inbound Webhook (${id})`),
 					channelLabel: String(obj.channelLabel || "Inbound Webhook JSON"),
@@ -64,9 +96,10 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 						receiverCharges: [],
 					},
 					createdAt: new Date().toISOString(),
-				},
-			]
+			}
+			return markSuppliedWireEvidence(parseJsonSettlementCases(settlementCase))
 		}
+		throw new Error("Invalid settlement JSON: expected a case, a cases array, or invoice and wire records.")
 	}
 
 	// 2. ISO 20022 XML (camt.053 / pacs.008)
@@ -78,7 +111,8 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 				caseId: id,
 				title: `ISO 20022 Entry (${w.transactionRef || w.wireId})`,
 				channelLabel: "ISO 20022 camt.053 XML",
-				settlementEvidence: "observed",
+				settlementEvidence: "incomplete",
+				evidenceGap: "The payment instruction does not include an independent invoice or contract record.",
 				wire: w,
 				invoice: w.instructedAmount
 					? {
@@ -108,7 +142,8 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 				caseId: id,
 				title: `SWIFT MT103 Wire (${w.transactionRef || w.wireId})`,
 				channelLabel: "SWIFT MT103 Upload",
-				settlementEvidence: "observed",
+				settlementEvidence: "incomplete",
+				evidenceGap: "The MT103 is payment evidence, but no independent invoice or contract record was supplied.",
 				wire: w,
 				invoice: w.instructedAmount
 					? {
@@ -139,7 +174,8 @@ export function normalizeInboundPayloadToCases(input: UploadPayload): Settlement
 					caseId: id,
 					title: `${w.platformName?.toUpperCase() || "CSV"} Payout (${w.wireId})`,
 					channelLabel: w.platformName && w.platformName !== "direct_bank" ? `Platform CSV (${w.platformName})` : "Bank CSV Upload",
-					settlementEvidence: "observed",
+					settlementEvidence: "incomplete",
+					evidenceGap: "The payout row is a single source record and does not provide an independent invoice or contract record.",
 					wire: w,
 					invoice: w.instructedAmount
 						? {

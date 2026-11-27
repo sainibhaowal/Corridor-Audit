@@ -10,6 +10,7 @@ import {
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "../../core/db/database"
 import type { AuditStatus, AuditVerdict, SourceRef } from "../../core/types"
 import { type CorridorState, resolveRuntime } from "../corridor-runtime"
+import { isHumanOverrideAuthorized } from "../interception/human-override"
 
 const CaseIdSchema = z.object({ caseId: z.string() })
 const FinalizeSchema = z.object({
@@ -309,7 +310,11 @@ export const finalizeSettlementActionTool: Tool = {
 			totalLeakBps,
 		} = calc
 
-		const overriddenClean = Boolean(args.humanOverrideNote)
+		const storedHumanOverride = state.humanOverrideNotesByCaseId.get(args.caseId)
+		const acceptedHumanOverride = isHumanOverrideAuthorized(storedHumanOverride, args.humanOverrideNote)
+		if (acceptedHumanOverride) state.humanOverrideNotesByCaseId.delete(args.caseId)
+		const appliedHumanOverrideNote = acceptedHumanOverride ? args.humanOverrideNote : undefined
+		const overriddenClean = acceptedHumanOverride
 		const recoverableFeeMinor = overriddenClean ? 0 : recoverableOurViolationMinor
 		const evidenceIncomplete = c.settlementEvidence !== "observed"
 		const varianceThresholdMinor = getCorridorDb().getWorkspace(DEFAULT_WORKSPACE_ID).varianceThresholdMinor
@@ -334,7 +339,9 @@ export const finalizeSettlementActionTool: Tool = {
 			(!evidenceIncomplete ? args.summary : undefined) ||
 			(() => {
 				const parts: string[] = evidenceIncomplete
-					? [`Invoice ${terms.invoiceId} was received without bank or payout evidence. The settlement amount is an estimate based on the invoice and must not be treated as a completed payment or reconciliation.`]
+					? [c.evidenceGap || (c.settlementEvidence === "estimated"
+						? `Invoice ${terms.invoiceId} was received without bank or payout evidence. The settlement amount is an estimate based on the invoice and must not be treated as a completed payment or reconciliation.`
+						: "Required independent payment reconciliation evidence is missing. This result must not be treated as a completed settlement.")]
 					: [`Invoice ${wire.matchedInvoiceId ?? terms.invoiceId} (${formatMoney(terms.expectedGrossMinor, terms.expectedCurrency)}, ${terms.contractedChargeBearer}) settled at ${formatMoney(c.wire.settledAmount.amountMinor, to)}.`]
 				if (fx.fxSpreadLossMinor > 0) {
 					parts.push(`Bank FX spread cost ${formatMoney(fx.fxSpreadLossMinor, to)} (${(fx.fxSpreadBps / 100).toFixed(2)}%) vs ECB ${fx.rateRecord.midMarketRate}.`)
@@ -350,8 +357,8 @@ export const finalizeSettlementActionTool: Tool = {
 				if (!evidenceIncomplete && varianceMinor !== 0 && Math.abs(varianceMinor) <= varianceThresholdMinor) {
 					parts.push(`The difference is within the configured tolerance of ${formatMoney(varianceThresholdMinor, to)}; the measured difference remains recorded.`)
 				}
-				if (args.humanOverrideNote) {
-					parts.push(`Operator note applied: "${args.humanOverrideNote}".`)
+				if (appliedHumanOverrideNote) {
+					parts.push(`Operator note applied: "${appliedHumanOverrideNote}".`)
 				}
 				return parts.join(" ")
 			})()
@@ -402,7 +409,7 @@ export const finalizeSettlementActionTool: Tool = {
 			},
 			sourceRefs: allRefs,
 			disputeNotice,
-			humanOverrideNote: args.humanOverrideNote,
+			humanOverrideNote: appliedHumanOverrideNote,
 			disclaimer: "Synthetic/public data demonstration only. Not financial or legal advice.",
 			completedAt: new Date().toISOString(),
 		}

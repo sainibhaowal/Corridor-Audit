@@ -44,6 +44,7 @@ export class CorridorState extends RuntimeState {
 		string,
 		PendingBreakpointDecision & { resolve: (decision: BreakpointDecision) => void }
 	>()
+	public humanOverrideNotesByCaseId = new Map<string, string>()
 
 	// Live SSE stream & chronological case trace + ledger
 	public trajectoryByCaseId = new Map<string, TrajectoryEvent[]>()
@@ -117,6 +118,7 @@ export class CorridorState extends RuntimeState {
 		this.findingsByRole.set(settlementCase.caseId, new Set())
 		this.trajectoryByCaseId.set(settlementCase.caseId, [])
 		this.abortedCases.delete(settlementCase.caseId)
+		this.humanOverrideNotesByCaseId.delete(settlementCase.caseId)
 
 		const hasAnomalyTrigger =
 			(settlementCase.candidateWires?.length ?? 0) > 0 ||

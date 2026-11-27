@@ -43,7 +43,8 @@ async function fetchStripeCases(credentials: IntegrationCredentials): Promise<Co
 			caseId: `STRIPE-${p.id}`,
 			title: `Stripe Payout ${p.id}`,
 			channelLabel: "Stripe Payouts API",
-			settlementEvidence: "observed",
+			settlementEvidence: "incomplete",
+			evidenceGap: "Payout evidence was fetched, but no independent invoice or contract was matched.",
 			createdAt: new Date().toISOString(),
 			wire: {
 				wireId: p.id,
@@ -111,7 +112,8 @@ async function fetchWiseCases(
 		caseId: `WISE-${t.id}`,
 		title: `Wise Transfer #${t.id} (${t.sourceCurrency} → ${t.targetCurrency})`,
 		channelLabel: "Wise Transfers API",
-		settlementEvidence: "observed",
+		settlementEvidence: "incomplete",
+		evidenceGap: "Transfer evidence was fetched, but no independent invoice or contract was matched.",
 		createdAt: new Date().toISOString(),
 		wire: {
 			wireId: String(t.id),

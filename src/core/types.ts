@@ -88,8 +88,9 @@ export interface SettlementCase {
 	caseId: string
 	title: string
 	channelLabel: string
-	/** Invoice-only records use an estimated comparison amount, not observed payment evidence. */
-	settlementEvidence?: "observed" | "estimated"
+	/** `observed` requires an independent obligation and supplied settlement evidence. */
+	settlementEvidence: "observed" | "estimated" | "incomplete"
+	evidenceGap?: string
 	invoice?: InvoiceInput
 	wire: WireOrBankInput
 	candidateWires?: WireOrBankInput[]

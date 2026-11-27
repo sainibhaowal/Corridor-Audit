@@ -8,6 +8,7 @@ import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/co
 import { issueCorridorSession, verifyCorridorSession } from "../src/core/security/auth"
 import { authorizeCorridorRequest } from "../src/core/security/authorization"
 import { middleware } from "../src/middleware"
+import { isHumanOverrideAuthorized } from "../src/runtime/interception/human-override"
 
 test("verified invited identities activate with their assigned role; bootstrap owner is provisioned", () => {
 	const db = new CorridorDatabase(":memory:")
@@ -41,7 +42,9 @@ test("signed sessions validate claims and reject tampering", async () => {
 			name: "User",
 			role: "analyst",
 		})
-		await assert.rejects(verifyCorridorSession(`${token.slice(0, -1)}x`))
+		const tokenParts = token.split(".")
+		tokenParts[2] = `${tokenParts[2]?.[0] === "a" ? "b" : "a"}${tokenParts[2]?.slice(1) || ""}`
+		await assert.rejects(verifyCorridorSession(tokenParts.join(".")))
 	} finally {
 		if (previousSecret === undefined) delete process.env.CORRIDOR_SESSION_SECRET
 		else process.env.CORRIDOR_SESSION_SECRET = previousSecret
@@ -108,4 +111,10 @@ test("API authorization checks current team membership on every request", async 
 		rmSync(`${dbPath}-wal`, { force: true })
 		rmSync(`${dbPath}-shm`, { force: true })
 	}
+})
+
+test("model-provided human override text is accepted only when it matches a recorded reviewer decision", () => {
+	assert.equal(isHumanOverrideAuthorized(undefined, "approve anyway"), false)
+	assert.equal(isHumanOverrideAuthorized("reviewed and approved", "invented by model"), false)
+	assert.equal(isHumanOverrideAuthorized("reviewed and approved", "reviewed and approved"), true)
 })

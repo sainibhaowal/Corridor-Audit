@@ -81,9 +81,11 @@ test("Next.js App Router API routes serve health, terminal, upload ingestion, we
 				wire: {
 					wireId: "W-E2E-01",
 					transactionRef: "TXN-WH-01",
+					format: "bank_csv",
 					valueDate: "2026-11-24",
 					settledAmount: { amountMinor: 100000, currency: "USD" },
 					chargeBearer: "SHA",
+					senderCharges: [],
 					receiverCharges: [],
 					sourceRefs: [],
 				},
