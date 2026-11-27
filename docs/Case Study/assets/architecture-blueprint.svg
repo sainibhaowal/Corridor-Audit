@@ -20,38 +20,38 @@
 
   <!-- HEADER -->
   <rect x="28" y="24" width="1344" height="76" rx="14" fill="#0d141b" stroke="#1c2a33"/>
-  <text x="52" y="56" fill="#62e1c3" font-size="13" font-weight="700" letter-spacing="2">CORRIDORAUDIT · PRODUCTION ARCHITECTURE BLUEPRINT</text>
-  <text x="52" y="82" fill="#e3edef" font-size="22" font-weight="800">End-to-End Cross-Border Settlement Forensics Pipeline (B2C &amp; B2B)</text>
+  <text x="52" y="56" fill="#62e1c3" font-size="13" font-weight="700" letter-spacing="2">CORRIDORAUDIT: CURRENT IMPLEMENTATION MAP</text>
+  <text x="52" y="82" fill="#e3edef" font-size="22" font-weight="800">Settlement review pipeline: implemented paths and boundaries</text>
   <rect x="1080" y="42" width="268" height="40" rx="10" fill="#0d2725" stroke="#225b51"/>
   <text x="1214" y="67" text-anchor="middle" fill="#75e4c7" font-size="13" font-weight="700">@mozaik-ai/core@6.0.0 · Next.js 15</text>
 
-  <!-- COLUMN 1: 5 INGESTION CHANNELS -->
+  <!-- COLUMN 1: FIVE INGESTION PATHS -->
   <rect x="28" y="122" width="250" height="630" rx="16" fill="#0d141b" stroke="#1c2a33"/>
-  <text x="48" y="152" fill="#75e4c7" font-size="12" font-weight="700" letter-spacing="1.5">1. DATA INGESTION (5 CHANNELS)</text>
+  <text x="48" y="152" fill="#75e4c7" font-size="12" font-weight="700" letter-spacing="1.5">1. DATA INGESTION (AVAILABLE PATHS)</text>
 
   <rect x="44" y="172" width="218" height="92" rx="12" fill="#080d12" stroke="#225b51"/>
-  <text x="58" y="196" fill="#e3edef" font-size="13" font-weight="700">Connected Platforms (OAuth/API)</text>
-  <text x="58" y="216" fill="#a4b4b8" font-size="11">B2C: Stripe, Wise, Payoneer, Upwork</text>
-  <text x="58" y="233" fill="#a4b4b8" font-size="11">B2B: QuickBooks, Xero, NetSuite</text>
-  <text x="58" y="250" fill="#62e1c3" font-size="10.5" font-weight="600">5-min Sync Worker + Sync Now</text>
+  <text x="58" y="196" fill="#e3edef" font-size="13" font-weight="700">Provider Polling Connectors</text>
+  <text x="58" y="216" fill="#a4b4b8" font-size="11">Implemented: Stripe, Wise, QuickBooks, Xero</text>
+  <text x="58" y="233" fill="#a4b4b8" font-size="11">Other catalog entries need an adapter</text>
+  <text x="58" y="250" fill="#62e1c3" font-size="10.5" font-weight="600">In-process sync timer + manual sync</text>
 
   <rect x="44" y="278" width="218" height="84" rx="12" fill="#080d12" stroke="#1c2a33"/>
-  <text x="58" y="302" fill="#e3edef" font-size="13" font-weight="700">Signed Webhooks</text>
+  <text x="58" y="302" fill="#e3edef" font-size="13" font-weight="700">Inbound HTTP Webhooks</text>
   <text x="58" y="321" fill="#a4b4b8" font-size="11">POST /api/webhooks/inbound</text>
   <text x="58" y="338" fill="#a4b4b8" font-size="11">Stripe, Wise &amp; Corridor HMAC-SHA256</text>
-  <text x="58" y="353" fill="#62e1c3" font-size="10.5">Real-time event push</text>
+  <text x="58" y="353" fill="#62e1c3" font-size="10.5">Signature enforcement is configurable</text>
 
   <rect x="44" y="376" width="218" height="84" rx="12" fill="#080d12" stroke="#1c2a33"/>
-  <text x="58" y="400" fill="#e3edef" font-size="13" font-weight="700">Inbound Email Forwarding</text>
+  <text x="58" y="400" fill="#e3edef" font-size="13" font-weight="700">Inbound Email Payload Adapter</text>
   <text x="58" y="419" fill="#a4b4b8" font-size="11">POST /api/webhooks/email</text>
-  <text x="58" y="436" fill="#a4b4b8" font-size="11">Postmark / Resend / Mailgun</text>
-  <text x="58" y="451" fill="#62e1c3" font-size="10.5">PDF, CSV, MT103 attachments</text>
+  <text x="58" y="436" fill="#a4b4b8" font-size="11">Provider-shaped payloads are parsed</text>
+  <text x="58" y="451" fill="#62e1c3" font-size="10.5">No hosted inbox or provider deployment</text>
 
   <rect x="44" y="474" width="218" height="84" rx="12" fill="#080d12" stroke="#1c2a33"/>
-  <text x="58" y="498" fill="#e3edef" font-size="13" font-weight="700">Bank SFTP &amp; Hot Folder</text>
-  <text x="58" y="517" fill="#a4b4b8" font-size="11">./data/inbox/ fs.watch()</text>
-  <text x="58" y="534" fill="#a4b4b8" font-size="11">SWIFT MT103 &amp; ISO 20022 camt.053</text>
-  <text x="58" y="549" fill="#62e1c3" font-size="10.5">Enterprise Treasury feeds</text>
+  <text x="58" y="498" fill="#e3edef" font-size="13" font-weight="700">Local Hot Folder Adapter</text>
+  <text x="58" y="517" fill="#a4b4b8" font-size="11">Reads configured folder on sync</text>
+  <text x="58" y="534" fill="#a4b4b8" font-size="11">JSON, CSV, TXT, XML; no SFTP client</text>
+  <text x="58" y="549" fill="#62e1c3" font-size="10.5">Can be paired with an external file drop</text>
 
   <rect x="44" y="572" width="218" height="84" rx="12" fill="#080d12" stroke="#1c2a33"/>
   <text x="58" y="596" fill="#e3edef" font-size="13" font-weight="700">Manual Upload &amp; Raw Paste</text>
@@ -68,13 +68,13 @@
   <text x="326" y="152" fill="#75e4c7" font-size="12" font-weight="700" letter-spacing="1.5">2. RAW VAULT &amp; PARSER</text>
 
   <rect x="324" y="178" width="198" height="170" rx="14" fill="url(#emeraldGrad)" stroke="#225b51" stroke-width="1.5"/>
-  <text x="423" y="206" text-anchor="middle" fill="#e3edef" font-size="14" font-weight="800">Raw Data Vault</text>
+  <text x="423" y="206" text-anchor="middle" fill="#e3edef" font-size="14" font-weight="800">Raw Ingestion Records</text>
   <text x="423" y="226" text-anchor="middle" fill="#75e4c7" font-size="11" font-weight="600">SQLite: raw_ingestions</text>
-  <text x="338" y="252" fill="#c7d3d6" font-size="11">• Untouched raw bytes/text</text>
-  <text x="338" y="272" fill="#c7d3d6" font-size="11">• SHA-256 integrity digest</text>
+  <text x="338" y="252" fill="#c7d3d6" font-size="11">• Submitted raw content in SQLite</text>
+  <text x="338" y="272" fill="#c7d3d6" font-size="11">• SHA-256 fingerprint recorded</text>
   <text x="338" y="292" fill="#c7d3d6" font-size="11">• Parse status &amp; error log</text>
   <text x="338" y="312" fill="#c7d3d6" font-size="11">• Linked caseIds[]</text>
-  <text x="338" y="332" fill="#c7d3d6" font-size="11">• 1-Click Download &amp; Re-parse</text>
+  <text x="338" y="332" fill="#c7d3d6" font-size="11">• Inspect and reprocess supported records</text>
 
   <rect x="324" y="376" width="198" height="186" rx="14" fill="#080d12" stroke="#32454d"/>
   <text x="423" y="404" text-anchor="middle" fill="#e3edef" font-size="14" font-weight="800">Multi-Format Normalizer</text>
@@ -83,24 +83,24 @@
   <text x="338" y="470" fill="#c7d3d6" font-size="11">• ISO 20022 camt.053 XML</text>
   <text x="338" y="490" fill="#c7d3d6" font-size="11">• Upwork/Wise/Stripe CSV</text>
   <text x="338" y="510" fill="#c7d3d6" font-size="11">• PDF invoice text extractor</text>
-  <text x="338" y="530" fill="#62e1c3" font-size="11" font-weight="600">→ Integer Minor Units + SourceRefs</text>
+  <text x="338" y="530" fill="#62e1c3" font-size="11" font-weight="600">→ Parsed fields + SourceRefs where available</text>
 
   <rect x="324" y="588" width="198" height="146" rx="14" fill="#080d12" stroke="#32454d"/>
-  <text x="423" y="616" text-anchor="middle" fill="#e3edef" font-size="13" font-weight="700">Live FX &amp; Tax Oracle</text>
-  <text x="338" y="642" fill="#a4b4b8" font-size="11">• Frankfurter ECB API</text>
-  <text x="338" y="662" fill="#a4b4b8" font-size="11">• Historical valueDate lookup</text>
-  <text x="338" y="682" fill="#a4b4b8" font-size="11">• Offline fallback-rates.json</text>
-  <text x="338" y="702" fill="#a4b4b8" font-size="11">• 0/2/3-dec currency exponents</text>
+  <text x="423" y="616" text-anchor="middle" fill="#e3edef" font-size="13" font-weight="700">ECB FX + Supplied Tax</text>
+  <text x="338" y="642" fill="#a4b4b8" font-size="11">• Frankfurter ECB reference API</text>
+  <text x="338" y="662" fill="#a4b4b8" font-size="11">• Historical rate lookup with fallback</text>
+  <text x="338" y="682" fill="#a4b4b8" font-size="11">• Bundled rate fallback when needed</text>
+  <text x="338" y="702" fill="#a4b4b8" font-size="11">• Tax is an input, not an oracle result</text>
 
-  <!-- COLUMN 3: MOZAIK 4+1 CONCURRENT AGENTS -->
+  <!-- COLUMN 3: MOZAIK SPECIALISTS, CONDITIONAL ANOMALY, AUDITOR -->
   <rect x="568" y="122" width="484" height="630" rx="16" fill="#0d141b" stroke="#225b51" stroke-width="1.5"/>
-  <text x="588" y="152" fill="#75e4c7" font-size="12" font-weight="700" letter-spacing="1.5">3. MOZAIK @mozaik-ai/core 4+1 AGENT RUNTIME</text>
+  <text x="588" y="152" fill="#75e4c7" font-size="12" font-weight="700" letter-spacing="1.5">3. MOZAIK AGENT RUNTIME: 3 + CONDITIONAL + AUDITOR</text>
 
   <!-- 4 PARALLEL SPECIALISTS -->
   <rect x="588" y="174" width="214" height="106" rx="12" fill="#080d12" stroke="#62e1c3"/>
   <text x="602" y="198" fill="#62e1c3" font-size="13" font-weight="800">TermsAgent (Parallel)</text>
-  <text x="602" y="218" fill="#c7d3d6" font-size="11">• IBAN Mod-97 &amp; BIC checksums</text>
-  <text x="602" y="236" fill="#c7d3d6" font-size="11">• Statutory WHT calculation</text>
+  <text x="602" y="218" fill="#c7d3d6" font-size="11">• IBAN checksum; BIC format checks</text>
+  <text x="602" y="236" fill="#c7d3d6" font-size="11">• Applies supplied withholding inputs</text>
   <text x="602" y="254" fill="#c7d3d6" font-size="11">• :71A:OUR vs SHA/BEN rules</text>
   <text x="602" y="270" fill="#81949a" font-size="10">Slot: state.termsByCaseId</text>
 
@@ -121,59 +121,59 @@
   <rect x="818" y="296" width="214" height="106" rx="12" fill="#080d12" stroke="#8b5cf6"/>
   <text x="832" y="320" fill="#a78bfa" font-size="13" font-weight="800">DuplicateAnomalyAgent</text>
   <text x="832" y="340" fill="#c7d3d6" font-size="11">• Duplicate wire vs split payout</text>
-  <text x="832" y="358" fill="#c7d3d6" font-size="11">• BEC bank-change risk alert</text>
-  <text x="832" y="376" fill="#c7d3d6" font-size="11">• Corridor compliance check</text>
+  <text x="832" y="358" fill="#c7d3d6" font-size="11">• Flags change vs supplied account history</text>
+  <text x="832" y="376" fill="#c7d3d6" font-size="11">• Heuristic flags; not regulatory screening</text>
   <text x="832" y="392" fill="#81949a" font-size="10">Slot: state.anomalyByCaseId</text>
 
   <!-- REACTIVE BARRIER & AUDITOR -->
   <rect x="588" y="424" width="444" height="122" rx="14" fill="url(#emeraldGrad)" stroke="#62e1c3" stroke-width="1.5"/>
-  <text x="810" y="450" text-anchor="middle" fill="#e3edef" font-size="14" font-weight="800">AuditorAgent (Reactive Barrier — Waits for 1–4)</text>
+  <text x="810" y="450" text-anchor="middle" fill="#e3edef" font-size="14" font-weight="800">AuditorAgent (starts after expected specialists finish)</text>
   <text x="810" y="472" text-anchor="middle" fill="#75e4c7" font-size="11.5" font-family="JetBrains Mono, monospace">ECB_Mid - FX_Spread - Fees - Tax - Net_Landed == Unexplained_Variance</text>
-  <text x="606" y="498" fill="#c7d3d6" font-size="11">• Verifies 100% SourceRef citation integrity</text>
-  <text x="606" y="516" fill="#c7d3d6" font-size="11">• Computes Optimal Transparent Rail Replay (Leak bps)</text>
+  <text x="606" y="498" fill="#c7d3d6" font-size="11">• Checks SourceRef structure, not authenticity</text>
+  <text x="606" y="516" fill="#c7d3d6" font-size="11">• Computes a comparison from supplied inputs</text>
   <text x="606" y="534" fill="#c7d3d6" font-size="11">• Calls finalize_settlement_action()</text>
 
   <!-- INTERCEPTION HANDLER & ROUTER -->
   <rect x="588" y="564" width="214" height="170" rx="12" fill="#2c2111" stroke="#f0c77f"/>
   <text x="602" y="588" fill="#f0c77f" font-size="13" font-weight="800">Human Interception Gate</text>
   <text x="602" y="608" fill="#e3edef" font-size="11">SettlementGateInterceptionHandler</text>
-  <text x="602" y="628" fill="#c7d3d6" font-size="10.5">Pauses on OUR fee, variance,</text>
-  <text x="602" y="644" fill="#c7d3d6" font-size="10.5">duplicate, or BEC risk:</text>
+  <text x="602" y="628" fill="#c7d3d6" font-size="10.5">Configured risk gate can pause a</text>
+  <text x="602" y="644" fill="#c7d3d6" font-size="10.5">proposed action for operator review:</text>
   <text x="602" y="666" fill="#75e4c7" font-size="11" font-weight="700">✓ Approve Dispute</text>
   <text x="602" y="684" fill="#f0c77f" font-size="11" font-weight="700">↺ Reject &amp; Steer Agent</text>
   <text x="602" y="702" fill="#fca5a5" font-size="11" font-weight="700">■ Stop Case</text>
 
   <rect x="818" y="564" width="214" height="170" rx="12" fill="#080d12" stroke="#32454d"/>
   <text x="832" y="588" fill="#e3edef" font-size="13" font-weight="800">DynamicEndpointRouter</text>
-  <text x="832" y="608" fill="#a4b4b8" font-size="11">Zero-Lock-In LLM Router</text>
+  <text x="832" y="608" fill="#a4b4b8" font-size="11">Configured LLM provider selection</text>
   <text x="832" y="628" fill="#c7d3d6" font-size="10.5">• NVIDIA NIM, Gemini, Groq</text>
   <text x="832" y="646" fill="#c7d3d6" font-size="10.5">• OpenRouter, OpenAI, Claude</text>
   <text x="832" y="664" fill="#c7d3d6" font-size="10.5">• Local Ollama</text>
-  <text x="832" y="684" fill="#62e1c3" font-size="10.5">• Live /models auto-discovery</text>
-  <text x="832" y="702" fill="#62e1c3" font-size="10.5">• 20 Deterministic TS Tools</text>
+  <text x="832" y="684" fill="#62e1c3" font-size="10.5">• Model discovery varies by provider</text>
+  <text x="832" y="702" fill="#62e1c3" font-size="10.5">• Deterministic TypeScript audit tools</text>
 
   <!-- COLUMN 4: ACTIONABLE OUTPUTS -->
   <rect x="1082" y="122" width="290" height="630" rx="16" fill="#0d141b" stroke="#1c2a33"/>
   <text x="1100" y="152" fill="#75e4c7" font-size="12" font-weight="700" letter-spacing="1.5">4. RESULTS &amp; OUTPUTS</text>
 
   <rect x="1098" y="174" width="258" height="122" rx="12" fill="#080d12" stroke="#225b51"/>
-  <text x="1114" y="198" fill="#75e4c7" font-size="13" font-weight="800">1. Forensic Audit Verdict</text>
-  <text x="1114" y="218" fill="#c7d3d6" font-size="11">• CLEAN / OUR_VIOLATION / FX_ALERT</text>
-  <text x="1114" y="236" fill="#c7d3d6" font-size="11">• DUPLICATE_RISK / BEC_RISK</text>
+  <text x="1114" y="198" fill="#75e4c7" font-size="13" font-weight="800">1. Audit Verdict</text>
+  <text x="1114" y="218" fill="#c7d3d6" font-size="11">• CLEAN / RECOVERABLE_FEE_VIOLATION</text>
+  <text x="1114" y="236" fill="#c7d3d6" font-size="11">• VARIANCE / DUPLICATE / FX / ORPHAN</text>
   <text x="1114" y="254" fill="#c7d3d6" font-size="11">• Plain-English B2C/B2B summary</text>
-  <text x="1114" y="274" fill="#81949a" font-size="10">Persisted in SQLite audit_verdicts</text>
+  <text x="1114" y="274" fill="#81949a" font-size="10">Verdict persisted in SQLite; runtime is in-process</text>
 
   <rect x="1098" y="312" width="258" height="122" rx="12" fill="#080d12" stroke="#1c2a33"/>
-  <text x="1114" y="336" fill="#e3edef" font-size="13" font-weight="800">2. Cent-Proof Reconciliation</text>
+  <text x="1114" y="336" fill="#e3edef" font-size="13" font-weight="800">2. Minor-Unit Reconciliation</text>
   <text x="1114" y="356" fill="#c7d3d6" font-size="11">• Exact ECB Mid-Market baseline</text>
   <text x="1114" y="374" fill="#c7d3d6" font-size="11">• FX spread loss (bps + minor units)</text>
   <text x="1114" y="392" fill="#c7d3d6" font-size="11">• Optimal Transparent Rail Replay</text>
-  <text x="1114" y="412" fill="#81949a" font-size="10">Zero floating-point rounding drift</text>
+  <text x="1114" y="412" fill="#81949a" font-size="10">Results depend on input quality and assumptions</text>
 
   <rect x="1098" y="450" width="258" height="122" rx="12" fill="#080d12" stroke="#f0c77f"/>
-  <text x="1114" y="474" fill="#f0c77f" font-size="13" font-weight="800">3. Bank / Client Dispute Letter</text>
-  <text x="1114" y="494" fill="#c7d3d6" font-size="11">• Auto-drafted claim citing :71A:OUR</text>
-  <text x="1114" y="512" fill="#c7d3d6" font-size="11">• Exact :71G: &amp; ECB rate evidence</text>
+  <text x="1114" y="474" fill="#f0c77f" font-size="13" font-weight="800">3. Conditional Dispute Draft</text>
+  <text x="1114" y="494" fill="#c7d3d6" font-size="11">• Drafted when fee review is indicated</text>
+  <text x="1114" y="512" fill="#c7d3d6" font-size="11">• Uses supplied case data and references</text>
   <text x="1114" y="530" fill="#c7d3d6" font-size="11">• Exportable .txt &amp; .json reports</text>
   <text x="1114" y="550" fill="#81949a" font-size="10">GET /api/report/[caseId]</text>
 
@@ -183,7 +183,7 @@
   <text x="1114" y="650" fill="#c7d3d6" font-size="11">• SourceRef field-level citations</text>
   <text x="1114" y="668" fill="#c7d3d6" font-size="11">• Corridor Summary &amp; Leak KPIs</text>
   <text x="1114" y="686" fill="#c7d3d6" font-size="11">• Integrated Mozaik Terminal</text>
-  <text x="1114" y="704" fill="#62e1c3" font-size="10.5">Full auditability end-to-end</text>
+  <text x="1114" y="704" fill="#62e1c3" font-size="10.5">App event trace; sources are not authenticated</text>
 
   <!-- CONNECTING ARROWS -->
   <line x1="278" y1="260" x2="320" y2="260" stroke="#62e1c3" stroke-width="2" marker-end="url(#arrow)"/>

@@ -21,7 +21,7 @@ flowchart LR
     GATE --> VERDICT["SQLite verdict, UI, and report"]
 ```
 
-The four specialist agents run concurrently for one case; anomaly analysis is conditional. `AuditorAgent` runs after the expected specialists complete. `enqueueBatch` returns promises for the cases, while the orchestrator’s `batchChain` serializes case execution. The shared Mozaik state, active queue, agent activity, and pending approvals are process-local. Cases, verdicts, and raw-ingestion records are stored in SQLite and loaded when the runtime initializes.
+Three expected specialists run concurrently for a case; anomaly analysis is conditional on candidate wires or account-change evidence. `AuditorAgent` runs after the expected specialists complete. `enqueueBatch` returns promises for the cases, while the orchestrator serializes case execution through `batchChain`. Shared Mozaik state, active queue, agent activity and pending approvals are process-local. Cases, verdicts and raw-ingestion records are stored in SQLite and loaded when the runtime initializes.
 
 ## Inputs and persistence
 
@@ -43,17 +43,17 @@ Five peer Mozaik agents are created in [`src/runtime/agents/corridor-agents.ts`]
 
 | Agent | Current responsibility | Tools |
 | --- | --- | --- |
-| `TermsAgent` | Invoice terms, line-item arithmetic, identifiers, withholding, fee clause | 5 |
+| `TermsAgent` | Invoice terms, line-item arithmetic, IBAN checksum/BIC format, supplied withholding, fee clause | 5 |
 | `FxBenchmarkAgent` | Rate lookup, currency normalization, FX spread, corridor fee benchmark | 4 |
 | `WireDetectiveAgent` | Wire parsing, fee analysis, orphan matching, split-payment reconciliation | 4 |
-| `DuplicateAnomalyAgent` | Duplicate/split classification, account-change comparison, heuristic flags | 3 |
+| `DuplicateAnomalyAgent` | Duplicate-wire and supplied account-change checks, heuristic flags | 3 |
 | `AuditorAgent` | Reconciliation, SourceRef structure checks, corridor replay, verdict finalization | 4 |
 
 The first four agents write to role-specific maps in [`src/runtime/corridor-runtime.ts`](../src/runtime/corridor-runtime.ts). The auditor is activated after the expected-role barrier. The tool inventory totals twenty. Tool execution is mediated by the configured model provider; the audit tools perform the listed calculations deterministically, but the application does not authenticate source documents or eliminate judgment risk.
 
 ## Arithmetic and evidence
 
-Amounts are represented as integer minor-unit values. Currency exponents have explicit overrides for zero- and three-decimal currencies; other currencies default to two decimals. Conversions use a JavaScript numeric FX rate and `Math.round`, so this is not arbitrary-precision decimal arithmetic.
+Amounts are represented as integer minor-unit values. The code explicitly overrides selected zero- and three-decimal currencies; other codes default to two decimals. Conversions use JavaScript numeric FX rates and `Math.round`, so calculations are not arbitrary-precision decimal arithmetic.
 
 For a case, the auditor computes the residual:
 

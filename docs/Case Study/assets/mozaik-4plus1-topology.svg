@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 580" width="1200" height="580" font-family="Inter, Segoe UI, system-ui, sans-serif">
   <rect width="1200" height="580" rx="20" fill="#080d12" stroke="#1c2a33" stroke-width="2"/>
-  <text x="40" y="44" fill="#62e1c3" font-size="12" font-weight="700" letter-spacing="1.8">MOZAIK ORCHESTRATION · 4+1 CONCURRENT AGENT TOPOLOGY</text>
-  <text x="40" y="72" fill="#e3edef" font-size="22" font-weight="800">Isolated Parallel Slots, Reactive Barrier &amp; Interruptible Human Gate</text>
+  <text x="40" y="44" fill="#62e1c3" font-size="12" font-weight="700" letter-spacing="1.8">MOZAIK ORCHESTRATION: THREE PARALLEL + CONDITIONAL + AUDITOR</text>
+  <text x="40" y="72" fill="#e3edef" font-size="22" font-weight="800">Role-specific state, expected-role barrier and review breakpoint</text>
 
   <!-- INBOUND EVENT -->
   <rect x="40" y="104" width="1120" height="56" rx="12" fill="#0d141b" stroke="#225b51"/>
@@ -9,7 +9,7 @@
     CorridorState.registerCase(settlementCase) → publishCorridorEvent("case.queued")
   </text>
 
-  <!-- 4 SPECIALIST LANES -->
+  <!-- 3 REGULAR SPECIALISTS + CONDITIONAL ANOMALY -->
   <rect x="40" y="186" width="265" height="150" rx="14" fill="#0d141b" stroke="#62e1c3"/>
   <text x="58" y="214" fill="#62e1c3" font-size="14" font-weight="800">1. TermsAgent</text>
   <text x="58" y="236" fill="#c7d3d6" font-size="11.5">• get_invoice_record</text>
@@ -38,23 +38,21 @@
   <text x="913" y="214" fill="#a78bfa" font-size="14" font-weight="800">4. DuplicateAnomalyAgent</text>
   <text x="913" y="236" fill="#c7d3d6" font-size="11.5">• scan_duplicate_wires</text>
   <text x="913" y="255" fill="#c7d3d6" font-size="11.5">• check_vendor_bank_change</text>
-  <text x="913" y="274" fill="#c7d3d6" font-size="11.5">• screen_corridor_compliance</text>
-  <text x="913" y="293" fill="#81949a" font-size="11.5">(Runs conditionally on anomaly)</text>
+  <text x="913" y="274" fill="#c7d3d6" font-size="11.5">• screen_corridor_compliance (heuristic)</text>
+  <text x="913" y="293" fill="#81949a" font-size="11.5">(Conditional: candidate wires or account change)</text>
   <text x="913" y="320" fill="#a78bfa" font-size="11" font-weight="700">Writes → anomalyByCaseId</text>
 
   <!-- REACTIVE BARRIER -->
   <rect x="40" y="366" width="1120" height="72" rx="14" fill="#0d2725" stroke="#225b51" stroke-width="1.5"/>
   <text x="600" y="396" text-anchor="middle" fill="#e3edef" font-size="14" font-weight="800">
-    5. AuditorAgent (Reactive Barrier: markRoleComplete() waits until all expected specialists finish)
-  </text>
+    5. AuditorAgent (starts after each expected specialist reports completion)</text>
   <text x="600" y="420" text-anchor="middle" fill="#75e4c7" font-size="12">
-    verify_settlement_balance → verify_citations_integrity → simulate_corridor_replay → finalize_settlement_action
-  </text>
+    balance calculation > structural SourceRef check > replay comparison > verdict finalization</text>
 
   <!-- BREAKPOINT -->
   <rect x="40" y="464" width="1120" height="86" rx="14" fill="#2c2111" stroke="#f0c77f"/>
   <text x="60" y="492" fill="#f0c77f" font-size="14" font-weight="800">SettlementGateInterceptionHandler (Mozaik Breakpoint)</text>
-  <text x="60" y="514" fill="#e3edef" font-size="12">Pauses execution whenever Recoverable OUR Fee &gt; 0, Unexplained Variance ≠ 0, Duplicate Risk, or BEC Bank Change is detected:</text>
-  <text x="60" y="535" fill="#75e4c7" font-size="12" font-weight="700">[Approve Dispute] → Generate Bank Letter    |    [Reject &amp; Steer] → Agent re-runs with Human Override Note    |    [Stop] → Abort Case</text>
+  <text x="60" y="514" fill="#e3edef" font-size="12">Configured breakpoint can pause selected proposed actions for operator review. It does not control bank payments.</text>
+  <text x="60" y="535" fill="#75e4c7" font-size="12" font-weight="700">[Approve] Continue proposed action | [Reject &amp; Steer] Apply operator note | [Stop] Abort case</text>
 </svg>
 

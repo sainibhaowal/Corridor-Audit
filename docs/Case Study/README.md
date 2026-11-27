@@ -1,7 +1,7 @@
 # CorridorAudit — End-to-End Engineering & Product Case Study
 
 > [!IMPORTANT]
-> **CorridorAudit** is an autonomous, human-gated cross-border settlement forensics platform built on **Next.js 15 (TypeScript)** and **Mozaik (`@mozaik-ai/core@6.0.0`)** for both **B2C freelancers/contractors** and **B2B finance/treasury teams**.
+> **CorridorAudit** is a local settlement-review prototype built on **Next.js 15 (TypeScript)** and **Mozaik (`@mozaik-ai/core@6.0.0`)**. It demonstrates a finance-specific audit flow using supplied records and public ECB reference data.
 
 ---
 
@@ -9,29 +9,29 @@
 
 | Module | Focus Area | Key Artifacts & Visuals |
 | :--- | :--- | :--- |
-| **[01. Problem Statement](./01-problem-statement.md)** | Why cross-border payouts leak 3%–7% silently across B2C & B2B | Leak taxonomy, B2C vs B2B matrix, cost impact chart |
-| **[02. Data Ingestion & Raw Vault](./02-data-ingestion-and-raw-vault.md)** | All 5 live channels, 12 vendor platforms, AES-256 vault & `raw_ingestions` | Channel diagram, platform table, SHA-256 vault schema |
-| **[03. System Architecture & Pipeline](./03-system-architecture-and-pipeline.md)** | Full Input → Vault → Mozaik → Gate → Output blueprint | Infographic SVG blueprint + Mermaid sequence & flow |
-| **[04. Mozaik 4+1 Agent System](./04-mozaik-4-plus-1-agents.md)** | Why `@mozaik-ai/core`, 4+1 concurrent agents, `CorridorState`, breakpoints | 4+1 Topology SVG + Mermaid state machine & router |
-| **[05. Financial Math & Algorithms](./05-algorithms-and-financial-math.md)** | Zero-drift integer minor units, Cent-Conservation Equation, Mod-97, FX bps | Mathematical proofs, waterfall SVG, algorithm specs |
-| **[06. Outputs, Disputes & ROI](./06-outputs-disputes-and-roi.md)** | Exact user deliverables, worked `€5,000` EUR→USD case, dispute letters, ROI | Worked ledger example, dispute template, B2C/B2B ROI |
-| **[07. Security, Hashing & Data Protection](./07-security-hashing-and-data-protection.md)** | AES-256-GCM vault, HMAC-SHA256 webhooks, SHA-256 fingerprints & BEC guard | 5-Layer Security SVG, webhook sequence & zero-leak policy |
+| **[01. Problem Statement](./01-problem-statement.md)** | Problem framing and illustrative settlement examples | Example case, personas and assumptions |
+| **[02. Data Ingestion & Raw Vault](./02-data-ingestion-and-raw-vault.md)** | Ingestion paths, connector coverage, credential vault & `raw_ingestions` | Channel diagram, provider table, raw ingestion details |
+| **[03. System Architecture & Pipeline](./03-system-architecture-and-pipeline.md)** | Ingestion, normalization, agent stages, review and outputs | Architecture SVG + Mermaid sequence and flow |
+| **[04. Mozaik Agent System](./04-mozaik-4-plus-1-agents.md)** | Agent roles, `CorridorState`, conditional anomaly checks and breakpoints | Agent topology SVG and Mermaid state machine |
+| **[05. Financial Math & Algorithms](./05-algorithms-and-financial-math.md)** | Minor-unit calculations, reconciliation equation, Mod-97, FX bps | Formulas, waterfall SVG and algorithm descriptions |
+| **[06. Outputs, Disputes & ROI](./06-outputs-disputes-and-roi.md)** | Example outputs, illustrative EUR-to-USD case, draft dispute letter and operating considerations | Example ledger, draft letter and ROI considerations |
+| **[07. Security, Hashing & Data Protection](./07-security-hashing-and-data-protection.md)** | Credential encryption, configurable webhook signatures, SHA-256 fingerprints and account-change signals | Security SVG, webhook sequence and implementation limits |
 
 ---
 
 ## System Blueprint at a Glance
 
-![CorridorAudit Production Architecture Blueprint](./assets/architecture-blueprint.svg)
+![CorridorAudit Implementation and Integration Map](./assets/architecture-blueprint.svg)
 
 ---
 
-## Executive Snapshot (Key Engineering Guarantees)
+## Executive Snapshot (Implemented Controls and Limits)
 
-| Guarantee | Implementation | Where in Code |
+| Control | Current Behavior | Where in Code |
 | :--- | :--- | :--- |
-| **Zero LLM Math Hallucination** | 100% of currency math, FX spread, tax, and IBAN Mod-97 run in deterministic TypeScript minor-unit functions | [`src/core/money.ts`](../../src/core/money.ts) |
-| **Immutable Raw Evidence** | Every upload, webhook, email, platform sync, and hot-folder file is stored untouched with SHA-256 before parsing | [`src/core/db/database.ts`](../../src/core/db/database.ts) |
-| **4+1 Concurrent Mozaik Agents** | 4 specialists execute concurrently in isolated state slots; `AuditorAgent` waits on a reactive barrier | [`src/runtime/agents/corridor-agents.ts`](../../src/runtime/agents/corridor-agents.ts) |
-| **Human-in-the-Loop Safety** | `SettlementGateInterceptionHandler` pauses risky claims for **Approve**, **Reject & Steer**, or **Stop** | [`src/runtime/interception/`](../../src/runtime/interception/) |
-| **Zero LLM Vendor Lock-In** | `DynamicEndpointRouter` supports NVIDIA NIM, Gemini, Groq, OpenRouter, OpenAI, Anthropic, and Ollama + live `/models` discovery | [`src/core/llm/providers.ts`](../../src/core/llm/providers.ts) |
-| **Encrypted Credential Storage** | OAuth2 tokens & API keys are encrypted at rest with AES-256-GCM; webhooks verified via HMAC-SHA256 | [`src/core/security/vault.ts`](../../src/core/security/vault.ts) |
+| **Deterministic Audit Calculations** | Reconciliation tools compute amounts and variance in TypeScript; agent choices and narrative remain model-driven | [`src/core/money.ts`](../../src/core/money.ts) |
+| **Raw Ingestion Records** | Supported routes store submitted content and a SHA-256 digest before parsing; records are not immutable and raw content is not encrypted | [`src/core/db/database.ts`](../../src/core/db/database.ts) |
+| **Concurrent Mozaik Agents** | Three specialists run per case, anomaly analysis is conditional, the auditor follows expected specialists, and separate cases are serialized | [`src/runtime/agents/corridor-agents.ts`](../../src/runtime/agents/corridor-agents.ts) |
+| **Human Review Breakpoint** | The handler can pause a proposed action; auto-approval is configurable and no bank payment is controlled | [`src/runtime/interception/`](../../src/runtime/interception/) |
+| **Configurable Model Providers** | Provider routing is available; key validity and model discovery depend on each provider and endpoint | [`src/core/llm/providers.ts`](../../src/core/llm/providers.ts) |
+| **Encrypted Credential Storage** | Stored integration credentials use AES-256-GCM; webhook HMAC checks are available and signature enforcement is configurable | [`src/core/security/vault.ts`](../../src/core/security/vault.ts) |

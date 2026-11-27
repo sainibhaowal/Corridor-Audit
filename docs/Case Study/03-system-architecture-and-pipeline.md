@@ -1,8 +1,8 @@
 # 03 · End-to-End System Architecture & Processing Pipeline
 
-## 1. Infographic Architecture Blueprint
+## 1. Current Architecture Blueprint
 
-![CorridorAudit Production Architecture Blueprint](./assets/architecture-blueprint.svg)
+![CorridorAudit Implementation and Integration Map](./assets/architecture-blueprint.svg)
 
 ---
 
@@ -15,32 +15,32 @@ sequenceDiagram
     participant Ingest as Ingestion Route / Sync Worker
     participant Vault as SQLite Raw Vault (raw_ingestions)
     participant Norm as Multi-Format Normalizer
-    participant Mozaik as Mozaik Runtime (4+1 Agents)
-    participant Tools as 20 Deterministic TS Tools + ECB API
+    participant Mozaik as Mozaik Runtime (3 regular + conditional anomaly + auditor)
+    participant Tools as TypeScript audit tools + ECB reference API
     participant Gate as SettlementGateInterceptionHandler
     participant UI as Live Workbench & Reports
 
     User->>Ingest: Upload file / Webhook / Email / Platform Sync
-    Ingest->>Vault: saveRawIngestion() + SHA-256 checksum
+    Ingest->>Vault: saveRawIngestion() + SHA-256 fingerprint
     Ingest->>Norm: normalizeInboundPayloadToCases()
     Norm-->>Vault: updateRawIngestionOutcome(caseIds, parsed)
     Ingest->>Mozaik: enqueueBatch(cases) -> publishCorridorEvent("case.queued")
 
-    par 4 Parallel Specialists
+    par Expected Specialists (3 regular; anomaly runs only when triggered)
         Mozaik->>Tools: TermsAgent (IBAN Mod-97, WHT, OUR check)
         Mozaik->>Tools: FxBenchmarkAgent (ECB rate, FX spread bps)
         Mozaik->>Tools: WireDetectiveAgent (:71G: fees, orphan match)
-        Mozaik->>Tools: DuplicateAnomalyAgent (duplicate vs split, BEC)
+        Mozaik->>Tools: DuplicateAnomalyAgent (conditional duplicate/account-change checks)
     end
 
-    Mozaik->>Mozaik: Reactive Barrier waits for all expected specialists
+    Mozaik->>Mozaik: Expected-role barrier releases after expected specialists finish
     Mozaik->>Tools: AuditorAgent (Cent conservation + Optimal Rail Replay)
-    Tools-->>Gate: Risky finding? (OUR > 0, variance != 0, duplicate, BEC)
+    Tools-->>Gate: Proposed action requires breakpoint decision?
     Gate-->>UI: Pause & emit breakpoint.paused (SSE)
     User->>Gate: Approve / Reject & Steer / Stop
     Gate-->>Mozaik: Resume & finalize_settlement_action()
-    Mozaik-->>Vault: saveAuditVerdict(verdict)
-    Mozaik-->>UI: Stream verdict_ready + Dispute Letter
+    Mozaik-->>Vault: Persist verdict in SQLite
+    Mozaik-->>UI: Stream verdict and conditional dispute draft
 ```
 
 ---
@@ -49,6 +49,6 @@ sequenceDiagram
 
 | Responsibility | Handled By | Why? |
 | :--- | :--- | :--- |
-| **Currency math, FX spread bps, tax, IBAN Mod-97** | **Deterministic TypeScript (`src/core/money.ts`)** | LLMs must **never** do financial arithmetic; integer minor-unit math guarantees zero rounding drift. |
-| **Unstructured parsing, reasoning, steering, dispute letters** | **Mozaik AI Agents (`@mozaik-ai/core`)** | Handles messy PDFs, stripped `:70:` remittance hints, plain-English explanations, and human "Reject & Steer" overrides. |
-| **Live Model Routing & Auto-Discovery** | **`DynamicEndpointRouter`** | Supports NVIDIA NIM, Gemini, Groq, OpenRouter, OpenAI, Anthropic, and Ollama with live `/models` discovery. |
+| **Money conversions, FX spread, supplied withholding inputs, IBAN Mod-97** | **TypeScript helpers (`src/core/money.ts`)** | Audit calculations use integer minor-unit amounts, but conversions use JavaScript numbers and rounding. Agent tool selection and narrative remain model-driven. |
+| **Tool selection, summaries, steering, dispute drafts** | **Mozaik AI Agents (`@mozaik-ai/core`)** | Parsers extract supported formats. OCR or reliable extraction from arbitrary PDFs is not guaranteed. |
+| **Model Routing and Discovery** | **`DynamicEndpointRouter`** | Routes to configured providers. Model discovery and execution depend on provider support, endpoint, and valid credentials. |
