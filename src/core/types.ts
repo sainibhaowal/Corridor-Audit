@@ -196,6 +196,7 @@ export type AuditStatus =
 	| "ORPHAN_MATCHED"
 	| "FX_MARKUP_ALERT"
 	| "ABORTED_BY_OPERATOR"
+	| "REVIEW_REQUEST_INVALIDATED"
 
 export interface AuditVerdict {
 	caseId: string

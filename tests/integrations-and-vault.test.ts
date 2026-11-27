@@ -26,6 +26,7 @@ import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublic
 import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode, refreshOAuthCredentials } from "../src/core/integrations/oauth"
 import { runIntegrationSync, shouldRunFullProviderReconciliation } from "../src/runtime/workers/sync-worker"
 import { runWithDurableCaseRetries } from "../src/runtime/workers/durable-case-queue"
+import { resolveInvalidatedPendingApprovals } from "../src/runtime/workers/review-approval-expiry"
 import { CorridorState } from "../src/runtime/corridor-runtime"
 import { backupCorridorDatabase } from "../src/core/db/backup"
 import { decryptJson, decryptSecret, encryptJson, encryptSecret, maskSecret, resetVaultKeyCache } from "../src/core/security/vault"
@@ -232,6 +233,28 @@ test("existing SQLite integrations gain a durable full-reconciliation timestamp"
 		rmSync(dbPath, { force: true })
 		rmSync(`${dbPath}-wal`, { force: true })
 		rmSync(`${dbPath}-shm`, { force: true })
+	}
+})
+
+test("existing SQLite approvals gain evidence binding and expiry fields", () => {
+	const dbPath = resolve(tmpdir(), `corridor-review-evidence-migration-${process.pid}-${Date.now()}.db`)
+	const legacySchema = CORRIDOR_SCHEMA_SQL
+		.replace("\tcase_evidence_sha256 TEXT NOT NULL DEFAULT '',\n", "")
+		.replace("\treview_policy_id TEXT NOT NULL DEFAULT '',\n", "")
+		.replace("\texpires_at TEXT,\n", "")
+	assert.notEqual(legacySchema, CORRIDOR_SCHEMA_SQL, "the fixture must represent the earlier review approval schema")
+	const legacyDb = new DatabaseSync(dbPath)
+	legacyDb.exec(legacySchema)
+	legacyDb.close()
+	const upgradedDb = new CorridorDatabase(dbPath)
+	try {
+		const columns = (upgradedDb as unknown as { db: DatabaseSync }).db.prepare("PRAGMA table_info(review_approvals)").all() as Array<{ name: string }>
+		assert.ok(columns.some((column) => column.name === "case_evidence_sha256"))
+		assert.ok(columns.some((column) => column.name === "review_policy_id"))
+		assert.ok(columns.some((column) => column.name === "expires_at"))
+	} finally {
+		upgradedDb.close()
+		rmSync(dbPath, { force: true })
 	}
 })
 
@@ -1118,6 +1141,39 @@ test("review decisions persist against the exact breakpoint call and retain huma
 		reviewerRole: "controller",
 		requireIndependentReviewer: true,
 	}), { status: "resolved", approvalId: secondApproval }, "an independent authenticated reviewer can approve")
+	db.saveCase({ ...settlementCase, title: "Revised evidence" })
+	assert.equal(db.findStoredReviewDecision(pending.caseId, pending.argsJson), null, "a prior decision cannot be reused after case evidence changes")
+	assert.equal(db.findStoredHumanOverride(pending.caseId, "Keep the relationship, treat this as SHA."), false, "an old override does not carry to revised evidence")
+	const staleApproval = db.createPendingApproval({ ...pending, argsJson: JSON.stringify({ caseId: pending.caseId, revision: 1 }), createdAt: new Date().toISOString() })
+	db.saveCase({ ...settlementCase, title: "Further revised evidence" })
+	assert.deepEqual(db.resolvePendingApproval({
+		caseId: pending.caseId, approvalId: staleApproval, decision: "approve", reviewerSub: "independent-controller",
+		reviewerEmail: "checker@acme.test", reviewerRole: "controller",
+	}), { status: "stale" }, "changed evidence invalidates a still-pending decision")
+	const expiringApproval = db.createPendingApproval({ ...pending, argsJson: JSON.stringify({ caseId: pending.caseId, revision: 2 }), createdAt: new Date().toISOString() })
+	;(db as unknown as { db: DatabaseSync }).db.prepare("UPDATE review_approvals SET expires_at = ? WHERE id = ?")
+		.run(new Date(0).toISOString(), expiringApproval)
+	assert.deepEqual(db.resolvePendingApproval({
+		caseId: pending.caseId, approvalId: expiringApproval, decision: "approve", reviewerSub: "independent-controller",
+		reviewerEmail: "checker@acme.test", reviewerRole: "controller",
+	}), { status: "expired" }, "expired review requests cannot be approved")
+	const policyApproval = db.createPendingApproval({ ...pending, argsJson: JSON.stringify({ caseId: pending.caseId, revision: 3 }), createdAt: new Date().toISOString() })
+	db.updateWorkspace(DEFAULT_WORKSPACE_ID, { varianceThresholdMinor: 501 })
+	assert.deepEqual(db.resolvePendingApproval({
+		caseId: pending.caseId, approvalId: policyApproval, decision: "approve", reviewerSub: "independent-controller",
+		reviewerEmail: "checker@acme.test", reviewerRole: "controller",
+	}), { status: "stale" }, "a changed review policy invalidates the pending decision")
+	const runtimeApprovalId = db.createPendingApproval({ ...pending, argsJson: JSON.stringify({ caseId: pending.caseId, revision: 4 }), createdAt: new Date().toISOString() })
+	let invalidatedDecision: { decision: string; reason?: string } | undefined
+	const pendingApprovals = new Map([[pending.caseId, {
+		approvalId: runtimeApprovalId,
+		resolve: (decision: { decision: "approve" | "reject" | "stop"; reason?: string }) => { invalidatedDecision = decision },
+	}]])
+	db.updateWorkspace(DEFAULT_WORKSPACE_ID, { varianceThresholdMinor: 502 })
+	assert.equal(resolveInvalidatedPendingApprovals({ db, pendingApprovals }), 1)
+	assert.equal(invalidatedDecision?.decision, "stop", "the active local gate is released after its policy changes")
+	assert.match(invalidatedDecision?.reason || "", /Re-run the audit/)
+	assert.equal(db.listPendingApprovals(DEFAULT_WORKSPACE_ID).length, 0)
 	db.close()
 })
 

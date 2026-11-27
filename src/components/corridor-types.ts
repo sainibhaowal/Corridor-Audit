@@ -149,5 +149,6 @@ export function verdictBadgeVariant(status: string): "ok" | "violet" | "bad" | "
 
 export function verdictStatusLabel(status: string): string {
 	if (status === "RECOVERABLE_FEE_VIOLATION") return "Potential Fee Discrepancy"
+	if (status === "REVIEW_REQUEST_INVALIDATED") return "Review Request Invalidated"
 	return status.replace(/_/g, " ")
 }

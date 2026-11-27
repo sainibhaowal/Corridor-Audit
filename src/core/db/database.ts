@@ -51,6 +51,8 @@ export interface StoredReviewDecision {
 export type ResolvePendingApprovalResult =
 	| { status: "resolved"; approvalId: string }
 	| { status: "not_found" }
+	| { status: "expired" }
+	| { status: "stale" }
 	| { status: "same_reviewer" }
 
 export interface DeadLetterCaseRecord {
@@ -136,6 +138,7 @@ export class CorridorDatabase {
 		this.ensureDefaultWorkspace()
 		this.ensureWorkspaceTaxPolicies()
 		this.ensureWorkspaceReviewPolicies()
+		this.ensureReviewApprovalEvidenceColumns()
 	}
 
 	appendWorkspaceAuditEvent(input: WorkspaceAuditEventInput): WorkspaceAuditEvent {
@@ -304,6 +307,42 @@ export class CorridorDatabase {
 		}
 	}
 
+	private ensureReviewApprovalEvidenceColumns(): void {
+		const columns = this.db.prepare("PRAGMA table_info(review_approvals)").all() as Array<{ name: string }>
+		const existing = new Set(columns.map((column) => column.name))
+		if (!existing.has("case_evidence_sha256")) this.db.exec("ALTER TABLE review_approvals ADD COLUMN case_evidence_sha256 TEXT NOT NULL DEFAULT ''")
+		if (!existing.has("review_policy_id")) this.db.exec("ALTER TABLE review_approvals ADD COLUMN review_policy_id TEXT NOT NULL DEFAULT ''")
+		if (!existing.has("expires_at")) this.db.exec("ALTER TABLE review_approvals ADD COLUMN expires_at TEXT")
+		const rows = this.db.prepare(`SELECT a.id, a.workspace_id, a.case_id, a.requested_at, a.case_evidence_sha256,
+			a.review_policy_id, a.expires_at, c.payload_json, c.payload_json_encrypted FROM review_approvals a
+			LEFT JOIN cases c ON c.case_id = a.case_id AND c.workspace_id = a.workspace_id
+			WHERE a.case_evidence_sha256 = '' OR a.review_policy_id = '' OR a.expires_at IS NULL`).all() as Array<{
+			id: string
+			workspace_id: string
+			case_id: string
+			requested_at: string
+			case_evidence_sha256: string
+			review_policy_id: string
+			expires_at: string | null
+			payload_json: string | null
+			payload_json_encrypted: number | null
+		}>
+		const update = this.db.prepare(`UPDATE review_approvals SET case_evidence_sha256 = ?, review_policy_id = ?, expires_at = ?,
+			status = CASE WHEN ? = '' OR ? = '' THEN 'superseded' ELSE status END WHERE id = ?`)
+		for (const row of rows) {
+			const payload = row.payload_json === null
+				? ""
+				: row.payload_json_encrypted
+					? decryptSecret(row.payload_json)
+					: row.payload_json
+			const evidenceHash = row.case_evidence_sha256 || (payload ? createHash("sha256").update(payload, "utf8").digest("hex") : "")
+			const requestedMs = Date.parse(row.requested_at)
+			const expiresAt = row.expires_at || new Date((Number.isFinite(requestedMs) ? requestedMs : Date.now()) + 24 * 60 * 60 * 1000).toISOString()
+			const policyId = row.review_policy_id
+			update.run(evidenceHash, policyId, expiresAt, evidenceHash, policyId, row.id)
+		}
+	}
+
 	private encryptLegacySensitiveJson(): void {
 		const fields = [
 			{ table: "cases", content: "payload_json", flag: "payload_json_encrypted" },
@@ -377,27 +416,71 @@ export class CorridorDatabase {
 		}
 	}
 
+	private getCaseEvidenceSha256(caseId: string, workspaceId: string): string | null {
+		const row = this.db.prepare(`SELECT payload_json, payload_json_encrypted FROM cases
+			WHERE workspace_id = ? AND case_id = ?`).get(workspaceId, caseId) as {
+			payload_json: string
+			payload_json_encrypted: number
+		} | undefined
+		if (!row) return null
+		const payload = row.payload_json_encrypted ? decryptSecret(row.payload_json) : row.payload_json
+		return createHash("sha256").update(payload, "utf8").digest("hex")
+	}
+
+	private expireInvalidPendingApprovals(workspaceId: string): void {
+		this.inTransaction(() => {
+			const now = new Date().toISOString()
+			const rows = this.db.prepare(`SELECT id, case_id, case_evidence_sha256, review_policy_id, expires_at FROM review_approvals
+				WHERE workspace_id = ? AND status = 'pending'`).all(workspaceId) as Array<{
+				id: string
+				case_id: string
+				case_evidence_sha256: string
+				review_policy_id: string
+				expires_at: string | null
+			}>
+			for (const row of rows) {
+				const expired = !row.expires_at || row.expires_at <= now
+				const currentEvidenceHash = this.getCaseEvidenceSha256(row.case_id, workspaceId)
+				const currentPolicyId = this.getCurrentReviewPolicy(workspaceId).id
+				const status = expired ? "expired" : currentEvidenceHash !== row.case_evidence_sha256 || currentPolicyId !== row.review_policy_id ? "superseded" : null
+				if (!status) continue
+				const updated = this.db.prepare(`UPDATE review_approvals SET status = ?, decided_at = ?
+					WHERE id = ? AND status = 'pending' RETURNING id`).get(status, now, row.id)
+				if (updated) this.appendWorkspaceAuditEvent({ workspaceId, actorType: "system", action: `review.${status}`, targetType: "case", targetId: row.case_id, metadata: { approvalId: row.id } })
+			}
+		})
+	}
+
 	createPendingApproval(pending: PendingBreakpointDecision, workspaceId = DEFAULT_WORKSPACE_ID): string {
 		const id = `approval_${randomUUID()}`
 		const requestedAt = pending.createdAt || new Date().toISOString()
+		const now = new Date().toISOString()
+		const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
 		const argsSha256 = createHash("sha256").update(pending.argsJson, "utf8").digest("hex")
+		const reviewPolicyId = this.getCurrentReviewPolicy(workspaceId).id
 		return this.inTransaction(() => {
+			this.expireInvalidPendingApprovals(workspaceId)
+			const evidenceSha256 = this.getCaseEvidenceSha256(pending.caseId, workspaceId)
+			if (!evidenceSha256) throw new Error("A review approval requires a persisted case evidence record.")
 			const existing = this.db.prepare(`SELECT id FROM review_approvals WHERE workspace_id = ? AND case_id = ?
-				AND tool_name = ? AND action_type = ? AND args_sha256 = ? AND status = 'pending' ORDER BY requested_at DESC, rowid DESC LIMIT 1`)
-				.get(workspaceId, pending.caseId, pending.toolName, pending.actionType, argsSha256) as { id: string } | undefined
+				AND tool_name = ? AND action_type = ? AND args_sha256 = ? AND case_evidence_sha256 = ? AND review_policy_id = ?
+				AND status = 'pending' AND expires_at > ? ORDER BY requested_at DESC, rowid DESC LIMIT 1`)
+				.get(workspaceId, pending.caseId, pending.toolName, pending.actionType, argsSha256, evidenceSha256, reviewPolicyId, now) as { id: string } | undefined
 			if (existing) return existing.id
 			this.db.prepare(`INSERT INTO review_approvals
-				(id, workspace_id, case_id, tool_name, action_type, args_sha256, pending_json, pending_json_encrypted, requested_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`)
-				.run(id, workspaceId, pending.caseId, pending.toolName, pending.actionType, argsSha256, encryptSecret(JSON.stringify(pending)), requestedAt)
+				(id, workspace_id, case_id, tool_name, action_type, args_sha256, pending_json, pending_json_encrypted,
+				case_evidence_sha256, review_policy_id, expires_at, requested_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`)
+				.run(id, workspaceId, pending.caseId, pending.toolName, pending.actionType, argsSha256, encryptSecret(JSON.stringify(pending)), evidenceSha256, reviewPolicyId, expiresAt, requestedAt)
 			this.appendWorkspaceAuditEvent({ workspaceId, actorType: "system", action: "review.requested", targetType: "case", targetId: pending.caseId, metadata: { approvalId: id, toolName: pending.toolName, actionType: pending.actionType } })
 			return id
 		})
 	}
 
 	listPendingApprovals(workspaceId = DEFAULT_WORKSPACE_ID): PendingBreakpointDecision[] {
+		this.expireInvalidPendingApprovals(workspaceId)
 		const rows = this.db.prepare(`SELECT id, pending_json, pending_json_encrypted, requested_at FROM review_approvals
-			WHERE workspace_id = ? AND status = 'pending' ORDER BY requested_at ASC, rowid ASC`).all(workspaceId) as Array<{
+			WHERE workspace_id = ? AND status = 'pending' AND expires_at > ? ORDER BY requested_at ASC, rowid ASC`).all(workspaceId, new Date().toISOString()) as Array<{
 			id: string
 			pending_json: string
 			pending_json_encrypted: number
@@ -424,17 +507,29 @@ export class CorridorDatabase {
 		this.db.exec("BEGIN IMMEDIATE")
 		try {
 			const row = params.approvalId
-				? this.db.prepare(`SELECT a.id, c.submitted_by_sub FROM review_approvals a
+				? this.db.prepare(`SELECT a.id, a.expires_at, a.case_evidence_sha256, a.review_policy_id, c.submitted_by_sub FROM review_approvals a
 					LEFT JOIN cases c ON c.case_id = a.case_id AND c.workspace_id = a.workspace_id
 					WHERE a.workspace_id = ? AND a.case_id = ? AND a.id = ? AND a.status = 'pending'`)
-					.get(workspaceId, params.caseId, params.approvalId) as { id: string; submitted_by_sub: string | null } | undefined
-				: this.db.prepare(`SELECT a.id, c.submitted_by_sub FROM review_approvals a
+					.get(workspaceId, params.caseId, params.approvalId) as { id: string; expires_at: string | null; case_evidence_sha256: string; review_policy_id: string; submitted_by_sub: string | null } | undefined
+				: this.db.prepare(`SELECT a.id, a.expires_at, a.case_evidence_sha256, a.review_policy_id, c.submitted_by_sub FROM review_approvals a
 					LEFT JOIN cases c ON c.case_id = a.case_id AND c.workspace_id = a.workspace_id
 					WHERE a.workspace_id = ? AND a.case_id = ? AND a.status = 'pending'
-					ORDER BY a.requested_at DESC, a.rowid DESC LIMIT 1`).get(workspaceId, params.caseId) as { id: string; submitted_by_sub: string | null } | undefined
+					ORDER BY a.requested_at DESC, a.rowid DESC LIMIT 1`).get(workspaceId, params.caseId) as { id: string; expires_at: string | null; case_evidence_sha256: string; review_policy_id: string; submitted_by_sub: string | null } | undefined
 			if (!row) {
 				this.db.exec("COMMIT")
 				return { status: "not_found" }
+			}
+			const currentEvidenceHash = this.getCaseEvidenceSha256(params.caseId, workspaceId)
+			const currentPolicyId = this.getCurrentReviewPolicy(workspaceId).id
+			const expired = !row.expires_at || row.expires_at <= new Date().toISOString()
+			const stale = currentEvidenceHash !== row.case_evidence_sha256 || currentPolicyId !== row.review_policy_id
+			if (expired || stale) {
+				const status = expired ? "expired" : "superseded"
+				this.db.prepare("UPDATE review_approvals SET status = ?, decided_at = ? WHERE id = ? AND status = 'pending'")
+					.run(status, new Date().toISOString(), row.id)
+				this.appendWorkspaceAuditEvent({ workspaceId, actorType: "system", action: `review.${status}`, targetType: "case", targetId: params.caseId, metadata: { approvalId: row.id } })
+				this.db.exec("COMMIT")
+				return { status: expired ? "expired" : "stale" }
 			}
 			if (params.decision === "approve" && params.requireIndependentReviewer && row.submitted_by_sub === params.reviewerSub) {
 				this.db.exec("COMMIT")
@@ -442,9 +537,10 @@ export class CorridorDatabase {
 			}
 			const decidedAt = new Date().toISOString()
 			const updated = this.db.prepare(`UPDATE review_approvals SET status = ?, decision = ?, reason = ?, reviewer_sub = ?,
-				reviewer_email = ?, reviewer_role = ?, decided_at = ? WHERE id = ? AND status = 'pending'`)
+				reviewer_email = ?, reviewer_role = ?, decided_at = ? WHERE id = ? AND status = 'pending' AND expires_at > ?
+				AND case_evidence_sha256 = ? AND review_policy_id = ?`)
 				.run(params.decision === "approve" ? "approved" : params.decision === "reject" ? "rejected" : "stopped",
-					params.decision, params.reason ?? null, params.reviewerSub, params.reviewerEmail, params.reviewerRole, decidedAt, row.id)
+					params.decision, params.reason ?? null, params.reviewerSub, params.reviewerEmail, params.reviewerRole, decidedAt, row.id, decidedAt, currentEvidenceHash, currentPolicyId)
 			if (Number(updated.changes) !== 1) {
 				this.db.exec("COMMIT")
 				return { status: "not_found" }
@@ -460,9 +556,12 @@ export class CorridorDatabase {
 
 	findStoredReviewDecision(caseId: string, argsJson: string, workspaceId = DEFAULT_WORKSPACE_ID): StoredReviewDecision | null {
 		const argsSha256 = createHash("sha256").update(argsJson, "utf8").digest("hex")
+		const evidenceSha256 = this.getCaseEvidenceSha256(caseId, workspaceId)
+		if (!evidenceSha256) return null
+		const reviewPolicyId = this.getCurrentReviewPolicy(workspaceId).id
 		const row = this.db.prepare(`SELECT id, decision, reason FROM review_approvals WHERE workspace_id = ? AND case_id = ?
-			AND args_sha256 = ? AND status IN ('approved', 'rejected', 'stopped')
-			ORDER BY decided_at DESC, rowid DESC LIMIT 1`).get(workspaceId, caseId, argsSha256) as {
+			AND args_sha256 = ? AND case_evidence_sha256 = ? AND review_policy_id = ? AND status IN ('approved', 'rejected', 'stopped')
+			ORDER BY decided_at DESC, rowid DESC LIMIT 1`).get(workspaceId, caseId, argsSha256, evidenceSha256, reviewPolicyId) as {
 			id: string
 			decision: StoredReviewDecision["decision"]
 			reason: string | null
@@ -472,9 +571,13 @@ export class CorridorDatabase {
 
 	findStoredHumanOverride(caseId: string, note: string, workspaceId = DEFAULT_WORKSPACE_ID): boolean {
 		if (!note.trim()) return false
+		const evidenceSha256 = this.getCaseEvidenceSha256(caseId, workspaceId)
+		if (!evidenceSha256) return false
+		const reviewPolicyId = this.getCurrentReviewPolicy(workspaceId).id
 		const row = this.db.prepare(`SELECT 1 AS allowed FROM review_approvals WHERE workspace_id = ? AND case_id = ?
-			AND status = 'rejected' AND decision = 'reject' AND reason = ? ORDER BY decided_at DESC, rowid DESC LIMIT 1`)
-			.get(workspaceId, caseId, note) as { allowed: number } | undefined
+			AND case_evidence_sha256 = ? AND review_policy_id = ? AND status = 'rejected' AND decision = 'reject' AND reason = ?
+			ORDER BY decided_at DESC, rowid DESC LIMIT 1`)
+			.get(workspaceId, caseId, evidenceSha256, reviewPolicyId, note) as { allowed: number } | undefined
 		return Boolean(row)
 	}
 

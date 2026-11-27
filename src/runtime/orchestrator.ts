@@ -12,6 +12,7 @@ import { createTrajectoryObserver } from "./agents/trajectory-observer"
 import { CorridorState, initializeRuntime, join, publishCorridorEvent } from "./corridor-runtime"
 import { startBackgroundSyncWorker } from "./workers/sync-worker"
 import { runWithDurableCaseRetries } from "./workers/durable-case-queue"
+import { resolveInvalidatedPendingApprovals } from "./workers/review-approval-expiry"
 
 export interface CorridorOrchestrator {
 	state: CorridorState
@@ -32,6 +33,7 @@ function startCaseQueueWorker(orchestrator: CorridorOrchestrator): void {
 	if (globalStore.__corridorCaseQueueWorkerStarted) return
 	globalStore.__corridorCaseQueueWorkerStarted = true
 	const timer = setInterval(() => {
+		resolveInvalidatedPendingApprovals({ db: getCorridorDb(), pendingApprovals: orchestrator.state.pendingApprovals })
 		if (orchestrator.router.getPublicStatus().mode === "unconfigured") {
 			orchestrator.state.queueStats.waiting = getCorridorDb().countQueuedCases()
 			return

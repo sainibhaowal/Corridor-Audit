@@ -48,6 +48,12 @@ export async function POST(
 		if (approvalId.status === "same_reviewer") {
 			return NextResponse.json({ error: "A different authenticated team member must approve a case they did not submit." }, { status: 403 })
 		}
+		if (approvalId.status === "expired") {
+			return NextResponse.json({ error: "This review request expired. Re-run the audit to create a current approval." }, { status: 410 })
+		}
+		if (approvalId.status === "stale") {
+			return NextResponse.json({ error: "Case evidence changed after this approval was requested. Re-run the audit for a current review." }, { status: 409 })
+		}
 		if (approvalId.status === "not_found") {
 			return NextResponse.json({ error: `No pending durable breakpoint for ${caseId}` }, { status: 404 })
 		}

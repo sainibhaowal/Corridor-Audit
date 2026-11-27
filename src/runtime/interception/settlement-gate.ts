@@ -188,13 +188,16 @@ export class SettlementGateInterceptionHandler implements InterceptionHandler {
 
 		if (decision.decision === "stop") {
 			state.abortedCases.add(caseId)
+			const invalidatedReview = decision.reason?.startsWith("Review request expired or the case evidence or policy changed.") ?? false
 			const abortedVerdict: AuditVerdict = {
 				caseId,
 				invoiceId: terms?.invoiceId ?? caseId,
 				wireId: c?.wire.wireId ?? caseId,
 				provenance: BUILD_PROVENANCE,
-				status: "ABORTED_BY_OPERATOR",
-				plainEnglishSummary: `Operator stopped ${caseId} cleanly at Mozaik breakpoint before finalizing action.`,
+				status: invalidatedReview ? "REVIEW_REQUEST_INVALIDATED" : "ABORTED_BY_OPERATOR",
+				plainEnglishSummary: invalidatedReview
+					? `Finalization stopped for ${caseId} because the review request expired or the case evidence or policy changed.`
+					: `Operator stopped ${caseId} cleanly at Mozaik breakpoint before finalizing action.`,
 				numbers: {
 					invoicedMinor: terms?.expectedGrossMinor ?? 0,
 					invoicedCurrency: terms?.expectedCurrency ?? currency,
