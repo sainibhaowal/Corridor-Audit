@@ -1,5 +1,5 @@
 ﻿<p align="center">
-  <img src="./public/banner.svg" alt="CorridorAudit â€” Cross-Border Settlement &amp; Hidden-Fee Forensics" width="100%" />
+  <img src="./public/banner.svg" alt="CorridorAudit — Cross-Border Settlement &amp; Hidden-Fee Forensics" width="100%" />
 </p>
 
 <p align="center">
@@ -7,9 +7,9 @@
 </p>
 
 <p align="center">
-  <a href="https://build.jigjoy.ai/">JigJoy Black Friday AI Hackathon</a> Â·
-  Built on <code>@mozaik-ai/core@6.0.0</code> Â·
-  Integer-Cents Math Â·
+  <a href="https://build.jigjoy.ai/">JigJoy Black Friday AI Hackathon</a> ·
+  Built on <code>@mozaik-ai/core@6.0.0</code> ·
+  Integer-Cents Math ·
   ECB Mid-Market Verification
 </p>
 
@@ -27,12 +27,12 @@ Read the complete judge-ready technical & product Case Study in **[`docs/Case St
 | Case Study Module | What It Covers |
 | :--- | :--- |
 | **[Case Study Home](./docs/Case%20Study/README.md)** | Executive summary, navigation tiles & full blueprint |
-| **[01 Â· Problem Statement](./docs/Case%20Study/01-problem-statement.md)** | Why cross-border payouts leak 3%â€“7% across B2C & B2B |
-| **[02 Â· Data Ingestion & Raw Vault](./docs/Case%20Study/02-data-ingestion-and-raw-vault.md)** | 5 live channels, 12 vendor platforms, AES-256 vault & `raw_ingestions` |
-| **[03 Â· System Architecture & Pipeline](./docs/Case%20Study/03-system-architecture-and-pipeline.md)** | Full Input â†’ Vault â†’ Mozaik â†’ Gate â†’ Output blueprint & sequence diagram |
-| **[04 Â· Mozaik 4+1 Agent System](./docs/Case%20Study/04-mozaik-4-plus-1-agents.md)** | 4+1 concurrent agents, `CorridorState` slots, `DynamicEndpointRouter` & breakpoints |
-| **[05 Â· Financial Math & Algorithms](./docs/Case%20Study/05-algorithms-and-financial-math.md)** | Integer minor-unit math, Cent-Conservation Equation, FX bps & Mod-97 |
-| **[06 Â· Outputs, Disputes & ROI](./docs/Case%20Study/06-outputs-disputes-and-roi.md)** | Worked `â‚¬5,000` EURâ†’USD example, dispute letters & B2C/B2B ROI |
+| **[01 · Problem Statement](./docs/Case%20Study/01-problem-statement.md)** | Why cross-border payouts leak 3%–7% across B2C & B2B |
+| **[02 · Data Ingestion & Raw Vault](./docs/Case%20Study/02-data-ingestion-and-raw-vault.md)** | 5 live channels, 12 vendor platforms, AES-256 vault & `raw_ingestions` |
+| **[03 · System Architecture & Pipeline](./docs/Case%20Study/03-system-architecture-and-pipeline.md)** | Full Input → Vault → Mozaik → Gate → Output blueprint & sequence diagram |
+| **[04 · Mozaik 4+1 Agent System](./docs/Case%20Study/04-mozaik-4-plus-1-agents.md)** | 4+1 concurrent agents, `CorridorState` slots, `DynamicEndpointRouter` & breakpoints |
+| **[05 · Financial Math & Algorithms](./docs/Case%20Study/05-algorithms-and-financial-math.md)** | Integer minor-unit math, Cent-Conservation Equation, FX bps & Mod-97 |
+| **[06 · Outputs, Disputes & ROI](./docs/Case%20Study/06-outputs-disputes-and-roi.md)** | Worked `€5,000` EUR→USD example, dispute letters & B2C/B2B ROI |
 | **[07 · Security, Hashing & Data Protection](./docs/Case%20Study/07-security-hashing-and-data-protection.md)** | AES-256-GCM vault, HMAC-SHA256 webhooks, SHA-256 fingerprints & zero-leak policy |
 
 ![CorridorAudit Production Architecture Blueprint](./docs/Case%20Study/assets/architecture-blueprint.svg)
@@ -116,11 +116,11 @@ npm run typecheck  # Runs TypeScript compiler check
 ---
 
 ## Data Sources & Verification
-- **Bundled Synthetic Scenarios (`data/`):** 6 realistic multi-corridor cases (clean match, `:71A:OUR` fee violation + hidden 4.50% FX spread, invalid IBAN repair fee + unexplained `â‚¬120.00` short-pay, orphaned stripped-`:70:` wire, duplicate wire anomaly, and Upwork platform withdrawal with hidden 3.60% FX markup).
+- **Bundled Synthetic Scenarios (`data/`):** 6 realistic multi-corridor cases (clean match, `:71A:OUR` fee violation + hidden 4.50% FX spread, invalid IBAN repair fee + unexplained `€120.00` short-pay, orphaned stripped-`:70:` wire, duplicate wire anomaly, and Upwork platform withdrawal with hidden 3.60% FX markup).
 - **Public FX Benchmark:** Live [Frankfurter ECB API](https://api.frankfurter.app) (`0` API key required) with automatic fallback to `data/fallback-rates.json`.
 - **Zero LLM Arithmetic:** All money calculations run strictly in integer minor units (`src/core/money.ts`).
 
 ---
 
 ## License
-MIT â€” see [LICENSE](./LICENSE).
+MIT — see [LICENSE](./LICENSE).
