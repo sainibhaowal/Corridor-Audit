@@ -50,9 +50,10 @@ export function InboundSourcesView({ onIngested }: InboundSourcesViewProps) {
 	}
 
 	const handleFile = async (file: File) => {
-		if (file.name.toLowerCase().endsWith(".pdf")) {
+		const lower = file.name.toLowerCase()
+		if (lower.endsWith(".pdf") || /\.(png|jpe?g|webp)$/.test(lower)) {
 			const buf = await file.arrayBuffer()
-			await uploadPayload({ filename: file.name, base64: arrayBufferToBase64(buf), format: "pdf" })
+			await uploadPayload({ filename: file.name, base64: arrayBufferToBase64(buf), format: lower.endsWith(".pdf") ? "pdf" : "image" })
 		} else {
 			const content = await file.text()
 			await uploadPayload({ filename: file.name, content, format: "auto" })
@@ -107,7 +108,7 @@ export function InboundSourcesView({ onIngested }: InboundSourcesViewProps) {
 						<input
 							ref={fileInputRef}
 							type="file"
-							accept=".csv,.txt,.xml,.json,.pdf"
+							accept=".csv,.txt,.xml,.json,.pdf,.png,.jpg,.jpeg,.webp"
 							className="hidden"
 							onChange={(e) => {
 								const file = e.target.files?.[0]

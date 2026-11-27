@@ -8,6 +8,7 @@ import { readRequestTextLimited, RequestBodyTooLargeError } from "@/core/securit
 import { authorizeCorridorRequest } from "@/core/security/authorization"
 import { authEnabled, requestCorridorSession } from "@/core/security/auth"
 import { MalwareDetectedError, MalwareScannerUnavailableError, MalwareScanLimitError, scanFileBytes } from "@/core/security/malware-scan"
+import { detectImageMimeType, extractTextWithOcrFallback, isImageFilename } from "@/core/parsers/ocr-extractor"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 
 export const runtime = "nodejs"
@@ -18,7 +19,7 @@ const UploadPayloadSchema = z
 		filename: z.string().trim().min(1).max(255).optional(),
 		content: z.string().max(14 * 1024 * 1024).optional(),
 		base64: z.string().max(14 * 1024 * 1024).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/).optional(),
-		format: z.enum(["auto", "json", "mt103", "csv", "xml", "pdf", "text"]).optional(),
+		format: z.enum(["auto", "json", "mt103", "csv", "xml", "pdf", "text", "image"]).optional(),
 		force: z.boolean().optional(),
 	})
 	.strict()
@@ -41,11 +42,12 @@ export async function POST(request: Request) {
 		const body: UploadPayload = parsedBody.data
 		const filename = body.filename || (body.format ? `upload.${body.format}` : "manual-paste.txt")
 		const isPdfUpload = body.format === "pdf" || filename.toLowerCase().endsWith(".pdf")
-		if (body.base64 && !isPdfUpload) {
-			return NextResponse.json({ error: "Base64 file uploads are supported only for PDF documents." }, { status: 400 })
+		const isImageUpload = body.format === "image" || isImageFilename(filename)
+		if (body.base64 && !isPdfUpload && !isImageUpload) {
+			return NextResponse.json({ error: "Base64 file uploads are supported only for PDF documents and receipt images." }, { status: 400 })
 		}
-		if (isPdfUpload && !body.base64) {
-			return NextResponse.json({ error: "PDF uploads must be provided as a base64 encoded file." }, { status: 400 })
+		if ((isPdfUpload || isImageUpload) && !body.base64) {
+			return NextResponse.json({ error: "PDF and image uploads must be provided as a base64 encoded file." }, { status: 400 })
 		}
 		if (body.base64 && Buffer.from(body.base64, "base64").byteLength > 10 * 1024 * 1024) {
 			return NextResponse.json({ error: "Decoded file exceeds the 10 MiB upload limit." }, { status: 413 })
@@ -87,12 +89,26 @@ export async function POST(request: Request) {
 		}
 
 		const orchestrator = initCorridorOrchestrator()
-		const cases = normalizeInboundPayloadToCases(body, {
-			nextCaseId: (prefix) => {
-				const [seq] = db.allocateCaseNumbers(1, DEFAULT_WORKSPACE_ID)
-				return `${prefix}-${String(seq).padStart(4, "0")}`
-			},
-		})
+		const nextCaseId = (prefix: string) => {
+			const [seq] = db.allocateCaseNumbers(1, DEFAULT_WORKSPACE_ID)
+			return `${prefix}-${String(seq).padStart(4, "0")}`
+		}
+		let cases
+		if (isImageUpload && body.base64) {
+			const imageBuf = Buffer.from(body.base64, "base64")
+			const mimeType = detectImageMimeType(filename, imageBuf)
+			const ocr = await extractTextWithOcrFallback({
+				buffer: imageBuf,
+				mimeType,
+				providerConfig: orchestrator.router.getConfig(),
+			})
+			cases = normalizeInboundPayloadToCases(
+				{ filename, content: ocr.text, format: "text" },
+				{ nextCaseId },
+			)
+		} else {
+			cases = normalizeInboundPayloadToCases(body, { nextCaseId })
+		}
 		db.transaction(() => {
 			for (const settlementCase of cases) db.saveCase(settlementCase, DEFAULT_WORKSPACE_ID, session?.sub)
 			if (ingestionId) {

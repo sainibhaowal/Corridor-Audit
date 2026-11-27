@@ -198,14 +198,15 @@ export function CorridorWorkspace() {
 			setQuickUploadStage("uploading")
 			setQuickUploadLabel(`Uploading ${file.name}...`)
 			let payload: Record<string, unknown>
-			if (file.name.toLowerCase().endsWith(".pdf")) {
+			const lowerName = file.name.toLowerCase()
+			if (lowerName.endsWith(".pdf") || /\.(png|jpe?g|webp)$/.test(lowerName)) {
 				const buf = await file.arrayBuffer()
 				const bytes = new Uint8Array(buf)
 				let binary = ""
 				for (let i = 0; i < bytes.length; i += 0x8000) {
 					binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
 				}
-				payload = { filename: file.name, base64: btoa(binary), format: "pdf" }
+				payload = { filename: file.name, base64: btoa(binary), format: lowerName.endsWith(".pdf") ? "pdf" : "image" }
 			} else {
 				payload = { filename: file.name, content: await file.text(), format: "auto" }
 			}
@@ -897,7 +898,7 @@ export function CorridorWorkspace() {
 						<input
 							ref={quickFileInputRef}
 							type="file"
-							accept=".csv,.txt,.xml,.json,.pdf"
+							accept=".csv,.txt,.xml,.json,.pdf,.png,.jpg,.jpeg,.webp"
 							className="hidden"
 							onChange={(e) => {
 								const file = e.target.files?.[0]

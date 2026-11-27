@@ -9,7 +9,7 @@ export interface UploadPayload {
 	filename?: string
 	content?: string
 	base64?: string
-	format?: "auto" | "json" | "mt103" | "csv" | "xml" | "pdf" | "text"
+	format?: "auto" | "json" | "mt103" | "csv" | "xml" | "pdf" | "text" | "image"
 	force?: boolean
 }
 
