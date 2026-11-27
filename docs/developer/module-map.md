@@ -10,6 +10,7 @@
 | `src/core/parsers/camt053-parser.ts` | ISO 20022 `camt.053` / `pacs.008` XML parser extracting settlement amounts, charges, and repair fees. |
 | `src/core/parsers/csv-parser.ts` | Upwork, Stripe, Wise, Payoneer, and bank/invoice CSV parsers. |
 | `src/core/parsers/pdf-parser.ts` | Extracts text from text-based PDFs and rejects mislabeled or image-only non-extractable PDFs. |
+| `src/core/parsers/ocr-extractor.ts` | Hybrid OCR for receipt images (`.png`, `.jpg`, `.jpeg`, `.webp`): uses configured Vision LLM when capable and automatically falls back to local `tesseract.js` OCR for text-only models or Vision failures. |
 | `src/core/ingest/normalize-upload.ts` | Unified format auto-detection (`json`, `xml`, `mt103`, `csv`, `pdf`, `text`) and `markSuppliedWireEvidence` (`observed` vs `incomplete` vs `estimated`). |
 | `src/core/ingest/case-schema.ts` & `limits.ts` | Zod validation and bounded case/wire limits for JSON, CSV, MT103, XML, and email attachment batches. |
 | `src/core/reports/export-formats.ts` | Multi-format exporters: `buildVerdictTxt`, `buildVerdictsCsv` (with formula-injection protection), and `buildVerdictPdf` (zero-dependency PDF 1.4). |
@@ -49,4 +50,4 @@
 ---
 
 ## 4. Verification Suite (`tests/`)
-All **96 tests** run via `npm test` (`node --import tsx --test tests/*.test.ts`), covering auth/RBAC, money math, parsers (`mt103`, `camt053`, `csv`, `pdf`), vault encryption, OAuth PKCE, SSRF DNS pinning, provider sync cursors, ClamAV scanning, durable retries, persistent case sequences, encrypted agent checkpoints, SHA-256 upload deduplication, audit log hash-chaining, and report exports (`.txt`, `.csv`, `.pdf`, `.json`).
+All **98 tests** run via `npm test` (`node --import tsx --test tests/*.test.ts`), covering auth/RBAC, money math, parsers (`mt103`, `camt053`, `csv`, `pdf`, hybrid Vision + `tesseract.js` OCR), vault encryption, OAuth PKCE, SSRF DNS pinning, provider sync cursors, ClamAV scanning, durable retries, persistent case sequences, encrypted agent checkpoints, SHA-256 upload deduplication, audit log hash-chaining, and report exports (`.txt`, `.csv`, `.pdf`, `.json`).

@@ -46,7 +46,7 @@ Read the complete technical & product Case Study in **[`docs/Case Study/`](./doc
 
 Global SMBs, remote freelancers (`Upwork` / `Wise` / `Payoneer`), and fintech merchants (`Stripe` / checkout) can incur cross-border payout costs from FX spreads, correspondent fees, repair fees, duplicate wires, and stripped remittance references. The amounts and causes vary by provider, corridor, contract, and source records; this application does not establish market-wide loss rates.
 
-**CorridorAudit** ingests supplied invoices and bank/platform payout files (`.csv`, `.txt` SWIFT MT103, `.xml` ISO 20022 `camt.053`, `.pdf`, `.json`, raw paste, webhooks, and `./data/inbox/` hot folder) and runs **three concurrent Mozaik specialist agents**, a conditional fourth anomaly agent, and a follow-up auditor (`@mozaik-ai/core@6.0.0`) with deterministic TypeScript calculations to:
+**CorridorAudit** ingests supplied invoices and bank/platform payout files (`.csv`, `.txt` SWIFT MT103, `.xml` ISO 20022 `camt.053`, `.pdf`, `.json`, receipt images `.png`/`.jpg`/`.webp` via Vision LLM + local `tesseract.js` OCR fallback, raw paste, webhooks, and `./data/inbox/` hot folder) and runs **three concurrent Mozaik specialist agents**, a conditional fourth anomaly agent, and a follow-up auditor (`@mozaik-ai/core@6.0.0`) with deterministic TypeScript calculations to:
 
 1. Estimate **FX spread** against the European Central Bank (ECB) reference rate for the settlement value date when available, with bundled fallback rates where available.
 2. Catch **unexpected fee deductions** (e.g., SWIFT `:71G:` receiver fees deducted when contract/wire specifies `:71A:OUR`).

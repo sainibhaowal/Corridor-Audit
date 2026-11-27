@@ -15,7 +15,7 @@ Open `http://127.0.0.1:3000` and open **System Settings** (bottom-left) to paste
 ---
 
 ## 2. Trigger an Audit via Sidebar Drag-and-Drop (or Click)
-1. Under **Autonomous Triggers** in the left sidebar, **drag and drop** any `.csv`, `.txt` (SWIFT MT103), `.xml` (`camt.053`), `.json`, or text-based `.pdf` directly onto **`Upload source`** (or click **`Upload source`** to pick a file).
+1. Under **Autonomous Triggers** in the left sidebar, **drag and drop** any `.csv`, `.txt` (SWIFT MT103), `.xml` (`camt.053`), `.json`, text-based `.pdf`, or receipt image (`.png`, `.jpg`, `.jpeg`, `.webp`) directly onto **`Upload source`** (or click **`Upload source`** to pick a file). Images automatically use your Vision LLM or fall back to local `tesseract.js` OCR.
 2. Watch the **inline progress indicator** right below `Upload source`:
    - `Uploading <filename>...` → `Processing & indexing to Raw Vault...` → `Ingested (N) · Live agents running`
 3. A **top toast** confirms Raw Data Vault storage and switches you automatically to **Live Agent Stream**.
