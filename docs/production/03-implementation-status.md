@@ -317,3 +317,10 @@ Update this section per milestone with the exact command, result, environment, a
 - Audit event insertion now uses a SQLite savepoint when called inside a transaction, retaining atomicity while keeping standalone event appends serialized. Review reasons and provider error text are deliberately excluded from event metadata. Tests verify reviewer attribution, reason exclusion, sync metadata, and chain validity.
 - Queue transitions, approval requests, rejected or failed intake, and sync start are still not fully covered. Existing workspace and integration setting actions append after their primary mutation, so those pairs are not atomic. The local hash chain remains rewriteable by a privileged SQLite file operator.
 - `npm run typecheck`: passed. `npm test`: 63 passed, 0 failed. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 case queue audit coverage
+
+- Added hash-linked events for queue claim, retry scheduling, dead-letter transition, startup recovery, and operator replay. Each event is written in the same SQLite transaction as the queue status change. Metadata includes case ID, attempt number, retry time, and a fixed reason code. It excludes raw error text and case financial content.
+- A queue integration test confirms that three attempts produce claim and retry history, final verdict is recorded, dead-letter replay is auditable, and the resulting chain verifies.
+- Approval request creation, rejected or failed intake, and sync start are still not logged. Existing workspace and integration setting records remain separate from the setting mutation transaction. Local SQLite integrity limitations remain unchanged.
+- `npm run typecheck`: passed. Integration test file: 25 passed, 0 failed. Full suite: 63 passed, 0 failed. Production build: passed. `git diff --check`: passed. Verification ran locally on Windows.

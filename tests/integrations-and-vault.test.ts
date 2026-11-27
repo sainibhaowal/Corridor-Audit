@@ -395,6 +395,9 @@ test("durable case retries use bounded backoff and expose exhausted jobs for ope
 	assert.deepEqual(retryDelays, [1000, 5000])
 	assert.equal(db.getCaseAttemptCount(settlementCase.caseId), 3)
 	assert.equal(db.listQueuedCases().length, 0)
+	assert.deepEqual(db.listWorkspaceAuditEvents(DEFAULT_WORKSPACE_ID, 50)
+		.filter((event) => event.targetId === settlementCase.caseId)
+		.map((event) => event.action).sort(), ["case.audit.complete", "case.queue.claim", "case.queue.claim", "case.queue.claim", "case.queue.retry", "case.queue.retry"].sort())
 
 	const deadLetterCase = { ...settlementCase, caseId: "CASE-DEAD-LETTER-01", title: "Exhausted retry test" }
 	db.saveCase(deadLetterCase)
@@ -407,8 +410,10 @@ test("durable case retries use bounded backoff and expose exhausted jobs for ope
 	assert.equal(db.listDeadLetterCases()[0]?.attemptCount, 3)
 	assert.match(db.listDeadLetterCases()[0]?.lastError || "", /permanent provider failure/)
 	assert.equal(db.retryDeadLetterCase(deadLetterCase.caseId)?.caseId, deadLetterCase.caseId)
+	assert.ok(db.listWorkspaceAuditEvents(DEFAULT_WORKSPACE_ID, 50).some((event) => event.action === "case.queue.replay" && event.targetId === deadLetterCase.caseId))
 	assert.equal(db.getCaseAttemptCount(deadLetterCase.caseId), 0)
 	assert.ok(db.listQueuedCases().some((item) => item.caseId === deadLetterCase.caseId))
+	assert.equal(db.verifyWorkspaceAuditChain(DEFAULT_WORKSPACE_ID).valid, true)
 	const timeoutCase = { ...settlementCase, caseId: "CASE-TIMEOUT-01", title: "Do not overlap a timed out agent run" }
 	db.saveCase(timeoutCase)
 	await assert.rejects(runWithDurableCaseRetries({

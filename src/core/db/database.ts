@@ -996,10 +996,18 @@ export class CorridorDatabase {
 
 	listQueuedCases(workspaceId = DEFAULT_WORKSPACE_ID, limit = 100): SettlementCase[] {
 		const now = new Date().toISOString()
-		this.db.prepare(`UPDATE cases SET status = 'dead_letter', last_error = COALESCE(last_error, 'Processing lease expired after the maximum attempt count.'),
+		this.db.exec("BEGIN IMMEDIATE")
+		try {
+			const expired = this.db.prepare(`UPDATE cases SET status = 'dead_letter', last_error = COALESCE(last_error, 'Processing lease expired after the maximum attempt count.'),
 			worker_id = NULL, lease_expires_at = NULL, updated_at = ?
-			WHERE workspace_id = ? AND status = 'running' AND lease_expires_at <= ? AND attempt_count >= ?`)
-			.run(now, workspaceId, now, MAX_CASE_ATTEMPTS)
+			WHERE workspace_id = ? AND status = 'running' AND lease_expires_at <= ? AND attempt_count >= ? RETURNING case_id, attempt_count`)
+			.all(now, workspaceId, now, MAX_CASE_ATTEMPTS) as Array<{ case_id: string; attempt_count: number }>
+			for (const row of expired) this.appendWorkspaceAuditEvent({ workspaceId, actorType: "system", action: "case.queue.dead_letter", targetType: "case", targetId: row.case_id, metadata: { attempt: row.attempt_count, reason: "lease_exhausted" } })
+			this.db.exec("COMMIT")
+		} catch (error) {
+			this.db.exec("ROLLBACK")
+			throw error
+		}
 		const rows = this.db
 			.prepare(`SELECT payload_json, payload_json_encrypted FROM cases WHERE workspace_id = ? AND
 				((status = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= ?)) OR
@@ -1012,13 +1020,21 @@ export class CorridorDatabase {
 	claimCase(caseId: string, workerId: string, leaseMs = 60_000, workspaceId = DEFAULT_WORKSPACE_ID): boolean {
 		const now = new Date()
 		const nowIso = now.toISOString()
-		const result = this.db.prepare(`UPDATE cases SET status = 'running', attempt_count = attempt_count + 1,
+		this.db.exec("BEGIN IMMEDIATE")
+		try {
+			const result = this.db.prepare(`UPDATE cases SET status = 'running', attempt_count = attempt_count + 1,
 			next_attempt_at = NULL, last_error = NULL, worker_id = ?, lease_expires_at = ?, updated_at = ?
 			WHERE case_id = ? AND workspace_id = ? AND attempt_count < ? AND
 			((status = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= ?)) OR
-			(status = 'running' AND lease_expires_at <= ?))`)
-			.run(workerId, new Date(now.getTime() + leaseMs).toISOString(), nowIso, caseId, workspaceId, MAX_CASE_ATTEMPTS, nowIso, nowIso)
-		return Number(result.changes) === 1
+			(status = 'running' AND lease_expires_at <= ?)) RETURNING attempt_count`)
+				.get(workerId, new Date(now.getTime() + leaseMs).toISOString(), nowIso, caseId, workspaceId, MAX_CASE_ATTEMPTS, nowIso, nowIso) as { attempt_count: number } | undefined
+			if (result) this.appendWorkspaceAuditEvent({ workspaceId, actorType: "system", actorId: workerId, action: "case.queue.claim", targetType: "case", targetId: caseId, metadata: { attempt: result.attempt_count } })
+			this.db.exec("COMMIT")
+			return Boolean(result)
+		} catch (error) {
+			this.db.exec("ROLLBACK")
+			throw error
+		}
 	}
 
 	renewCaseLease(caseId: string, workerId: string, leaseMs = 60_000, workspaceId = DEFAULT_WORKSPACE_ID): boolean {
@@ -1046,17 +1062,33 @@ export class CorridorDatabase {
 	}
 
 	markCaseRetry(caseId: string, error: string, retryAt: string, workspaceId = DEFAULT_WORKSPACE_ID, workerId?: string): void {
-		this.db.prepare(`UPDATE cases SET status = 'queued', last_error = ?, next_attempt_at = ?, worker_id = NULL,
+		this.db.exec("BEGIN IMMEDIATE")
+		try {
+			const updated = this.db.prepare(`UPDATE cases SET status = 'queued', last_error = ?, next_attempt_at = ?, worker_id = NULL,
 			lease_expires_at = NULL, updated_at = ? WHERE case_id = ? AND workspace_id = ? AND status = 'running'
-			AND (? IS NULL OR (worker_id = ? AND lease_expires_at > ?))`)
-			.run(error.slice(0, 2000), retryAt, new Date().toISOString(), caseId, workspaceId, workerId ?? null, workerId ?? null, new Date().toISOString())
+			AND (? IS NULL OR (worker_id = ? AND lease_expires_at > ?)) RETURNING attempt_count`)
+				.get(error.slice(0, 2000), retryAt, new Date().toISOString(), caseId, workspaceId, workerId ?? null, workerId ?? null, new Date().toISOString()) as { attempt_count: number } | undefined
+			if (updated) this.appendWorkspaceAuditEvent({ workspaceId, actorType: "system", actorId: workerId, action: "case.queue.retry", targetType: "case", targetId: caseId, metadata: { attempt: updated.attempt_count, retryAt } })
+			this.db.exec("COMMIT")
+		} catch (cause) {
+			this.db.exec("ROLLBACK")
+			throw cause
+		}
 	}
 
 	markCaseDeadLetter(caseId: string, error: string, workspaceId = DEFAULT_WORKSPACE_ID, workerId?: string): void {
-		this.db.prepare(`UPDATE cases SET status = 'dead_letter', last_error = ?, next_attempt_at = NULL, worker_id = NULL,
+		this.db.exec("BEGIN IMMEDIATE")
+		try {
+			const updated = this.db.prepare(`UPDATE cases SET status = 'dead_letter', last_error = ?, next_attempt_at = NULL, worker_id = NULL,
 			lease_expires_at = NULL, updated_at = ? WHERE case_id = ? AND workspace_id = ?
-			AND (? IS NULL OR (worker_id = ? AND lease_expires_at > ?))`)
-			.run(error.slice(0, 2000), new Date().toISOString(), caseId, workspaceId, workerId ?? null, workerId ?? null, new Date().toISOString())
+			AND (? IS NULL OR (worker_id = ? AND lease_expires_at > ?)) RETURNING attempt_count`)
+				.get(error.slice(0, 2000), new Date().toISOString(), caseId, workspaceId, workerId ?? null, workerId ?? null, new Date().toISOString()) as { attempt_count: number } | undefined
+			if (updated) this.appendWorkspaceAuditEvent({ workspaceId, actorType: "system", actorId: workerId, action: "case.queue.dead_letter", targetType: "case", targetId: caseId, metadata: { attempt: updated.attempt_count, reason: "processing_failed" } })
+			this.db.exec("COMMIT")
+		} catch (cause) {
+			this.db.exec("ROLLBACK")
+			throw cause
+		}
 	}
 
 	markCaseFailed(caseId: string, workspaceId = DEFAULT_WORKSPACE_ID): void {
@@ -1085,25 +1117,45 @@ export class CorridorDatabase {
 
 	retryDeadLetterCase(caseId: string, workspaceId = DEFAULT_WORKSPACE_ID): SettlementCase | null {
 		const now = new Date().toISOString()
-		const update = this.db.prepare(`UPDATE cases SET status = 'queued', attempt_count = 0, worker_id = NULL, lease_expires_at = NULL,
+		this.db.exec("BEGIN IMMEDIATE")
+		try {
+			const update = this.db.prepare(`UPDATE cases SET status = 'queued', attempt_count = 0, worker_id = NULL, lease_expires_at = NULL,
 			next_attempt_at = NULL, last_error = NULL, updated_at = ?
-			WHERE case_id = ? AND workspace_id = ? AND status = 'dead_letter'`).run(now, caseId, workspaceId)
-		if (Number(update.changes) !== 1) return null
-		const row = this.db.prepare("SELECT payload_json, payload_json_encrypted FROM cases WHERE case_id = ? AND workspace_id = ?")
-			.get(caseId, workspaceId) as { payload_json: string; payload_json_encrypted: number } | undefined
-		return row ? JSON.parse(row.payload_json_encrypted ? decryptSecret(row.payload_json) : row.payload_json) as SettlementCase : null
+			WHERE case_id = ? AND workspace_id = ? AND status = 'dead_letter' RETURNING attempt_count`).get(now, caseId, workspaceId) as { attempt_count: number } | undefined
+			if (!update) {
+				this.db.exec("COMMIT")
+				return null
+			}
+			const row = this.db.prepare("SELECT payload_json, payload_json_encrypted FROM cases WHERE case_id = ? AND workspace_id = ?")
+				.get(caseId, workspaceId) as { payload_json: string; payload_json_encrypted: number } | undefined
+			this.appendWorkspaceAuditEvent({ workspaceId, actorType: "local", action: "case.queue.replay", targetType: "case", targetId: caseId, metadata: { previousAttempts: update.attempt_count } })
+			this.db.exec("COMMIT")
+			return row ? JSON.parse(row.payload_json_encrypted ? decryptSecret(row.payload_json) : row.payload_json) as SettlementCase : null
+		} catch (error) {
+			this.db.exec("ROLLBACK")
+			throw error
+		}
 	}
 
 	requeueInterruptedCases(workspaceId = DEFAULT_WORKSPACE_ID): void {
 		const now = new Date().toISOString()
-		this.db.prepare(`UPDATE cases SET status = 'queued', next_attempt_at = NULL, worker_id = NULL, lease_expires_at = NULL,
+		this.db.exec("BEGIN IMMEDIATE")
+		try {
+			const queued = this.db.prepare(`UPDATE cases SET status = 'queued', next_attempt_at = NULL, worker_id = NULL, lease_expires_at = NULL,
 			last_error = 'Processing was interrupted by an application restart.', updated_at = ?
-			WHERE workspace_id = ? AND status = 'running' AND attempt_count < ?`)
-			.run(now, workspaceId, MAX_CASE_ATTEMPTS)
-		this.db.prepare(`UPDATE cases SET status = 'dead_letter', next_attempt_at = NULL, worker_id = NULL, lease_expires_at = NULL,
+			WHERE workspace_id = ? AND status = 'running' AND attempt_count < ? RETURNING case_id, attempt_count`)
+				.all(now, workspaceId, MAX_CASE_ATTEMPTS) as Array<{ case_id: string; attempt_count: number }>
+			for (const row of queued) this.appendWorkspaceAuditEvent({ workspaceId, actorType: "system", action: "case.queue.recovered", targetType: "case", targetId: row.case_id, metadata: { attempt: row.attempt_count } })
+			const dead = this.db.prepare(`UPDATE cases SET status = 'dead_letter', next_attempt_at = NULL, worker_id = NULL, lease_expires_at = NULL,
 			last_error = 'Processing was interrupted after the maximum attempt count.', updated_at = ?
-			WHERE workspace_id = ? AND status = 'running' AND attempt_count >= ?`)
-			.run(now, workspaceId, MAX_CASE_ATTEMPTS)
+			WHERE workspace_id = ? AND status = 'running' AND attempt_count >= ? RETURNING case_id, attempt_count`)
+				.all(now, workspaceId, MAX_CASE_ATTEMPTS) as Array<{ case_id: string; attempt_count: number }>
+			for (const row of dead) this.appendWorkspaceAuditEvent({ workspaceId, actorType: "system", action: "case.queue.dead_letter", targetType: "case", targetId: row.case_id, metadata: { attempt: row.attempt_count, reason: "restart_after_attempt_limit" } })
+			this.db.exec("COMMIT")
+		} catch (error) {
+			this.db.exec("ROLLBACK")
+			throw error
+		}
 	}
 
 	listPersistedVerdicts(workspaceId = DEFAULT_WORKSPACE_ID): AuditVerdict[] {
