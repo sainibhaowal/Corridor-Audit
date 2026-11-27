@@ -33,9 +33,9 @@ Implemented ingestion paths include:
 - Local `data/inbox` watcher: watches supported files in a directory. It is a hot-folder adapter, not an SFTP transport.
 - Integration sync route and in-process timer: connects catalog settings to connector polling. Stripe, Wise, QuickBooks Online, and Xero have provider-specific request/mapping code. Other catalog entries use a generic JSON endpoint or local-folder adapter, or are setup placeholders. Provider coverage, auth scope, pagination, field mappings, and refresh behavior are not production-complete.
 
-The `raw_ingestions` table stores the original content and a SHA-256 digest with metadata and parse status. The digest can detect content changes when compared with the stored value, but the record is not immutable and raw payload content is not encrypted. Integration credentials and webhook secrets use AES-256-GCM. The vault key is loaded from `CORRIDOR_VAULT_KEY` or a local key file; losing that key makes encrypted credentials unreadable.
+The `raw_ingestions` table stores the original content (encrypted at rest via AES-256-GCM alongside `cases`, `audit_verdicts`, and `review_approvals`) and a SHA-256 digest with metadata and parse status. The digest can detect content changes when compared with the stored value, though SQLite rows are not immutable WORM storage. Integration credentials and webhook secrets also use AES-256-GCM; the vault key is loaded from `CORRIDOR_VAULT_KEY` (required as 64 hex chars in production) or a local key file in dev.
 
-The default workspace is `ws-default`. The current app does not authenticate users or enforce the catalog’s team roles as authorization. It is intended for local synthetic/public-data evaluation, not internet-facing or multi-tenant deployment.
+The default workspace is `ws-default`. Role-based access control (`viewer < analyst < controller < owner`) and Cognito/session authentication (`CORRIDOR_AUTH_MODE=cognito` vs. `local` loopback evaluation) are implemented in `src/core/security/auth.ts`, `authorization.ts`, and `src/middleware.ts`; see [`docs/developer/env-and-security.md`](./developer/env-and-security.md) and [`docs/production/01-current-state.md`](./production/01-current-state.md) for deployment limits.
 
 ## Agents and tools
 
@@ -74,10 +74,10 @@ Frankfurter is queried for ECB reference rates, with bundled fallback values whe
 
 ## API surface
 
-Implemented App Router endpoints include `/api/health`, `/api/events` (SSE), `/api/history`, `/api/audit/upload`, `/api/webhooks/inbound`, `/api/webhooks/email`, `/api/ingestions`, `/api/integrations`, `/api/settings/*`, `/api/breakpoints/[caseId]/resolve`, `/api/report/[caseId]`, and `/api/terminal`. There is no `/api/scenarios` route.
+Implemented App Router endpoints (29 route files) include `/api/health`, `/api/events` (SSE), `/api/history`, `/api/audit/upload`, `/api/webhooks/inbound`, `/api/webhooks/email`, `/api/ingestions/*`, `/api/integrations/*`, `/api/settings/*`, `/api/breakpoints/[caseId]/resolve`, `/api/report` & `/api/report/[caseId]` (`.pdf`, `.csv`, `.txt`, `.json` + `?preview=1`), `/api/queue/dead-letters*`, `/api/audit-log`, `/api/auth/*`, `/api/runtime/status`, and `/api/terminal`. See the full endpoint contract in [`docs/developer/api-reference.md`](./developer/api-reference.md).
 
 The terminal is an application command console with an allowlist; it does not execute arbitrary operating-system shell commands.
 
 ## Local development
 
-Node.js 22.5 or later is required for the built-in `node:sqlite` module. `npm run dev` starts the development server; `npm run build` and `npm start` run the production bundle. Both bind to `127.0.0.1:3000` by default. See the [root README](../README.md) for local setup and review limitations.
+Node.js 22.5 or later is required for the built-in `node:sqlite` module. `npm run dev` starts the development server; `npm run build` and `npm start` run the production bundle. Both bind to `127.0.0.1:3000` by default. See the [root README](../README.md) and [Developer Engineering Docs](./developer/README.md) for full setup and module details.
