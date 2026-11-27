@@ -411,3 +411,9 @@ Update this section per milestone with the exact command, result, environment, a
 - Local development continues to allow configured public HTTPS endpoints without a production allowlist. Private and reserved address checks still apply, and requests still reject redirects.
 - DNS-to-socket pinning and production network egress rules remain necessary to close DNS rebinding risk. This local verification does not contact a provider or configure an allowlist.
 - Verification in the local Windows environment: `npm run typecheck`, `npm test` (72 passed, 0 failed), and `npm run build` passed. No provider or cloud service was contacted.
+
+### 2026-11-27 local API cross-site mutation guard
+
+- The shared API authorization helper now checks mutation request `Origin` and Fetch Metadata before the local-auth bypass. Cross-origin and `Sec-Fetch-Site: cross-site` browser requests are rejected with `403`; same-origin local calls and requests without browser-origin metadata continue to work.
+- Signed webhook routes remain separate external entry points and keep their signature and event-receipt checks.
+- Verification in the local Windows environment: `npm run typecheck`, `npm test` (73 passed, 0 failed), and `npm run build` passed. This guard does not replace authentication, authorization, or host validation.

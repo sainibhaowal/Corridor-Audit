@@ -201,6 +201,31 @@ test("runtime status requires an authenticated viewer when auth is enabled", asy
 	}
 })
 
+test("API mutations reject cross-site browser requests even in local mode", async () => {
+	const previousMode = process.env.CORRIDOR_AUTH_MODE
+	process.env.CORRIDOR_AUTH_MODE = "local"
+	try {
+		const wrongOrigin = await authorizeCorridorRequest(new Request("http://127.0.0.1:3000/api/settings/workspace", {
+			method: "POST",
+			headers: { origin: "https://untrusted.example" },
+		}), "viewer")
+		assert.equal(wrongOrigin?.status, 403)
+		const fetchMetadataOnly = await authorizeCorridorRequest(new Request("http://127.0.0.1:3000/api/settings/workspace", {
+			method: "POST",
+			headers: { "sec-fetch-site": "cross-site" },
+		}), "viewer")
+		assert.equal(fetchMetadataOnly?.status, 403)
+		const sameOrigin = await authorizeCorridorRequest(new Request("http://127.0.0.1:3000/api/settings/workspace", {
+			method: "POST",
+			headers: { origin: "http://127.0.0.1:3000", "sec-fetch-site": "same-origin" },
+		}), "viewer")
+		assert.equal(sameOrigin, null)
+	} finally {
+		if (previousMode === undefined) delete process.env.CORRIDOR_AUTH_MODE
+		else process.env.CORRIDOR_AUTH_MODE = previousMode
+	}
+})
+
 test("SQLite API rate limits count requests atomically and reset at the next fixed window", () => {
 	const db = new CorridorDatabase(":memory:")
 	try {

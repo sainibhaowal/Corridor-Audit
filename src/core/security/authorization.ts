@@ -20,6 +20,15 @@ export async function authorizeCorridorRequest(
 	request: Request,
 	minimumRole: CorridorRole = "viewer",
 ): Promise<NextResponse | null> {
+	const isMutation = request.method !== "GET" && request.method !== "HEAD" && request.method !== "OPTIONS"
+	if (isMutation) {
+		const origin = request.headers.get("origin")
+		const fetchSite = request.headers.get("sec-fetch-site")
+		const requestOrigin = new URL(request.url).origin
+		if ((origin && origin !== requestOrigin) || fetchSite === "cross-site") {
+			return NextResponse.json({ error: "Cross-origin request rejected." }, { status: 403 })
+		}
+	}
 	if (!authEnabled()) return null
 	let session
 	try {
@@ -33,11 +42,6 @@ export async function authorizeCorridorRequest(
 	const member = db.getTeamMemberByIdentitySub(DEFAULT_WORKSPACE_ID, session.sub)
 	if (!member || member.role !== session.role || !db.isAuthSessionActive(session.sessionId, session.sub)) {
 		return NextResponse.json({ error: "Workspace membership changed. Sign in again." }, { status: 401 })
-	}
-	const origin = request.headers.get("origin")
-	const requestOrigin = new URL(request.url).origin
-	if (request.method !== "GET" && request.method !== "HEAD" && origin && origin !== requestOrigin) {
-		return NextResponse.json({ error: "Cross-origin request rejected." }, { status: 403 })
 	}
 	const rank: Record<CorridorRole, number> = { viewer: 0, analyst: 1, controller: 2, owner: 3 }
 	if (rank[session.role] < rank[minimumRole]) {
