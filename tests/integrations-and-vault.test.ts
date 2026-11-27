@@ -194,6 +194,51 @@ test("local case queue uses exclusive claims and recovers expired work", async (
 	db.close()
 })
 
+test("case IDs and raw-ingestion lookups cannot cross workspace boundaries", () => {
+	const db = new CorridorDatabase(":memory:")
+	const internal = db as unknown as { db: DatabaseSync }
+	const now = new Date().toISOString()
+	internal.db.prepare(`INSERT INTO workspaces
+		(id, name, account_mode, default_currency, tax_country, withholding_tax_bps, variance_threshold_minor,
+		inbound_email_address, webhook_signing_secret_enc, require_webhook_signature, created_at, updated_at)
+		VALUES (?, ?, 'b2b', 'USD', 'US', 0, 500, ?, ?, 0, ?, ?)`)
+		.run("ws-isolation-test", "Isolation Test", "test@inbound.local", encryptSecret("test-secret"), now, now)
+	const settlementCase = {
+		caseId: "CASE-TENANT-BOUNDARY-01",
+		title: "Workspace A case",
+		channelLabel: "test",
+		settlementEvidence: "incomplete" as const,
+		wire: {
+			wireId: "WIRE-TENANT-BOUNDARY-01",
+			format: "bank_csv" as const,
+			valueDate: "2026-11-27",
+			settledAmount: { amountMinor: 1000, currency: "USD" },
+			senderCharges: [],
+			receiverCharges: [],
+		},
+		createdAt: now,
+	}
+	db.saveCase(settlementCase)
+	assert.throws(() => db.saveCase({ ...settlementCase, title: "Workspace B overwrite" }, "ws-isolation-test"), /already owned by another workspace/)
+	assert.equal(db.listPersistedCases(DEFAULT_WORKSPACE_ID)[0]?.title, "Workspace A case")
+	const foreignVerdict = { caseId: settlementCase.caseId, completedAt: now } as Parameters<CorridorDatabase["saveAuditVerdict"]>[0]
+	assert.throws(() => db.saveAuditVerdict(foreignVerdict, "ws-isolation-test"), /does not belong to workspace/)
+
+	const ingestion = db.saveRawIngestion({
+		workspaceId: "ws-isolation-test",
+		sourceChannel: "manual_upload",
+		sourceProvider: "test",
+		filename: "private.json",
+		format: "json",
+		rawContent: JSON.stringify({ private: true }),
+		parseStatus: "failed",
+	})
+	assert.equal(db.getRawIngestion(ingestion.id, true), null)
+	db.updateRawIngestionOutcome({ id: ingestion.id, parseStatus: "parsed" })
+	assert.equal(db.getRawIngestion(ingestion.id, true, "ws-isolation-test")?.parseStatus, "failed")
+	db.close()
+})
+
 test("durable case retries use bounded backoff and expose exhausted jobs for operator replay", async () => {
 	const db = new CorridorDatabase(":memory:")
 	const settlementCase = {

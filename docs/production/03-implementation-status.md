@@ -8,7 +8,7 @@ This is the live delivery record for production-readiness engineering. A row is 
 | --- | --- | --- |
 | 0 | Baseline and code-backed production record | Complete |
 | 1 | Canonical evidence completeness, provider mapping correctness, upload validation, and accurate states | In progress |
-| 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | Cognito role gates implemented but not configured; durable provider OAuth state and Xero PKCE implemented; workspace isolation, email invitations, and SSE revocation remain |
+| 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | Cognito role gates implemented but not configured; storage-level case and raw-record ownership guards added; route-level workspace context, email invitations, and SSE revocation remain |
 | 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Versioned tax and review policies plus durable approval records implemented locally; approval UI and production workflow controls remain |
 | 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Local SQLite retries, atomic cross-process leases, expired-lease recovery, dead-letter listing, and controller replay implemented; transactional outbox, independent worker deployment, distributed queue, and production database remain open |
 | 5 | Raw evidence object storage, encryption/key lifecycle, retention, backup, restore, and deletion | Local SQLite encryption now covers raw payloads, normalized cases, verdicts, pending approval payloads, and integration credentials; managed storage, KMS, key rotation, retention, backups, restore, and deletion remain open |
@@ -148,6 +148,13 @@ Update this section per milestone with the exact command, result, environment, a
 - Production encryption no longer creates or reads the local development key file when `CORRIDOR_VAULT_KEY` is absent. Secret encryption and decryption fail with a configuration error until an explicit key is supplied. Local development retains the existing persistent key-file behavior.
 - This guards against creating a fresh, unrelated key after a production restart. `CORRIDOR_VAULT_KEY` is still a manually supplied static key, not AWS KMS envelope encryption or automated rotation. Production deployment should provide it through a managed secret service until a KMS-backed key provider is implemented.
 - `npm run typecheck`: passed. `npm test`: passed, 42 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 storage ownership guards
+
+- A case ID already owned by one workspace cannot be overwritten by `saveCase` from another workspace. Verdict writes require the case to exist in the same workspace, and conflicting verdict ownership is rejected inside a transaction.
+- Raw-ingestion lookup and outcome updates now include a workspace condition. Webhook duplicate lookup uses the receipt's workspace. Tests create a second workspace and verify that case collisions fail and raw records cannot be read or updated through the default workspace.
+- This is a storage-layer safeguard, not completed multi-tenant support. API routes and sign-in still select `ws-default`, so workspace identity must be derived from the authenticated session and propagated through every API, job, SSE stream, and provider callback before multiple customer workspaces can be enabled.
+- `npm run typecheck`: passed. `npm test`: passed, 43 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
 
 ### 2026-11-27 durable review decision records
 

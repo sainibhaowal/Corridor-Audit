@@ -698,7 +698,7 @@ export class CorridorDatabase {
 
 	saveCase(settlementCase: SettlementCase, workspaceId = DEFAULT_WORKSPACE_ID): void {
 		const now = new Date().toISOString()
-		this.db
+		const result = this.db
 			.prepare(
 				`INSERT INTO cases (case_id, workspace_id, source_type, title, payload_json, payload_json_encrypted, status, created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?, 1, 'queued', ?, ?)
@@ -706,7 +706,8 @@ export class CorridorDatabase {
 					title = excluded.title,
 					payload_json = excluded.payload_json,
 					payload_json_encrypted = 1,
-					updated_at = excluded.updated_at`,
+					updated_at = excluded.updated_at
+				WHERE cases.workspace_id = excluded.workspace_id`,
 			)
 			.run(
 				settlementCase.caseId,
@@ -717,33 +718,36 @@ export class CorridorDatabase {
 				now,
 				now,
 			)
+		if (Number(result.changes) !== 1) {
+			throw new Error(`Case ID ${settlementCase.caseId} is already owned by another workspace.`)
+		}
 	}
 
 	saveAuditVerdict(verdict: AuditVerdict, workspaceId = DEFAULT_WORKSPACE_ID, workerId?: string): void {
-		if (workerId) {
-			this.db.exec("BEGIN IMMEDIATE")
-			try {
+		this.db.exec("BEGIN IMMEDIATE")
+		try {
+			if (workerId) {
 				const update = this.db.prepare(`UPDATE cases SET status = 'completed', next_attempt_at = NULL, last_error = NULL,
 					worker_id = NULL, lease_expires_at = NULL, updated_at = ?
 					WHERE case_id = ? AND workspace_id = ? AND status = 'running' AND worker_id = ? AND lease_expires_at > ?`)
 					.run(new Date().toISOString(), verdict.caseId, workspaceId, workerId, new Date().toISOString())
 				if (Number(update.changes) !== 1) throw new Error(`Case lease lost before completion: ${verdict.caseId}`)
-				this.upsertAuditVerdict(verdict, workspaceId)
-				this.db.exec("COMMIT")
-			} catch (error) {
-				this.db.exec("ROLLBACK")
-				throw error
+			} else {
+				const update = this.db.prepare(`UPDATE cases SET status = 'completed', next_attempt_at = NULL, last_error = NULL,
+					worker_id = NULL, lease_expires_at = NULL, updated_at = ? WHERE case_id = ? AND workspace_id = ?`)
+					.run(new Date().toISOString(), verdict.caseId, workspaceId)
+				if (Number(update.changes) !== 1) throw new Error(`Case ${verdict.caseId} does not belong to workspace ${workspaceId}.`)
 			}
-			return
+			this.upsertAuditVerdict(verdict, workspaceId)
+			this.db.exec("COMMIT")
+		} catch (error) {
+			this.db.exec("ROLLBACK")
+			throw error
 		}
-		this.upsertAuditVerdict(verdict, workspaceId)
-		this.db
-			.prepare("UPDATE cases SET status = 'completed', next_attempt_at = NULL, last_error = NULL, worker_id = NULL, lease_expires_at = NULL, updated_at = ? WHERE case_id = ?")
-			.run(new Date().toISOString(), verdict.caseId)
 	}
 
 	private upsertAuditVerdict(verdict: AuditVerdict, workspaceId: string): void {
-		this.db
+		const result = this.db
 			.prepare(
 				`INSERT INTO audit_verdicts (case_id, workspace_id, status, verdict_json, verdict_json_encrypted, completed_at)
 				VALUES (?, ?, ?, ?, 1, ?)
@@ -751,9 +755,13 @@ export class CorridorDatabase {
 					status = excluded.status,
 					verdict_json = excluded.verdict_json,
 					verdict_json_encrypted = 1,
-					completed_at = excluded.completed_at`,
+					completed_at = excluded.completed_at
+				WHERE audit_verdicts.workspace_id = excluded.workspace_id`,
 			)
 			.run(verdict.caseId, workspaceId, verdict.status, encryptSecret(JSON.stringify(verdict)), verdict.completedAt)
+		if (Number(result.changes) !== 1) {
+			throw new Error(`Verdict case ID ${verdict.caseId} is already owned by another workspace.`)
+		}
 	}
 
 	listPersistedCases(workspaceId = DEFAULT_WORKSPACE_ID): SettlementCase[] {
@@ -952,11 +960,12 @@ export class CorridorDatabase {
 				createdAt,
 			)
 
-		return this.getRawIngestion(id, true)!
+		return this.getRawIngestion(id, true, workspaceId)!
 	}
 
 	updateRawIngestionOutcome(params: {
 		id: string
+		workspaceId?: string
 		parseStatus: RawIngestionParseStatus
 		parseError?: string
 		caseIds?: string[]
@@ -965,13 +974,14 @@ export class CorridorDatabase {
 			.prepare(
 				`UPDATE raw_ingestions
 				SET parse_status = ?, parse_error = ?, case_ids_json = ?
-				WHERE id = ?`,
+				WHERE id = ? AND workspace_id = ?`,
 			)
 			.run(
 				params.parseStatus,
 				params.parseError ?? null,
 				JSON.stringify(params.caseIds ?? []),
 				params.id,
+				params.workspaceId || DEFAULT_WORKSPACE_ID,
 			)
 	}
 
@@ -996,7 +1006,7 @@ export class CorridorDatabase {
 		} | undefined
 
 		if (existing) {
-			const ingestion = this.getRawIngestion(existing.ingestion_id, true)
+			const ingestion = this.getRawIngestion(existing.ingestion_id, true, workspaceId)
 			if (!ingestion) throw new Error("Webhook receipt references a missing raw ingestion record.")
 			return {
 				duplicate: true,
@@ -1073,10 +1083,10 @@ export class CorridorDatabase {
 		return rows.map((r) => this.mapRawIngestionRow(r, false))
 	}
 
-	getRawIngestion(id: string, includeContent = true): RawIngestionRecord | null {
+	getRawIngestion(id: string, includeContent = true, workspaceId = DEFAULT_WORKSPACE_ID): RawIngestionRecord | null {
 		const row = this.db
-			.prepare("SELECT * FROM raw_ingestions WHERE id = ?")
-			.get(id) as Record<string, unknown> | undefined
+			.prepare("SELECT * FROM raw_ingestions WHERE id = ? AND workspace_id = ?")
+			.get(id, workspaceId) as Record<string, unknown> | undefined
 		return row ? this.mapRawIngestionRow(row, includeContent) : null
 	}
 
