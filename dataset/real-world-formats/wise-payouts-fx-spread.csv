@@ -1,0 +1,3 @@
+wire_id,platform_name,value_date,instructed_amount,instructed_currency,settled_amount,settled_currency,charge_bearer,platform_fee,platform_fee_currency,receiver_fee,remittance_info,sender_name
+WISE-DEMO-CSV-901,wise,2026-11-24,5000.00,USD,4425.00,EUR,SHA,18.50,USD,0.00,INV-DEMO-26902,Fable Works GmbH (synthetic)
+STRIPE-DEMO-CSV-902,stripe,2026-11-25,2400.00,EUR,2364.00,EUR,SHA,36.00,EUR,0.00,INV-DEMO-26903,Northstar Design Studio (synthetic)

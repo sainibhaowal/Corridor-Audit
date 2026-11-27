@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08">
+  <BkToCstmrStmt>
+    <Stmt>
+      <Id>STMT-DEMO-2026-901</Id>
+      <Ntry>
+        <NtryRef>CAMT-DEMO-2026-901</NtryRef>
+        <Amt Ccy="EUR">4510.00</Amt>
+        <ValDt>
+          <Dt>2026-11-25</Dt>
+        </ValDt>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <EndToEndId>E2E-DEMO-26904</EndToEndId>
+            </Refs>
+            <AmtDtls>
+              <InstdAmt>
+                <Amt Ccy="USD">5000.00</Amt>
+              </InstdAmt>
+            </AmtDtls>
+            <Chrgs>
+              <TtlChrgsAndTaxAmt Ccy="EUR">22.50</TtlChrgsAndTaxAmt>
+            </Chrgs>
+            <ChrgBr>DEBT</ChrgBr>
+            <RltdPties>
+              <Dbtr>
+                <Nm>Harborlight Media Co (synthetic)</Nm>
+              </Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Ustrd>INV-DEMO-26904 CROSS-BORDER SETTLEMENT</Ustrd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>
