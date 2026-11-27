@@ -1312,14 +1312,33 @@ export function CorridorWorkspace() {
 								</Card>
 							)}
 
-							<Card className="relative overflow-hidden p-4 lg:p-5">
+							<Card className={cn(
+								"relative overflow-hidden p-4 lg:p-5",
+								theme === "light"
+									? "!shadow-[0_16px_42px_-10px_rgba(15,23,42,0.16),0_4px_12px_-2px_rgba(15,23,42,0.08)]"
+									: "!shadow-[0_18px_48px_-12px_rgba(0,0,0,0.68),0_4px_12px_-2px_rgba(0,0,0,0.4)]",
+							)}>
 								{!activeEntry ? (
 									<>
-										<div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-32 overflow-hidden">
-											<div className="absolute -bottom-14 left-[8%] h-28 w-56 animate-pulse rounded-full bg-sky-500/25 blur-3xl" />
-											<div className="absolute -bottom-16 left-[38%] h-32 w-64 animate-pulse rounded-full bg-rose-500/20 blur-3xl [animation-delay:700ms]" />
-											<div className="absolute -bottom-14 right-[8%] h-28 w-56 animate-pulse rounded-full bg-violet-500/25 blur-3xl [animation-delay:1400ms]" />
-											<div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-sky-400/30 via-fuchsia-400/40 to-emerald-400/30" />
+										<div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-36 overflow-hidden">
+											<div className={cn(
+												"absolute -bottom-14 left-[8%] h-28 w-60 animate-pulse rounded-full blur-3xl",
+												theme === "light" ? "bg-sky-400/45" : "bg-sky-500/25",
+											)} />
+											<div className={cn(
+												"absolute -bottom-16 left-[38%] h-32 w-64 animate-pulse rounded-full blur-3xl [animation-delay:700ms]",
+												theme === "light" ? "bg-rose-400/35" : "bg-rose-500/20",
+											)} />
+											<div className={cn(
+												"absolute -bottom-14 right-[8%] h-28 w-60 animate-pulse rounded-full blur-3xl [animation-delay:1400ms]",
+												theme === "light" ? "bg-violet-400/45" : "bg-violet-500/25",
+											)} />
+											<div className={cn(
+												"absolute inset-x-0 bottom-0 h-[2px] bg-gradient-to-r",
+												theme === "light"
+													? "from-sky-500/60 via-fuchsia-500/60 to-emerald-500/60"
+													: "from-sky-400/30 via-fuchsia-400/40 to-emerald-400/30",
+											)} />
 										</div>
 										<div className="relative z-10 mx-auto flex min-h-[270px] max-w-2xl flex-col justify-center py-7">
 											<div className="mb-4 flex flex-wrap items-center justify-between gap-2">
