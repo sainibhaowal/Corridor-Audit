@@ -2,7 +2,10 @@ import type { AuditVerdict } from "../types"
 
 function csvEscape(value: string | number | undefined | null): string {
 	const raw = value === undefined || value === null ? "" : String(value)
-	const safe = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw
+	// Keep plain numbers (including negatives) numeric in spreadsheets; only
+	// neutralize text that a spreadsheet could interpret as a formula.
+	const isPlainNumber = /^[+-]?\d+(?:\.\d+)?$/.test(raw)
+	const safe = !isPlainNumber && /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw
 	if (/[",\r\n]/.test(safe)) {
 		return `"${safe.replace(/"/g, '""')}"`
 	}

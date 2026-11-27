@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Download, Eye, FileSpreadsheet, FileText, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -85,6 +85,36 @@ export function CaseInspectorModal({
 			})
 			.finally(() => {
 				if (!cancelled) setPreviewLoading(false)
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [activeTab, caseId, previewFormat])
+
+	const previewEffect = useRef(0)
+	useEffect(() => {
+		if (activeTab !== "preview" || !caseId) return
+		const thisRun = ++previewEffect.current
+		setPreviewLoading(previewFormat !== "pdf")
+		setPreviewError(null)
+		if (previewFormat === "pdf") {
+			setPreviewText("")
+			return
+		}
+		let cancelled = false
+		fetch(`/api/report/${encodeURIComponent(caseId)}?format=${previewFormat}&preview=1`)
+			.then(async (res) => {
+				if (!res.ok) throw new Error(`Failed to load ${previewFormat.toUpperCase()} preview (${res.status})`)
+				return res.text()
+			})
+			.then((txt) => {
+				if (!cancelled && thisRun === previewEffect.current) setPreviewText(txt)
+			})
+			.catch((err) => {
+				if (!cancelled && thisRun === previewEffect.current) setPreviewError(err instanceof Error ? err.message : String(err))
+			})
+			.finally(() => {
+				if (!cancelled && thisRun === previewEffect.current) setPreviewLoading(false)
 			})
 		return () => {
 			cancelled = true

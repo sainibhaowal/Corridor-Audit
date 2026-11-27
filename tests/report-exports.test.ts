@@ -68,6 +68,16 @@ test("export formatters generate TXT, CSV (with formula neutralization), and val
 	assert.match(csvLines[2], /^"'=HYPERLINK/)
 	assert.match(csvLines[2], /"A, ""quoted"" summary"/)
 
+	const negativeCsv = buildVerdictsCsv([
+		{
+			...SAMPLE_VERDICT,
+			caseId: "NEG-1",
+			numbers: { ...SAMPLE_VERDICT.numbers, unexplainedVarianceMinor: -3500 },
+		},
+	])
+	assert.match(negativeCsv, /,-35\.00,/)
+	assert.doesNotMatch(negativeCsv, /,'-35\.00,/)
+
 	const pdf = buildVerdictPdf(SAMPLE_VERDICT)
 	const pdfText = pdf.toString("latin1")
 	assert.ok(pdfText.startsWith("%PDF-1.4\n"))
