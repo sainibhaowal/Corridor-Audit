@@ -1,35 +1,57 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 500" width="1200" height="500" font-family="Inter, Segoe UI, system-ui, sans-serif">
-  <rect width="1200" height="500" rx="20" fill="#080d12" stroke="#1c2a33" stroke-width="2"/>
-  <text x="40" y="42" fill="#62e1c3" font-size="12" font-weight="700" letter-spacing="1.5">ILLUSTRATIVE SYNTHETIC EXAMPLE · NOT A LIVE TRANSACTION</text>
-  <text x="40" y="74" fill="#e3edef" font-size="22" font-weight="800">Reference conversion, listed rate difference, and supplied fee</text>
-  <text x="40" y="105" fill="#a4b4b8" font-size="13">Assumptions: EUR 5,000 × 1.0963 reference rate; 1.0470 applied rate; USD 45 listed deduction.</text>
-  <line x1="70" y1="390" x2="1140" y2="390" stroke="#32454d" stroke-width="1.5"/>
-  <line x1="70" y1="300" x2="1140" y2="300" stroke="#1c2a33" stroke-dasharray="4 4"/>
-  <line x1="70" y1="210" x2="1140" y2="210" stroke="#1c2a33" stroke-dasharray="4 4"/>
-  <line x1="70" y1="120" x2="1140" y2="120" stroke="#1c2a33" stroke-dasharray="4 4"/>
-  <text x="60" y="394" text-anchor="end" fill="#81949a" font-size="11">$0</text>
-  <text x="60" y="304" text-anchor="end" fill="#81949a" font-size="11">$1,800</text>
-  <text x="60" y="214" text-anchor="end" fill="#81949a" font-size="11">$3,600</text>
-  <text x="60" y="124" text-anchor="end" fill="#81949a" font-size="11">$5,400</text>
-  <rect x="120" y="118" width="150" height="272" rx="9" fill="#0d2725" stroke="#62e1c3" stroke-width="2"/>
-  <text x="195" y="110" text-anchor="middle" fill="#75e4c7" font-size="15" font-weight="800">$5,481.50</text>
-  <text x="195" y="416" text-anchor="middle" fill="#e3edef" font-size="12" font-weight="700">Reference amount</text>
-  <text x="195" y="435" text-anchor="middle" fill="#81949a" font-size="11">EUR 5,000 × 1.0963</text>
-  <rect x="335" y="118" width="150" height="13" rx="6" fill="#2c2111" stroke="#f0c77f" stroke-width="2"/>
-  <text x="410" y="110" text-anchor="middle" fill="#f0c77f" font-size="15" font-weight="800">−$246.50</text>
-  <text x="410" y="416" text-anchor="middle" fill="#e3edef" font-size="12" font-weight="700">Estimated rate difference</text>
-  <text x="410" y="435" text-anchor="middle" fill="#81949a" font-size="11">Reference vs applied rate</text>
-  <rect x="550" y="131" width="150" height="8" rx="4" fill="#2c2111" stroke="#f0c77f" stroke-width="2"/>
-  <text x="625" y="110" text-anchor="middle" fill="#f0c77f" font-size="15" font-weight="800">−$45.00</text>
-  <text x="625" y="416" text-anchor="middle" fill="#e3edef" font-size="12" font-weight="700">Listed deduction</text>
-  <text x="625" y="435" text-anchor="middle" fill="#81949a" font-size="11">Review against source terms</text>
-  <rect x="765" y="133" width="150" height="257" rx="9" fill="#101820" stroke="#32454d" stroke-width="2"/>
-  <text x="840" y="125" text-anchor="middle" fill="#e3edef" font-size="15" font-weight="800">$5,190.00</text>
-  <text x="840" y="416" text-anchor="middle" fill="#e3edef" font-size="12" font-weight="700">Illustrative net</text>
-  <text x="840" y="435" text-anchor="middle" fill="#81949a" font-size="11">$5,235.00 less listed fee</text>
-  <rect x="980" y="382" width="150" height="8" rx="4" fill="#0d2725" stroke="#62e1c3" stroke-width="2"/>
-  <text x="1055" y="366" text-anchor="middle" fill="#75e4c7" font-size="15" font-weight="800">$0.00*</text>
-  <text x="1055" y="416" text-anchor="middle" fill="#e3edef" font-size="12" font-weight="700">Calculated residual</text>
-  <text x="1055" y="435" text-anchor="middle" fill="#81949a" font-size="11">*Under supplied assumptions</text>
-  <rect x="80" y="458" width="1060" height="1" fill="#1c2a33"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" width="1200" height="540" font-family="Inter, Segoe UI, system-ui, sans-serif">
+  <rect width="1200" height="540" rx="20" fill="#080d12" stroke="#1c2a33" stroke-width="2"/>
+
+  <!-- TITLE -->
+  <text x="40" y="46" fill="#62e1c3" font-size="12" font-weight="700" letter-spacing="1.8">CENT-CONSERVATION WATERFALL · CASE EXAMPLE (EUR €5,000.00 → USD)</text>
+  <text x="40" y="74" fill="#e3edef" font-size="22" font-weight="800">Where $291.50 Disappeared Between Invoice &amp; Bank Account</text>
+
+  <!-- GRID LINES -->
+  <line x1="80" y1="120" x2="1140" y2="120" stroke="#1c2a33" stroke-dasharray="4 4"/>
+  <line x1="80" y1="190" x2="1140" y2="190" stroke="#1c2a33" stroke-dasharray="4 4"/>
+  <line x1="80" y1="260" x2="1140" y2="260" stroke="#1c2a33" stroke-dasharray="4 4"/>
+  <line x1="80" y1="330" x2="1140" y2="330" stroke="#1c2a33" stroke-dasharray="4 4"/>
+  <line x1="80" y1="400" x2="1140" y2="400" stroke="#32454d" stroke-width="1.5"/>
+
+  <!-- Y AXIS LABELS -->
+  <text x="68" y="124" text-anchor="end" fill="#81949a" font-size="11">$5,600</text>
+  <text x="68" y="194" text-anchor="end" fill="#81949a" font-size="11">$4,200</text>
+  <text x="68" y="264" text-anchor="end" fill="#81949a" font-size="11">$2,800</text>
+  <text x="68" y="334" text-anchor="end" fill="#81949a" font-size="11">$1,400</text>
+  <text x="68" y="404" text-anchor="end" fill="#81949a" font-size="11">$0</text>
+
+  <!-- BAR 1: ECB MID-MARKET ($5,481.50 -> height 274px) -->
+  <rect x="130" y="126" width="140" height="274" rx="10" fill="#0d2725" stroke="#62e1c3" stroke-width="2"/>
+  <text x="200" y="114" text-anchor="middle" fill="#75e4c7" font-size="15" font-weight="800">$5,481.50</text>
+  <text x="200" y="426" text-anchor="middle" fill="#e3edef" font-size="12" font-weight="700">ECB Mid-Market</text>
+  <text x="200" y="444" text-anchor="middle" fill="#81949a" font-size="10.5">€5,000 × 1.0963</text>
+
+  <!-- BAR 2: HIDDEN FX SPREAD (-$246.50 -> top 126, height 28 for visibility with exact label) -->
+  <rect x="340" y="126" width="140" height="44" rx="10" fill="#2c2111" stroke="#f0c77f" stroke-width="2"/>
+  <text x="410" y="114" text-anchor="middle" fill="#f0c77f" font-size="15" font-weight="800">-$246.50</text>
+  <text x="410" y="426" text-anchor="middle" fill="#e3edef" font-size="12" font-weight="700">Hidden FX Spread</text>
+  <text x="410" y="444" text-anchor="middle" fill="#81949a" font-size="10.5">449.7 bps (Bank 1.0470)</text>
+
+  <!-- BAR 3: ILLEGAL OUR FEE (-$45.00) -->
+  <rect x="550" y="170" width="140" height="24" rx="8" fill="#450a0a" stroke="#f87171" stroke-width="2"/>
+  <text x="620" y="158" text-anchor="middle" fill="#fca5a5" font-size="15" font-weight="800">-$45.00</text>
+  <text x="620" y="426" text-anchor="middle" fill="#e3edef" font-size="12" font-weight="700">Illegal :71G: Fee</text>
+  <text x="620" y="444" text-anchor="middle" fill="#81949a" font-size="10.5">Violates :71A:OUR</text>
+
+  <!-- BAR 4: NET LANDED ($5,190.00 -> height 259px) -->
+  <rect x="760" y="194" width="140" height="206" rx="10" fill="#101820" stroke="#32454d" stroke-width="2"/>
+  <text x="830" y="182" text-anchor="middle" fill="#e3edef" font-size="15" font-weight="800">$5,190.00</text>
+  <text x="830" y="426" text-anchor="middle" fill="#e3edef" font-size="12" font-weight="700">Net Landed (:32A:)</text>
+  <text x="830" y="444" text-anchor="middle" fill="#81949a" font-size="10.5">Actual Bank Credit</text>
+
+  <!-- BAR 5: UNEXPLAINED VARIANCE ($0.00) -->
+  <rect x="970" y="388" width="140" height="12" rx="6" fill="#0d2725" stroke="#10b981" stroke-width="2"/>
+  <text x="1040" y="374" text-anchor="middle" fill="#34d399" font-size="15" font-weight="800">$0.00</text>
+  <text x="1040" y="426" text-anchor="middle" fill="#e3edef" font-size="12" font-weight="700">Unexplained Drift</text>
+  <text x="1040" y="444" text-anchor="middle" fill="#62e1c3" font-size="10.5">100% Cent-Proved</text>
+
+  <!-- FORMULA FOOTER -->
+  <rect x="80" y="472" width="1060" height="44" rx="10" fill="#0d141b" stroke="#225b51"/>
+  <text x="610" y="499" text-anchor="middle" fill="#75e4c7" font-size="13" font-weight="700" font-family="JetBrains Mono, monospace">
+    $5,481.50 (ECB) − $246.50 (FX Spread) − $45.00 (OUR Fee) − $0.00 (Tax) − $5,190.00 (Landed) = $0.00 Variance
+  </text>
 </svg>
