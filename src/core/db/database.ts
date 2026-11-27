@@ -496,6 +496,35 @@ export class CorridorDatabase {
 		return decryptJson<IntegrationCredentials>(row.credentials_enc)
 	}
 
+	storeOAuthAuthorizationState(params: {
+		state: string
+		provider: string
+		workspaceId: string
+		codeVerifier?: string
+		expiresAt: string
+	}): void {
+		const now = new Date().toISOString()
+		this.db.prepare("DELETE FROM oauth_authorization_states WHERE expires_at <= ?").run(now)
+		this.db.prepare(`INSERT INTO oauth_authorization_states
+			(state, provider, workspace_id, code_verifier_enc, expires_at, created_at)
+			VALUES (?, ?, ?, ?, ?, ?)`)
+			.run(params.state, params.provider, params.workspaceId, params.codeVerifier ? encryptSecret(params.codeVerifier) : null, params.expiresAt, now)
+	}
+
+	consumeOAuthAuthorizationState(state: string, expectedProvider: string): { workspaceId: string; codeVerifier?: string } | null {
+		const row = this.db.prepare(`DELETE FROM oauth_authorization_states
+			WHERE state = ? AND provider = ? AND expires_at > ?
+			RETURNING workspace_id, code_verifier_enc`).get(state, expectedProvider, new Date().toISOString()) as {
+			workspace_id: string
+			code_verifier_enc: string | null
+		} | undefined
+		if (!row) return null
+		return {
+			workspaceId: row.workspace_id,
+			codeVerifier: row.code_verifier_enc ? decryptSecret(row.code_verifier_enc) : undefined,
+		}
+	}
+
 	disconnectIntegration(workspaceId: string, provider: string): void {
 		this.db
 			.prepare(

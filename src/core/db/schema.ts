@@ -189,6 +189,15 @@ CREATE TABLE IF NOT EXISTS integrations (
 	UNIQUE(workspace_id, provider)
 );
 
+CREATE TABLE IF NOT EXISTS oauth_authorization_states (
+	state TEXT PRIMARY KEY,
+	provider TEXT NOT NULL,
+	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+	code_verifier_enc TEXT,
+	expires_at TEXT NOT NULL,
+	created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sync_runs (
 	id TEXT PRIMARY KEY,
 	integration_id TEXT NOT NULL REFERENCES integrations(id) ON DELETE CASCADE,

@@ -24,7 +24,7 @@ export async function GET(
 	}
 
 	try {
-		const { workspaceId } = consumeOAuthState(state, provider)
+		const { workspaceId, codeVerifier } = consumeOAuthState(state, provider)
 		const spec = getCatalogItem(provider)
 		if (!spec) {
 			return NextResponse.json({ ok: false, error: `Unknown provider "${provider}".` }, { status: 404 })
@@ -34,6 +34,7 @@ export async function GET(
 			provider,
 			code,
 			origin: url.origin,
+			codeVerifier,
 		})
 
 		const db = getCorridorDb()

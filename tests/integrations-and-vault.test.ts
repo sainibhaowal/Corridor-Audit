@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { createHmac } from "node:crypto"
+import { createHash, createHmac } from "node:crypto"
 import { rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
@@ -21,6 +21,7 @@ import { POST as inboundWebhookRoute } from "../src/app/api/webhooks/inbound/rou
 import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/core/db/database"
 import { parseInboundEmailToCases } from "../src/core/integrations/email-parser"
 import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
+import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode } from "../src/core/integrations/oauth"
 import { decryptJson, decryptSecret, encryptJson, encryptSecret, maskSecret } from "../src/core/security/vault"
 import {
 	verifyCorridorSignature,
@@ -164,6 +165,74 @@ test("local case queue survives restart and recovers work interrupted while runn
 	db.markCaseFailed(queuedCase.caseId)
 	assert.equal(db.listQueuedCases().length, 0, "failed work is not silently auto retried")
 	db.close()
+})
+
+test("OAuth authorization state survives restart, expires, and can only be consumed once", () => {
+	const dbPath = resolve(tmpdir(), `corridor-oauth-state-${process.pid}-${Date.now()}.db`)
+	const firstDb = new CorridorDatabase(dbPath)
+	firstDb.storeOAuthAuthorizationState({
+		state: "state-restart-test",
+		provider: "xero",
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		codeVerifier: "verifier-test-value",
+		expiresAt: new Date(Date.now() + 60_000).toISOString(),
+	})
+	firstDb.close()
+
+	const reopenedDb = new CorridorDatabase(dbPath)
+	assert.deepEqual(reopenedDb.consumeOAuthAuthorizationState("state-restart-test", "xero"), {
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		codeVerifier: "verifier-test-value",
+	})
+	assert.equal(reopenedDb.consumeOAuthAuthorizationState("state-restart-test", "xero"), null)
+	reopenedDb.storeOAuthAuthorizationState({
+		state: "state-expired-test",
+		provider: "xero",
+		workspaceId: DEFAULT_WORKSPACE_ID,
+		expiresAt: new Date(Date.now() - 1000).toISOString(),
+	})
+	assert.equal(reopenedDb.consumeOAuthAuthorizationState("state-expired-test", "xero"), null)
+	reopenedDb.close()
+	rmSync(dbPath, { force: true })
+})
+
+test("Xero OAuth uses S256 PKCE and exchanges the persisted verifier", async () => {
+	const previousFetch = global.fetch
+	const previousClientId = process.env.XERO_CLIENT_ID
+	process.env.XERO_CLIENT_ID = "xero-public-client"
+	let tokenRequestBody = ""
+	global.fetch = (async (_input, init) => {
+		tokenRequestBody = String(init?.body || "")
+		return new Response(JSON.stringify({ access_token: "xero-access", refresh_token: "xero-refresh", expires_in: 1800 }), { status: 200 })
+	}) as typeof fetch
+	try {
+		const { url: authorizationUrl, state } = createOAuthAuthorizationUrl({
+			provider: "xero",
+			workspaceId: DEFAULT_WORKSPACE_ID,
+			origin: "http://127.0.0.1:3000",
+		})
+		const authorization = new URL(authorizationUrl)
+		assert.equal(authorization.searchParams.get("code_challenge_method"), "S256")
+		const { workspaceId, codeVerifier } = consumeOAuthState(state, "xero")
+		assert.equal(workspaceId, DEFAULT_WORKSPACE_ID)
+		assert.ok(codeVerifier)
+		assert.equal(
+			authorization.searchParams.get("code_challenge"),
+			createHash("sha256").update(codeVerifier, "ascii").digest("base64url"),
+		)
+		const exchanged = await exchangeOAuthCode({ provider: "xero", code: "authorization-code", origin: "http://127.0.0.1:3000", codeVerifier })
+		const tokenBody = new URLSearchParams(tokenRequestBody)
+		assert.equal(tokenBody.get("code_verifier"), codeVerifier)
+		assert.equal(tokenBody.get("client_id"), "xero-public-client")
+		assert.equal(tokenBody.has("client_secret"), false)
+		assert.equal(exchanged.credentials.accessToken, "xero-access")
+		assert.equal(exchanged.credentials.refreshToken, "xero-refresh")
+		assert.throws(() => consumeOAuthState(state, "xero"), /already used/)
+	} finally {
+		global.fetch = previousFetch
+		if (previousClientId === undefined) delete process.env.XERO_CLIENT_ID
+		else process.env.XERO_CLIENT_ID = previousClientId
+	}
 })
 
 test("raw ingestion payloads are encrypted in SQLite and decrypt through the vault API", () => {

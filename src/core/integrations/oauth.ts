@@ -1,12 +1,14 @@
-import { randomBytes } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
+import { getCorridorDb } from "../db/database"
 import type { IntegrationCredentials } from "../db/schema"
 
 interface OAuthProviderSpec {
 	authUrl: string
 	tokenUrl: string
 	clientIdEnv: string
-	clientSecretEnv: string
+	clientSecretEnv?: string
 	scope: string
+	pkce?: boolean
 }
 
 const OAUTH_SPECS: Record<string, OAuthProviderSpec> = {
@@ -35,7 +37,7 @@ const OAUTH_SPECS: Record<string, OAuthProviderSpec> = {
 		authUrl: "https://login.xero.com/identity/connect/authorize",
 		tokenUrl: "https://identity.xero.com/connect/token",
 		clientIdEnv: "XERO_CLIENT_ID",
-		clientSecretEnv: "XERO_CLIENT_SECRET",
+		pkce: true,
 		scope: "offline_access accounting.transactions.read accounting.reports.read",
 	},
 	open_banking: {
@@ -46,8 +48,6 @@ const OAUTH_SPECS: Record<string, OAuthProviderSpec> = {
 		scope: "info accounts balance transactions offline_access",
 	},
 }
-
-const stateStore = new Map<string, { provider: string; workspaceId: string; expiresAt: number }>()
 
 export function createOAuthAuthorizationUrl(params: {
 	provider: string
@@ -66,10 +66,13 @@ export function createOAuthAuthorizationUrl(params: {
 	}
 
 	const state = randomBytes(16).toString("hex")
-	stateStore.set(state, {
+	const codeVerifier = spec.pkce ? randomBytes(32).toString("base64url") : undefined
+	getCorridorDb().storeOAuthAuthorizationState({
+		state,
 		provider: params.provider,
 		workspaceId: params.workspaceId,
-		expiresAt: Date.now() + 10 * 60_000,
+		codeVerifier,
+		expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
 	})
 
 	const redirectUri = `${params.origin}/api/integrations/${params.provider}/callback`
@@ -79,42 +82,48 @@ export function createOAuthAuthorizationUrl(params: {
 	url.searchParams.set("redirect_uri", redirectUri)
 	url.searchParams.set("scope", spec.scope)
 	url.searchParams.set("state", state)
+	if (codeVerifier) {
+		const codeChallenge = createHash("sha256").update(codeVerifier, "ascii").digest("base64url")
+		url.searchParams.set("code_challenge", codeChallenge)
+		url.searchParams.set("code_challenge_method", "S256")
+	}
 
 	return { url: url.toString(), state }
 }
 
-export function consumeOAuthState(state: string, expectedProvider: string): { workspaceId: string } {
-	const entry = stateStore.get(state)
-	stateStore.delete(state)
-	if (!entry || entry.provider !== expectedProvider || entry.expiresAt < Date.now()) {
-		throw new Error("Invalid or expired OAuth2 state token.")
-	}
-	return { workspaceId: entry.workspaceId }
+export function consumeOAuthState(state: string, expectedProvider: string): { workspaceId: string; codeVerifier?: string } {
+	const entry = getCorridorDb().consumeOAuthAuthorizationState(state, expectedProvider)
+	if (!entry) throw new Error("Invalid, expired, or already used OAuth2 state token.")
+	return entry
 }
 
 export async function exchangeOAuthCode(params: {
 	provider: string
 	code: string
 	origin: string
+	codeVerifier?: string
 }): Promise<{ credentials: IntegrationCredentials; externalAccountId?: string }> {
 	const spec = OAUTH_SPECS[params.provider]
 	if (!spec) {
 		throw new Error(`OAuth2 token exchange is not supported for "${params.provider}".`)
 	}
 	const clientId = process.env[spec.clientIdEnv]?.trim()
-	const clientSecret = process.env[spec.clientSecretEnv]?.trim()
-	if (!clientId || !clientSecret) {
-		throw new Error(`Missing ${spec.clientIdEnv} or ${spec.clientSecretEnv} in environment.`)
+	const clientSecret = spec.clientSecretEnv ? process.env[spec.clientSecretEnv]?.trim() : undefined
+	if (!clientId || (spec.clientSecretEnv && !clientSecret)) {
+		throw new Error(`Missing OAuth client configuration for ${params.provider}.`)
 	}
+	if (spec.pkce && !params.codeVerifier) throw new Error(`Missing PKCE verifier for ${params.provider} authorization.`)
 
 	const redirectUri = `${params.origin}/api/integrations/${params.provider}/callback`
-	const body = new URLSearchParams({
+	const bodyParams: Record<string, string> = {
 		grant_type: "authorization_code",
 		code: params.code,
 		redirect_uri: redirectUri,
 		client_id: clientId,
-		client_secret: clientSecret,
-	})
+	}
+	if (clientSecret) bodyParams.client_secret = clientSecret
+	if (params.codeVerifier) bodyParams.code_verifier = params.codeVerifier
+	const body = new URLSearchParams(bodyParams)
 
 	const res = await fetch(spec.tokenUrl, {
 		method: "POST",

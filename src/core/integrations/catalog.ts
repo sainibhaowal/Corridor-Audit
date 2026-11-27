@@ -18,7 +18,7 @@ export interface IntegrationCatalogItem {
 	defaultAuthMode: IntegrationAuthMode
 	description: string
 	dataReceived: string
-	oauthEnvVars?: { clientId: string; clientSecret: string }
+	oauthEnvVars?: { clientId: string; clientSecret?: string }
 	fields: IntegrationFieldSpec[]
 }
 
@@ -136,7 +136,7 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
 		defaultAuthMode: "oauth2",
 		description: "Continuously import Xero invoices and bills so every incoming wire has contracted terms.",
 		dataReceived: "Invoices, credit notes, withholding tax lines, expected settlement currency",
-		oauthEnvVars: { clientId: "XERO_CLIENT_ID", clientSecret: "XERO_CLIENT_SECRET" },
+		oauthEnvVars: { clientId: "XERO_CLIENT_ID" },
 		fields: [
 			{ key: "apiKey", label: "OAuth2 Access Token", type: "password", placeholder: "Xero bearer token", required: true, secret: true },
 			{ key: "tenantId", label: "Xero Tenant ID", type: "text", placeholder: "xero-tenant-uuid", required: true },
@@ -208,5 +208,8 @@ export function getCatalogItem(provider: string): IntegrationCatalogItem | undef
 
 export function isOAuthConfiguredForProvider(item: IntegrationCatalogItem): boolean {
 	if (!item.oauthEnvVars) return false
-	return Boolean(process.env[item.oauthEnvVars.clientId]?.trim() && process.env[item.oauthEnvVars.clientSecret]?.trim())
+	return Boolean(
+		process.env[item.oauthEnvVars.clientId]?.trim() &&
+		(!item.oauthEnvVars.clientSecret || process.env[item.oauthEnvVars.clientSecret]?.trim()),
+	)
 }

@@ -8,7 +8,7 @@ This is the live delivery record for production-readiness engineering. A row is 
 | --- | --- | --- |
 | 0 | Baseline and code-backed production record | Complete |
 | 1 | Canonical evidence completeness, provider mapping correctness, upload validation, and accurate states | In progress |
-| 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | In progress |
+| 2 | Identity, workspace isolation, role authorization, team invitations, and protected API/SSE access | Cognito role gates implemented but not configured; durable provider OAuth state and Xero PKCE implemented; workspace isolation, email invitations, and SSE revocation remain |
 | 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Versioned tax and review policies plus durable approval records implemented locally; approval UI and production workflow controls remain |
 | 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Local SQLite queue recovery and webhook deduplication slices complete; production queue not started |
 | 5 | Raw evidence object storage, encryption/key lifecycle, retention, backup, restore, and deletion | Local SQLite raw-payload encryption complete; managed storage and lifecycle not started |
@@ -68,7 +68,7 @@ Update this section per milestone with the exact command, result, environment, a
 - Webhook signature verification is mandatory in production even if the local setting is off.
 - `npm run typecheck`: passed. `npm test`: passed, 26 tests, 0 failures, including session integrity, role gate, invite activation, owner bootstrap, wire-only handling, and MT103 obligation separation.
 - `npm run build`: passed. `npm audit --omit=dev`: zero vulnerabilities after pinning PostCSS to a fixed compatible release through npm overrides.
-- This is not an activated identity deployment. Cognito pool, hosted domain, client, callback URL, session secret, and bootstrap owner email are not configured locally. Team invitations still do not send email, OAuth connector state is still process-local, workspace data remains one fixed workspace, and an already-open SSE stream is not immediately closed when membership is removed. Phase 2 stays in progress.
+- This is not an activated identity deployment. Cognito pool, hosted domain, client, callback URL, session secret, and bootstrap owner email are not configured locally. Team invitations still do not send email, workspace data remains one fixed workspace, and an already-open SSE stream is not immediately closed when membership is removed. Phase 2 stays in progress.
 
 ### 2026-11-27 JSON intake validation follow-up
 
@@ -144,6 +144,13 @@ Update this section per milestone with the exact command, result, environment, a
 - Mocked tests exercise multi-page results for all four connectors and assert the provider cursor or page parameter. Existing tests verify currency conversion and that invoice-only accounting records do not imply payment evidence. No live provider calls were made.
 - This is bounded page traversal only. It does not yet persist incremental sync cursors, handle changing records consistently across pages, refresh or revoke OAuth tokens, retry rate limits, or reconcile invoices with independent bank settlement records.
 - `npm run typecheck`: passed. `npm test`: passed, 36 tests, 0 failures. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 durable provider OAuth state and Xero PKCE
+
+- OAuth state is persisted in SQLite with provider, workspace, expiry, and a one-use consume operation. Xero's PKCE verifier is encrypted with the local vault before storage. Consumption is a single conditional delete, preventing two callbacks from using the same state concurrently.
+- Xero authorization now sends an S256 code challenge, and token exchange sends the persisted verifier without requiring a client secret. This follows [Xero's PKCE flow](https://developer.xero.com/documentation/guides/oauth2/pkce-flow/). Other provider OAuth flows still use the existing confidential-client path and do not yet add PKCE.
+- Tests verify restart recovery, expiration, one-use state, verifier encryption/readback, the S256 challenge, and the exchanged Xero verifier. Provider requests are mocked; no real OAuth account was connected.
+- `npm run typecheck`: passed. `npm test`: passed, 38 tests, 0 failures. `git diff --check`: passed. Verification ran locally on Windows.
 
 ### 2026-11-27 local raw-payload encryption slice
 
