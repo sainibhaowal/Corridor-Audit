@@ -1420,17 +1420,20 @@ test("QuickBooks and Xero payment applications stay separate from bank settlemen
 	}
 })
 
-test("Stripe and Xero incremental sync cursors use a five-minute overlap", async () => {
+test("Stripe, Wise, and Xero incremental sync cursors use a five-minute overlap", async () => {
 	const previousFetch = global.fetch
 	const requests: Array<{ url: URL; headers: Headers }> = []
 	global.fetch = (async (input, init) => {
 		requests.push({ url: new URL(String(input)), headers: new Headers(init?.headers) })
-		return new Response(String(input).includes("stripe.com")
+		const url = String(input)
+		return new Response(url.includes("stripe.com")
 			? JSON.stringify({ data: [], has_more: false })
-			: JSON.stringify({ Invoices: [] }), { status: 200 })
+			: url.includes("transferwise.com")
+				? JSON.stringify([])
+				: JSON.stringify({ Invoices: [] }), { status: 200 })
 	}) as typeof fetch
 	const lastSuccessfulSyncAt = "2026-11-27T12:00:00.000Z"
-	const integration = (provider: "stripe" | "xero", config: Record<string, string> = {}) => ({
+	const integration = (provider: "stripe" | "wise" | "xero", config: Record<string, string> = {}) => ({
 		id: `int_${provider}_cursor`,
 		workspaceId: DEFAULT_WORKSPACE_ID,
 		provider,
@@ -1446,11 +1449,15 @@ test("Stripe and Xero incremental sync cursors use a five-minute overlap", async
 			integration: integration("stripe"), credentials: { apiKey: "stripe-test" }, lastSuccessfulSyncAt,
 		})
 		await fetchCasesFromIntegration({
+			integration: integration("wise", { profileId: "profile-cursor" }), credentials: { apiKey: "wise-test" }, lastSuccessfulSyncAt,
+		})
+		await fetchCasesFromIntegration({
 			integration: integration("xero", { tenantId: "tenant-cursor" }), credentials: { accessToken: "xero-test" }, lastSuccessfulSyncAt,
 		})
 		const stripeSince = new Date(Date.parse(lastSuccessfulSyncAt) - 5 * 60 * 1000)
 		assert.equal(requests[0]?.url.searchParams.get("created[gte]"), String(Math.floor(stripeSince.getTime() / 1000)))
-		assert.equal(requests[1]?.headers.get("If-Modified-Since"), stripeSince.toISOString().slice(0, 19))
+		assert.equal(requests[1]?.url.searchParams.get("createdDateStart"), stripeSince.toISOString())
+		assert.equal(requests[2]?.headers.get("If-Modified-Since"), stripeSince.toISOString().slice(0, 19))
 	} finally {
 		global.fetch = previousFetch
 	}

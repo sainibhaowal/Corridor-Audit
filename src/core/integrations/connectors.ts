@@ -170,10 +170,12 @@ async function fetchStripeCases(credentials: IntegrationCredentials, lastSuccess
 async function fetchWiseCases(
 	credentials: IntegrationCredentials,
 	config: Record<string, string>,
+	lastSuccessfulSyncAt?: string,
 ): Promise<ConnectorFetchResult> {
 	const headers = { Authorization: authHeader(credentials) }
 	let profileId: string | undefined = config.profileId?.trim() || undefined
 	const rawPages: string[] = []
+	const since = syncSince(lastSuccessfulSyncAt)
 
 	if (!profileId) {
 		const pRes = await fetchProvider("https://api.transferwise.com/v1/profiles", { headers })
@@ -205,6 +207,7 @@ async function fetchWiseCases(
 		url.searchParams.set("profile", profileId)
 		url.searchParams.set("limit", String(WISE_PAGE_SIZE))
 		url.searchParams.set("offset", String(page * WISE_PAGE_SIZE))
+		if (since) url.searchParams.set("createdDateStart", since.toISOString())
 		const tRes = await fetchProvider(url, { headers })
 		if (!tRes.ok) throw new Error(`Wise Transfers API error (${tRes.status}): ${(await tRes.text()).slice(0, 200)}`)
 		const rawPage = await tRes.text()
@@ -668,7 +671,7 @@ export async function fetchCasesFromIntegration(params: {
 		case "stripe":
 			return fetchStripeCases(credentials ?? {}, params.lastSuccessfulSyncAt)
 		case "wise":
-			return fetchWiseCases(credentials ?? {}, integration.config)
+			return fetchWiseCases(credentials ?? {}, integration.config, params.lastSuccessfulSyncAt)
 		case "quickbooks":
 			return fetchQuickBooksCases(credentials ?? {}, integration.config, params.lastSuccessfulSyncAt, params.existingCases)
 		case "xero":
