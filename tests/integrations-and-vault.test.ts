@@ -60,6 +60,10 @@ test("HMAC-SHA256 webhook signature verification supports Stripe, Wise, and Corr
 
 	const corridorSig = createHmac("sha256", secret).update(body, "utf8").digest("hex")
 	assert.equal(verifyCorridorSignature(body, `sha256=${corridorSig}`, secret).valid, true)
+	assert.equal(verifyCorridorSignature(body, `sha256=${corridorSig}`, secret, 300, true).valid, false)
+	const corridorTimestampSig = createHmac("sha256", secret).update(`${ts}.${body}`, "utf8").digest("hex")
+	assert.equal(verifyCorridorSignature(body, `t=${ts},v1=${corridorTimestampSig}`, secret, 300, true).valid, true)
+	assert.equal(verifyCorridorSignature(body, `t=${ts - 600},v1=${corridorTimestampSig}`, secret, 300, true).valid, false)
 
 	const missing = verifyInboundWebhookRequest({
 		rawBody: body,

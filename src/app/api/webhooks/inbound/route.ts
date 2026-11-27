@@ -31,6 +31,7 @@ export async function POST(request: Request) {
 				wise: wiseSecret,
 			},
 			requireSignature: workspace.requireWebhookSignature || process.env.NODE_ENV === "production",
+			requireTimestampedCorridorSignature: process.env.NODE_ENV === "production",
 		})
 
 		if (!sigCheck.valid) {

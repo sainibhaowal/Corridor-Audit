@@ -52,13 +52,33 @@ export function verifyWiseSignature(rawBody: string, header: string, secret: str
 	return { valid: false, scheme: "wise", reason: "Wise X-Signature-SHA256 mismatch." }
 }
 
-/** Verify generic `X-Corridor-Signature` (`sha256=<hex>` or raw `<hex>`). */
-export function verifyCorridorSignature(rawBody: string, header: string, secret: string): SignatureCheckResult {
+/** Verify Corridor `X-Corridor-Signature` as `t=<unix>,v1=<hex>` in production. */
+export function verifyCorridorSignature(
+	rawBody: string,
+	header: string,
+	secret: string,
+	toleranceSeconds = 300,
+	requireTimestamp = false,
+): SignatureCheckResult {
+	const parts = Object.fromEntries(
+		header.split(",").map((part) => part.trim().split("=")).filter((kv): kv is [string, string] => kv.length === 2),
+	)
+	const timestamp = Number(parts.t)
+	const versionedSignature = parts.v1
+	if (timestamp && versionedSignature) {
+		if (Math.abs(Math.floor(Date.now() / 1000) - timestamp) > toleranceSeconds) {
+			return { valid: false, scheme: "corridor", reason: "Corridor webhook timestamp outside tolerance." }
+		}
+		const expected = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`, "utf8").digest("hex")
+		if (safeCompareStrings(expected, versionedSignature.toLowerCase())) return { valid: true, scheme: "corridor" }
+		return { valid: false, scheme: "corridor", reason: "Corridor HMAC signature mismatch." }
+	}
+	if (requireTimestamp) {
+		return { valid: false, scheme: "corridor", reason: "Production Corridor signatures must include a signed timestamp." }
+	}
 	const cleaned = header.trim().replace(/^sha256=/i, "").toLowerCase()
 	const expectedHex = createHmac("sha256", secret).update(rawBody, "utf8").digest("hex")
-	if (safeCompareStrings(expectedHex, cleaned)) {
-		return { valid: true, scheme: "corridor" }
-	}
+	if (safeCompareStrings(expectedHex, cleaned)) return { valid: true, scheme: "corridor" }
 	return { valid: false, scheme: "corridor", reason: "Corridor HMAC signature mismatch." }
 }
 
@@ -71,6 +91,7 @@ export function verifyInboundWebhookRequest(params: {
 	headers: Headers
 	secrets: { corridor?: string; stripe?: string; wise?: string }
 	requireSignature?: boolean
+	requireTimestampedCorridorSignature?: boolean
 }): SignatureCheckResult {
 	const stripeHeader = params.headers.get("stripe-signature")
 	if (stripeHeader && params.secrets.stripe) {
@@ -84,7 +105,7 @@ export function verifyInboundWebhookRequest(params: {
 
 	const corridorHeader = params.headers.get("x-corridor-signature")
 	if (corridorHeader && params.secrets.corridor) {
-		return verifyCorridorSignature(params.rawBody, corridorHeader, params.secrets.corridor)
+		return verifyCorridorSignature(params.rawBody, corridorHeader, params.secrets.corridor, 300, params.requireTimestampedCorridorSignature)
 	}
 
 	if (params.requireSignature) {

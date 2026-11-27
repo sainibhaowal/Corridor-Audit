@@ -136,6 +136,13 @@ Update this section per milestone with the exact command, result, environment, a
 - This is a local single-host coordination improvement, not a distributed production queue. It depends on processes sharing one SQLite file and does not provide multi-host semantics, an independent worker deployment, an outbox, or durable agent execution state.
 - `npm run typecheck`: passed. `npm test`: passed, 41 tests, 0 failures, including exclusive claims, lease expiry recovery, retry and dead-letter behavior. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows; provider accounts were not contacted.
 
+### 2026-11-27 timestamped Corridor webhook signatures
+
+- The Corridor inbound webhook accepts timestamped signatures in the form `t=<unix>,v1=<hex>`, signing `<unix>.<raw-body>` with HMAC-SHA256. Production enforces this format and a 300-second timestamp tolerance. The prior raw-body signature remains available for local development compatibility.
+- Stripe already uses a five-minute timestamp tolerance. Wise's current adapter format signs the raw body without a timestamp header, so webhook event-ID deduplication and exact-body fallback remain its replay controls. The SQLite receipt is durably recorded before `202` is returned, but scheduling is still process-local and not backed by a transactional outbox.
+- Tests cover current, stale, and legacy Corridor signatures. This does not constitute provider certification or validate business meaning of signed data.
+- `npm run typecheck`: passed. `npm test`: passed, 41 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows; no external webhook provider was contacted.
+
 ### 2026-11-27 durable review decision records
 
 - Review breakpoints are now stored in SQLite with the exact tool-call digest, question, proof, requested action, status, decision, reason, and reviewer identity. Decisions accept only approve, reject, or stop.
