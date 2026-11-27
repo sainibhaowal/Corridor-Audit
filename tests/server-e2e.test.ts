@@ -97,6 +97,25 @@ test("Next.js App Router API routes serve health, terminal, upload ingestion, we
 	if (runtimePayload.provider.mode === "unconfigured") {
 		assert.equal(getCorridorDb().getCaseQueueState(uploadJson.caseIds[0] || "")?.status, "queued", "without an LLM key, durable work must wait instead of invoking Mozaik")
 	}
+	const oversizedCaseBatch = Array.from({ length: 501 }, (_, index) => ({
+		caseId: `E2E-LIMIT-${index}`,
+		wire: {
+			wireId: `WIRE-E2E-LIMIT-${index}`,
+			format: "bank_csv",
+			valueDate: "2026-11-27",
+			settledAmount: { amountMinor: 100, currency: "USD" },
+			senderCharges: [],
+			receiverCharges: [],
+		},
+	}))
+	const oversizedUpload = await uploadRoute(new Request("http://127.0.0.1/api/audit/upload", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ filename: "oversized-batch.json", content: JSON.stringify(oversizedCaseBatch), format: "json" }),
+	}))
+	assert.equal(oversizedUpload.status, 413)
+	const oversizedUploadPayload = await oversizedUpload.json() as { ingestionId?: string }
+	assert.equal(getCorridorDb().getRawIngestion(oversizedUploadPayload.ingestionId || "")?.parseStatus, "failed")
 
 	const whRes = await inboundWebhookRoute(
 		new Request("http://127.0.0.1/api/webhooks/inbound", {
@@ -122,6 +141,16 @@ test("Next.js App Router API routes serve health, terminal, upload ingestion, we
 	)
 	assert.equal(whRes.status, 202)
 	assert.equal(getCorridorDb().getCaseQueueState("WH-E2E-01")?.status, "queued", "the webhook response follows durable case acceptance")
+	const oversizedWebhook = await inboundWebhookRoute(new Request("http://127.0.0.1/api/webhooks/inbound", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ cases: oversizedCaseBatch }),
+	}))
+	assert.equal(oversizedWebhook.status, 413)
+	const failedWebhookIngestion = getCorridorDb().listRawIngestions({ channel: "webhook", limit: 1 })[0]
+	assert.equal(failedWebhookIngestion?.parseStatus, "failed")
+	assert.deepEqual(failedWebhookIngestion?.caseIds, [])
+	assert.equal(getCorridorDb().getCaseQueueState("E2E-LIMIT-0"), null, "oversized signed webhook batches do not queue partial case sets")
 
 	const histRes = await historyRoute(new Request("http://127.0.0.1/api/history"))
 	assert.equal(histRes.status, 200)

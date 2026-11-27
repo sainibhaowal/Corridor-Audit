@@ -1,4 +1,5 @@
 import { normalizeInboundPayloadToCases } from "../ingest/normalize-upload"
+import { IngestionLimitError, MAX_CASES_PER_INGESTION } from "../ingest/limits"
 import type { SettlementCase } from "../types"
 import { z } from "zod"
 
@@ -95,6 +96,9 @@ export function parseInboundEmailToCases(payload: InboundEmailPayload): Settleme
 		})
 
 		for (const item of parsed) {
+			if (cases.length >= MAX_CASES_PER_INGESTION) {
+				throw new IngestionLimitError(`An email import can contain no more than ${MAX_CASES_PER_INGESTION} settlement cases.`)
+			}
 			cases.push({
 				...item,
 				channelLabel: `Email from ${sender}`,

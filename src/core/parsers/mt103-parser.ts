@@ -1,5 +1,6 @@
 import { parseDecimalStringToMinor } from "../money"
 import type { ChargeBearerClause, Money, SourceRef, WireOrBankInput } from "../types"
+import { IngestionLimitError, MAX_CASES_PER_INGESTION } from "../ingest/limits"
 
 function formatSwiftDate(yymmdd: string): string {
 	const clean = yymmdd.trim()
@@ -25,10 +26,13 @@ function parseTagMoney(value: string): Money | undefined {
  */
 export function parseMt103Blocks(rawText: string): WireOrBankInput[] {
 	const blocks = rawText
-		.split(/\r?\n-{3,}\r?\n|\{1:F01/)
+		.split(/\r?\n-{3,}\r?\n|\{1:F01/, MAX_CASES_PER_INGESTION + 2)
 		.map((b, idx) => (rawText.includes("{1:F01") && idx > 0 ? `{1:F01${b}` : b))
 		.map((b) => b.trim())
 		.filter((b) => b.includes(":20:") || b.includes(":32A:"))
+	if (blocks.length > MAX_CASES_PER_INGESTION) {
+		throw new IngestionLimitError(`An MT103 import can contain no more than ${MAX_CASES_PER_INGESTION} payment blocks.`)
+	}
 
 	if (blocks.length === 0 && (rawText.includes(":20:") || rawText.includes(":32A:"))) {
 		return [parseSingleMt103(rawText, 0)]

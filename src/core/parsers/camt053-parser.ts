@@ -1,5 +1,6 @@
 import { parseDecimalStringToMinor } from "../money"
 import type { ChargeBearerClause, Money, SourceRef, WireOrBankInput } from "../types"
+import { IngestionLimitError, MAX_CASES_PER_INGESTION } from "../ingest/limits"
 
 function extractTag(block: string, tag: string): string | undefined {
 	const match = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"))
@@ -17,7 +18,14 @@ function extractMoneyElement(block: string, tag: string): Money | undefined {
  * Lightweight zero-dependency ISO 20022 camt.053 / pacs.008 XML parser.
  */
 export function parseCamt053Xml(rawXml: string): WireOrBankInput[] {
-	const entries = rawXml.match(/<(Ntry|CdtTrfTxInf)[\s\S]*?<\/\1>/gi) ?? [rawXml]
+	const entries: string[] = []
+	for (const match of rawXml.matchAll(/<(Ntry|CdtTrfTxInf)[\s\S]*?<\/\1>/gi)) {
+		entries.push(match[0])
+		if (entries.length > MAX_CASES_PER_INGESTION) {
+			throw new IngestionLimitError(`An ISO 20022 import can contain no more than ${MAX_CASES_PER_INGESTION} payment entries.`)
+		}
+	}
+	if (entries.length === 0) entries.push(rawXml)
 	return entries.map((entry, idx) => {
 		const txId = extractTag(entry, "EndToEndId") || extractTag(entry, "NtryRef") || `CAMT-${idx + 1}`
 		const wireId = txId.startsWith("WIRE-") ? txId : `WIRE-${txId}`

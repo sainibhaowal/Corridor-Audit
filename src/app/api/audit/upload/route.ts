@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
 import { normalizeInboundPayloadToCases, type UploadPayload } from "@/core/ingest/normalize-upload"
+import { IngestionLimitError } from "@/core/ingest/limits"
 import { readRequestTextLimited, RequestBodyTooLargeError } from "@/core/security/request-body"
 import { authorizeCorridorRequest } from "@/core/security/authorization"
 import { authEnabled, requestCorridorSession } from "@/core/security/auth"
@@ -100,7 +101,7 @@ export async function POST(request: Request) {
 				parseError: msg,
 			})
 		}
-		const status = err instanceof RequestBodyTooLargeError || err instanceof MalwareScanLimitError ? 413 : err instanceof MalwareDetectedError ? 422 : err instanceof MalwareScannerUnavailableError ? 503 : 400
+		const status = err instanceof RequestBodyTooLargeError || err instanceof MalwareScanLimitError || err instanceof IngestionLimitError ? 413 : err instanceof MalwareDetectedError ? 422 : err instanceof MalwareScannerUnavailableError ? 503 : 400
 		return NextResponse.json({ error: msg, ingestionId }, { status })
 	}
 }

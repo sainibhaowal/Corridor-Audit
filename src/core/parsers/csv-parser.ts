@@ -1,5 +1,24 @@
 import { parseDecimalStringToMinor } from "../money"
 import type { ChargeBearerClause, InvoiceInput, SourceRef, WireOrBankInput } from "../types"
+import { IngestionLimitError, MAX_CASES_PER_INGESTION } from "../ingest/limits"
+
+function assertCsvRowCount(rawCsv: string): void {
+	let rowCount = 0
+	let start = 0
+	while (start <= rawCsv.length) {
+		const newline = rawCsv.indexOf("\n", start)
+		const end = newline === -1 ? rawCsv.length : newline
+		const line = rawCsv.slice(start, end).replace(/\r$/, "")
+		if (line.trim()) {
+			rowCount += 1
+			if (rowCount > MAX_CASES_PER_INGESTION + 1) {
+				throw new IngestionLimitError(`A CSV import can contain no more than ${MAX_CASES_PER_INGESTION} data rows.`)
+			}
+		}
+		if (newline === -1) break
+		start = newline + 1
+	}
+}
 
 function splitCsvLine(line: string): string[] {
 	const cells: string[] = []
@@ -27,6 +46,7 @@ function splitCsvLine(line: string): string[] {
 }
 
 export function parseCsvRecords(rawCsv: string): Array<Record<string, string>> {
+	assertCsvRowCount(rawCsv)
 	const lines = rawCsv
 		.split(/\r?\n/)
 		.map((l) => l.trim())

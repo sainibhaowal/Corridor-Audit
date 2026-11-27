@@ -1,5 +1,6 @@
 import { z } from "zod"
 import type { AccountingPaymentApplication, InvoiceInput, SettlementCase, WireOrBankInput } from "../types"
+import { IngestionLimitError, MAX_CASES_PER_INGESTION, MAX_CANDIDATE_WIRES_PER_CASE } from "./limits"
 
 const currency = z.string().regex(/^[A-Za-z]{3}$/, "Currency must be a three-letter ISO code.").transform((value) => value.toUpperCase())
 const money = z.object({
@@ -85,12 +86,18 @@ const caseSchema = z.object({
 	accountingPayments: z.array(accountingPayment).max(1000).optional(),
 	invoice: invoice.optional(),
 	wire,
-	candidateWires: z.array(wire).max(10_000).optional(),
+	candidateWires: z.array(wire).max(MAX_CANDIDATE_WIRES_PER_CASE, {
+		message: `A case can contain no more than ${MAX_CANDIDATE_WIRES_PER_CASE} candidate wires.`,
+	}).optional(),
 	createdAt: z.iso.datetime({ offset: true }).optional(),
 }).passthrough()
 
 export function parseJsonSettlementCases(value: unknown): SettlementCase[] {
-	const parsed = z.array(caseSchema).safeParse(Array.isArray(value) ? value : [value])
+	const rows = Array.isArray(value) ? value : [value]
+	if (rows.length > MAX_CASES_PER_INGESTION) {
+		throw new IngestionLimitError(`An import can contain no more than ${MAX_CASES_PER_INGESTION} settlement cases.`)
+	}
+	const parsed = z.array(caseSchema).safeParse(rows)
 	if (!parsed.success) {
 		const firstIssue = parsed.error.issues[0]
 		const location = firstIssue?.path.length ? firstIssue.path.join(".") : "payload"

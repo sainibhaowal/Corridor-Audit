@@ -7,6 +7,7 @@ import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 import { deriveWebhookEventId } from "@/core/security/webhook-event-id"
 import { MalwareDetectedError, MalwareScannerUnavailableError, MalwareScanLimitError, scanFileBytes } from "@/core/security/malware-scan"
 import { randomUUID } from "node:crypto"
+import { IngestionLimitError } from "@/core/ingest/limits"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -111,7 +112,7 @@ export async function POST(request: Request) {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Email payload could not be parsed."
 			db.failWebhookReceipt({ ...identity, ownerId: receiptOwnerId!, ingestionId: rec.id, parseError: message })
-			return NextResponse.json({ ok: false, error: message, ingestionId: rec.id }, { status: 422 })
+			return NextResponse.json({ ok: false, error: message, ingestionId: rec.id }, { status: error instanceof IngestionLimitError ? 413 : 422 })
 		}
 		if (cases.length === 0) {
 			const message = "Email payload was stored, but it contained no supported settlement cases."
