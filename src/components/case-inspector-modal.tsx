@@ -1,6 +1,7 @@
 "use client"
 
-import { Download, FileText, X } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Download, Eye, FileSpreadsheet, FileText, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -8,10 +9,49 @@ import { cn } from "@/lib/utils"
 import type { AccountingPaymentApplication, SettlementCase } from "@/core/types"
 import { type CaseStreamEntry, fmtClientMoney } from "./corridor-types"
 
+type PreviewFormat = "pdf" | "csv" | "txt" | "json"
+
+function parseCsvRows(csvText: string): string[][] {
+	const rows: string[][] = []
+	let currentRow: string[] = []
+	let currentField = ""
+	let inQuotes = false
+	for (let i = 0; i < csvText.length; i++) {
+		const ch = csvText[i]
+		if (inQuotes) {
+			if (ch === '"' && csvText[i + 1] === '"') {
+				currentField += '"'
+				i++
+			} else if (ch === '"') {
+				inQuotes = false
+			} else {
+				currentField += ch
+			}
+		} else if (ch === '"') {
+			inQuotes = true
+		} else if (ch === ",") {
+			currentRow.push(currentField)
+			currentField = ""
+		} else if (ch === "\n") {
+			currentRow.push(currentField.replace(/\r$/, ""))
+			if (currentRow.some((c) => c.length > 0)) rows.push(currentRow)
+			currentRow = []
+			currentField = ""
+		} else {
+			currentField += ch
+		}
+	}
+	if (currentField.length > 0 || currentRow.length > 0) {
+		currentRow.push(currentField.replace(/\r$/, ""))
+		rows.push(currentRow)
+	}
+	return rows
+}
+
 interface CaseInspectorModalProps {
 	entry: CaseStreamEntry | null
-	activeTab: "ledger" | "technical" | "letter"
-	onTabChange: (tab: "ledger" | "technical" | "letter") => void
+	activeTab: "ledger" | "technical" | "letter" | "preview"
+	onTabChange: (tab: "ledger" | "technical" | "letter" | "preview") => void
 	onClose: () => void
 }
 
@@ -21,6 +61,36 @@ export function CaseInspectorModal({
 	onTabChange,
 	onClose,
 }: CaseInspectorModalProps) {
+	const [previewFormat, setPreviewFormat] = useState<PreviewFormat>("pdf")
+	const [previewText, setPreviewText] = useState<string>("")
+	const [previewLoading, setPreviewLoading] = useState<boolean>(false)
+	const [previewError, setPreviewError] = useState<string | null>(null)
+	const caseId = entry?.verdict?.caseId
+
+	useEffect(() => {
+		if (activeTab !== "preview" || !caseId || previewFormat === "pdf") return
+		let cancelled = false
+		setPreviewLoading(true)
+		setPreviewError(null)
+		fetch(`/api/report/${encodeURIComponent(caseId)}?format=${previewFormat}&preview=1`)
+			.then(async (res) => {
+				if (!res.ok) throw new Error(`Failed to load ${previewFormat.toUpperCase()} preview (${res.status})`)
+				return res.text()
+			})
+			.then((txt) => {
+				if (!cancelled) setPreviewText(txt)
+			})
+			.catch((err) => {
+				if (!cancelled) setPreviewError(err instanceof Error ? err.message : String(err))
+			})
+			.finally(() => {
+				if (!cancelled) setPreviewLoading(false)
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [activeTab, caseId, previewFormat])
+
 	if (!entry?.verdict) return null
 	const v = entry.verdict
 	const ccy = v.numbers.settledCurrency
@@ -58,9 +128,10 @@ export function CaseInspectorModal({
 					</Button>
 				</div>
 
-				<div className="flex gap-1.5 border-b border-[#1c2a33] bg-[#080d12] px-5 pt-2.5">
+				<div className="flex flex-wrap gap-1.5 border-b border-[#1c2a33] bg-[#080d12] px-5 pt-2.5">
 					{[
 						{ id: "ledger" as const, label: "Summary & Cent Ledger" },
+						{ id: "preview" as const, label: "In-Built File Preview (.pdf / .csv / .txt / .json)" },
 						{ id: "technical" as const, label: "All Technical Fields (JSON)" },
 						{ id: "letter" as const, label: "Review Request Draft (.txt)" },
 					].map((tab) => (
@@ -239,13 +310,37 @@ export function CaseInspectorModal({
 									</div>
 
 									<div className="flex flex-wrap gap-2">
+										<Button
+											variant="outline"
+											size="sm"
+											onClick={() => onTabChange("preview")}
+										>
+											<Eye className="h-3.5 w-3.5" />
+											Preview Files
+										</Button>
+										<a
+											href={`/api/report/${encodeURIComponent(v.caseId)}?format=pdf`}
+											download
+											className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#2c4a43] bg-[#0e2620] px-3 text-xs font-semibold text-[#62e1c3] hover:bg-[#14352d]"
+										>
+											<Download className="h-3.5 w-3.5" />
+											Report (.pdf)
+										</a>
+										<a
+											href={`/api/report/${encodeURIComponent(v.caseId)}?format=csv`}
+											download
+											className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#32454d] bg-[#0d141b] px-3 text-xs font-semibold text-[#c7d3d6] hover:bg-[#080d12]"
+										>
+											<FileSpreadsheet className="h-3.5 w-3.5" />
+											Sheet (.csv)
+										</a>
 										<a
 											href={`/api/report/${encodeURIComponent(v.caseId)}?format=txt`}
 											download
 											className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#121c24] px-3 text-xs font-semibold text-white hover:bg-[#17232b]"
 										>
 											<Download className="h-3.5 w-3.5" />
-											Review Request Draft (.txt)
+											Draft (.txt)
 										</a>
 										<a
 											href={`/api/report/${encodeURIComponent(v.caseId)}?format=json`}
@@ -253,11 +348,109 @@ export function CaseInspectorModal({
 											className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#32454d] bg-[#0d141b] px-3 text-xs font-semibold text-[#c7d3d6] hover:bg-[#080d12]"
 										>
 											<FileText className="h-3.5 w-3.5" />
-											Case Result (.json)
+											Full (.json)
 										</a>
 									</div>
 								</Card>
 							</div>
+						</div>
+					)}
+
+					{activeTab === "preview" && (
+						<div className="space-y-3">
+							<div className="flex flex-wrap items-center justify-between gap-2">
+								<div className="flex flex-wrap gap-1.5">
+									{(
+										[
+											{ id: "pdf", label: "PDF Report (.pdf)" },
+											{ id: "csv", label: "Spreadsheet (.csv)" },
+											{ id: "txt", label: "Text Draft (.txt)" },
+											{ id: "json", label: "JSON Payload (.json)" },
+										] as const
+									).map((fmt) => (
+										<button
+											key={fmt.id}
+											type="button"
+											onClick={() => setPreviewFormat(fmt.id)}
+											className={cn(
+												"rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors",
+												previewFormat === fmt.id
+													? "border-[#2c4a43] bg-[#0e2620] text-[#62e1c3]"
+													: "border-[#1c2a33] bg-[#080d12] text-[#81949a] hover:text-[#e3edef]",
+											)}
+										>
+											{fmt.label}
+										</button>
+									))}
+								</div>
+								<a
+									href={`/api/report/${encodeURIComponent(v.caseId)}?format=${previewFormat}`}
+									download
+									className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#2c4a43] bg-[#0e2620] px-3 text-xs font-semibold text-[#62e1c3] hover:bg-[#14352d]"
+								>
+									<Download className="h-3.5 w-3.5" />
+									Download .{previewFormat}
+								</a>
+							</div>
+
+							{previewFormat === "pdf" ? (
+								<div className="overflow-hidden rounded-lg border border-[#1c2a33] bg-[#080d12]">
+									<iframe
+										title={`${v.caseId} PDF Preview`}
+										src={`/api/report/${encodeURIComponent(v.caseId)}?format=pdf&preview=1`}
+										className="h-[62vh] w-full bg-white"
+									/>
+								</div>
+							) : previewLoading ? (
+								<div className="rounded-lg border border-[#1c2a33] bg-[#080d12] p-6 text-xs text-[#81949a]">
+									Loading .{previewFormat} preview...
+								</div>
+							) : previewError ? (
+								<div className="rounded-lg border border-red-900/60 bg-red-950/30 p-4 text-xs text-red-300">
+									{previewError}
+								</div>
+							) : previewFormat === "csv" ? (
+								(() => {
+									const rows = parseCsvRows(previewText)
+									const headers = rows[0] ?? []
+									const bodyRows = rows.slice(1)
+									return (
+										<div className="space-y-2">
+											<div className="max-h-[42vh] overflow-auto rounded-lg border border-[#1c2a33] bg-[#080d12]">
+												<table className="w-full border-collapse text-[11px]">
+													<thead>
+														<tr className="border-b border-[#1c2a33] bg-[#0d141b] text-left font-bold text-[#62e1c3]">
+															{headers.map((h, i) => (
+																<th key={i} className="whitespace-nowrap px-3 py-2 font-mono">
+																	{h}
+																</th>
+															))}
+														</tr>
+													</thead>
+													<tbody className="divide-y divide-[#1c2a33]">
+														{bodyRows.map((row, rIdx) => (
+															<tr key={rIdx} className="text-[#c7d3d6]">
+																{row.map((cell, cIdx) => (
+																	<td key={cIdx} className="whitespace-nowrap px-3 py-2 font-mono">
+																		{cell}
+																	</td>
+																))}
+															</tr>
+														))}
+													</tbody>
+												</table>
+											</div>
+											<pre className="max-h-[18vh] overflow-auto whitespace-pre rounded-lg border border-[#1c2a33] bg-[#080d12] p-3 font-mono text-[11px] text-[#81949a]">
+												{previewText}
+											</pre>
+										</div>
+									)
+								})()
+							) : (
+								<pre className="max-h-[62vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[#1c2a33] bg-[#080d12] p-4 font-mono text-xs text-[#c7d3d6]">
+									{previewText}
+								</pre>
+							)}
 						</div>
 					)}
 

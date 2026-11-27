@@ -56,7 +56,7 @@ import { type RuntimeConsoleEvent, WorkbenchTerminal } from "./workbench-termina
 
 type WorkspaceView = "stream" | "inbound" | "vault" | "summary" | "settings"
 type RightTab = "cases" | "artifacts" | "ledger"
-type ModalTab = "ledger" | "technical" | "letter"
+type ModalTab = "ledger" | "technical" | "letter" | "preview"
 type ColorTheme = "dark" | "light"
 type ViewTransitionDocument = Document & {
 	startViewTransition?: (callback: () => void) => { finished: Promise<void> }
@@ -1398,13 +1398,39 @@ export function CorridorWorkspace() {
 									<Card key={v.caseId} className="p-3">
 										<div className="mb-2 font-mono text-xs font-bold text-[#e3edef]">{v.caseId}</div>
 										<div className="flex flex-wrap gap-1.5">
+											<Button
+												variant="outline"
+												size="sm"
+												onClick={() => {
+													setModalTab("preview")
+													setModalCaseId(v.caseId)
+												}}
+											>
+												Preview Files
+											</Button>
+											<a
+												href={`/api/report/${encodeURIComponent(v.caseId)}?format=pdf`}
+												download
+												className="inline-flex h-7 items-center gap-1 rounded border border-[#2c4a43] bg-[#0e2620] px-2.5 text-[11.5px] font-semibold text-[#62e1c3] hover:bg-[#14352d]"
+											>
+												<Download className="h-3 w-3" />
+												PDF
+											</a>
+											<a
+												href={`/api/report/${encodeURIComponent(v.caseId)}?format=csv`}
+												download
+												className="inline-flex h-7 items-center gap-1 rounded border border-[#32454d] bg-[#0d141b] px-2.5 text-[11.5px] font-semibold text-[#c7d3d6] hover:bg-[#080d12]"
+											>
+												<Download className="h-3 w-3" />
+												CSV
+											</a>
 											<a
 												href={`/api/report/${encodeURIComponent(v.caseId)}?format=txt`}
 												download
 												className="inline-flex h-7 items-center gap-1 rounded border border-[#32454d] bg-[#0d141b] px-2.5 text-[11.5px] font-semibold text-[#c7d3d6] hover:bg-[#080d12]"
 											>
 												<Download className="h-3 w-3" />
-												Review Request Draft (.txt)
+												TXT
 											</a>
 											<a
 												href={`/api/report/${encodeURIComponent(v.caseId)}?format=json`}
@@ -1412,7 +1438,7 @@ export function CorridorWorkspace() {
 												className="inline-flex h-7 items-center gap-1 rounded border border-[#32454d] bg-[#0d141b] px-2.5 text-[11.5px] font-semibold text-[#c7d3d6] hover:bg-[#080d12]"
 											>
 												<Download className="h-3 w-3" />
-												Full Audit (.json)
+												JSON
 											</a>
 										</div>
 									</Card>

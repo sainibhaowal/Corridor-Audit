@@ -51,6 +51,7 @@ interface WorkspaceSettingsState {
 	withholdingTaxBps: number
 	varianceThresholdMinor: number
 	webhookSigningSecretMasked: string
+	webhookSigningSecretAvailable: boolean
 	requireWebhookSignature: boolean
 }
 
@@ -109,6 +110,7 @@ export function SettingsView({
 		withholdingTaxBps: 0,
 		varianceThresholdMinor: 500,
 		webhookSigningSecretMasked: "whsec_••••••••",
+		webhookSigningSecretAvailable: true,
 		requireWebhookSignature: false,
 	})
 	const [teamMembers, setTeamMembers] = useState<TeamMemberItem[]>([])
@@ -801,6 +803,11 @@ export function SettingsView({
 											{rotatedSecret ? rotatedSecret : workspace.webhookSigningSecretMasked}
 										</div>
 									</div>
+									{!workspace.webhookSigningSecretAvailable && (
+										<p role="alert" className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-200">
+											The saved webhook secret cannot be decrypted with the current vault key. Verification stays fail-closed. Rotate the secret here, then update any provider using this webhook.
+										</p>
+									)}
 									<Button size="sm" variant="outline" onClick={() => void handleRotateSecret()}>
 										<RefreshCw className="h-3.5 w-3.5" />
 										Rotate Secret

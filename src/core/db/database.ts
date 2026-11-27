@@ -678,11 +678,13 @@ export class CorridorDatabase {
 			throw new Error(`Workspace ${workspaceId} not found.`)
 		}
 		let secretMasked = "whsec_••••••••"
+		let webhookSigningSecretAvailable = true
 		try {
 			const secret = decryptSecret(String(row.webhook_signing_secret_enc))
 			secretMasked = maskSecret(secret)
 		} catch {
-			throw new Error(`Cannot decrypt webhook signing secret for workspace ${workspaceId}. Verify the configured vault key.`)
+			webhookSigningSecretAvailable = false
+			secretMasked = "Unavailable. Rotate to restore."
 		}
 		return {
 			id: String(row.id),
@@ -694,6 +696,7 @@ export class CorridorDatabase {
 			varianceThresholdMinor: Number(row.variance_threshold_minor),
 			inboundEmailAddress: String(row.inbound_email_address),
 			webhookSigningSecretMasked: secretMasked,
+			webhookSigningSecretAvailable,
 			requireWebhookSignature: Boolean(row.require_webhook_signature),
 			createdAt: String(row.created_at),
 			updatedAt: String(row.updated_at),

@@ -36,7 +36,7 @@ const nextConfig = {
 		NEXT_PUBLIC_BUILD_COMMIT: buildCommit,
 		NEXT_PUBLIC_BUILD_TREE_STATE: buildTreeState,
 		NEXT_PUBLIC_CORRIDOR_AUTH_MODE:
-			process.env.NODE_ENV === "production" ? "cognito" : process.env.CORRIDOR_AUTH_MODE || "local",
+			process.env.CORRIDOR_AUTH_MODE || (process.env.NODE_ENV === "production" ? "cognito" : "local"),
 	},
 }
 

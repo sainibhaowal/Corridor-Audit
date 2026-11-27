@@ -298,7 +298,7 @@ test("workspace secret decryption failures do not silently rotate webhook creden
 	const internal = db as unknown as { db: DatabaseSync }
 	internal.db.prepare("UPDATE workspaces SET webhook_signing_secret_enc = ? WHERE id = ?")
 		.run("invalid-ciphertext", DEFAULT_WORKSPACE_ID)
-	assert.throws(() => db.getWorkspace(DEFAULT_WORKSPACE_ID), /Cannot decrypt webhook signing secret/)
+	assert.equal(db.getWorkspace(DEFAULT_WORKSPACE_ID).webhookSigningSecretAvailable, false)
 	assert.throws(() => db.getRawWebhookSecret(DEFAULT_WORKSPACE_ID), /Cannot decrypt webhook signing secret/)
 	const stored = internal.db.prepare("SELECT webhook_signing_secret_enc FROM workspaces WHERE id = ?")
 		.get(DEFAULT_WORKSPACE_ID) as { webhook_signing_secret_enc: string }

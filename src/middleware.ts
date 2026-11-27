@@ -24,6 +24,11 @@ function isPublicPath(path: string): boolean {
 }
 
 export async function middleware(request: NextRequest) {
+	if (process.env.CORRIDOR_AUTH_MODE === "local") {
+		const hostname = request.nextUrl.hostname.replace(/^\[|\]$/g, "").toLowerCase()
+		if (["127.0.0.1", "::1", "localhost"].includes(hostname)) return NextResponse.next()
+		return NextResponse.json({ error: "Local authentication mode is available only on loopback." }, { status: 403 })
+	}
 	if (process.env.NODE_ENV !== "production" && process.env.CORRIDOR_AUTH_MODE !== "cognito") {
 		return NextResponse.next()
 	}

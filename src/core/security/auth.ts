@@ -16,6 +16,7 @@ export interface CorridorSession {
 export type CorridorSessionInput = Pick<CorridorSession, "workspaceId" | "sub" | "email" | "name" | "role">
 
 export function authEnabled(): boolean {
+	if (process.env.CORRIDOR_AUTH_MODE === "local") return false
 	return process.env.NODE_ENV === "production" || process.env.CORRIDOR_AUTH_MODE === "cognito"
 }
 

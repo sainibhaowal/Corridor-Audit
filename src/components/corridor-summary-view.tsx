@@ -1,5 +1,6 @@
 "use client"
 
+import { Download } from "lucide-react"
 import type { AuditVerdict } from "@/core/types"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
@@ -32,13 +33,35 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 
 	return (
 		<div className="space-y-4">
-			<div>
-				<h1 className="text-xl font-extrabold tracking-tight text-[#e3edef]">
-					Cross-Border Settlement Summary
-				</h1>
-				<p className="mt-1 text-xs text-[#81949a]">
-					Calculated from saved case verdicts. Estimates without payment evidence are excluded from fee and FX totals.
-				</p>
+			<div className="flex flex-wrap items-start justify-between gap-3">
+				<div>
+					<h1 className="text-xl font-extrabold tracking-tight text-[#e3edef]">
+						Cross-Border Settlement Summary
+					</h1>
+					<p className="mt-1 text-xs text-[#81949a]">
+						Calculated from saved case verdicts. Estimates without payment evidence are excluded from fee and FX totals.
+					</p>
+				</div>
+				{verdicts.length > 0 && (
+					<div className="flex flex-wrap gap-2">
+						<a
+							href="/api/report?format=csv"
+							download
+							className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#2c4a43] bg-[#0e2620] px-3 text-xs font-semibold text-[#62e1c3] hover:bg-[#14352d]"
+						>
+							<Download className="h-3.5 w-3.5" />
+							Export Sheet (.csv)
+						</a>
+						<a
+							href="/api/report?format=json"
+							download
+							className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#32454d] bg-[#0d141b] px-3 text-xs font-semibold text-[#c7d3d6] hover:bg-[#121c24]"
+						>
+							<Download className="h-3.5 w-3.5" />
+							Export All (.json)
+						</a>
+					</div>
+				)}
 			</div>
 
 			<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">

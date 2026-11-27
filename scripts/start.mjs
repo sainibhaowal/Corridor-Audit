@@ -34,6 +34,13 @@ async function main() {
 	const host = (process.env.HOST || "127.0.0.1").trim()
 	const port = (process.env.PORT || "3000").trim()
 	const noOpen = process.argv.includes("--no-open") || process.env.NO_OPEN === "1"
+	const normalizedHost = host.replace(/^\[|\]$/g, "").toLowerCase()
+	if (!process.env.CORRIDOR_AUTH_MODE) {
+		process.env.CORRIDOR_AUTH_MODE = ["127.0.0.1", "::1", "localhost"].includes(normalizedHost) ? "local" : "cognito"
+	}
+	if (process.env.CORRIDOR_AUTH_MODE === "local" && !["127.0.0.1", "::1", "localhost"].includes(normalizedHost)) {
+		throw new Error("Local sign-in-free mode requires HOST to be 127.0.0.1, ::1, or localhost.")
+	}
 	const nextCli = resolve(process.cwd(), "node_modules/next/dist/bin/next")
 
 	if (!existsSync(resolve(process.cwd(), ".next/BUILD_ID"))) {

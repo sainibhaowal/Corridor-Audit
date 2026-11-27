@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-	if (process.env.NODE_ENV !== "production" && process.env.CORRIDOR_AUTH_MODE !== "cognito") redirect("/")
+	if (process.env.CORRIDOR_AUTH_MODE === "local" || (process.env.NODE_ENV !== "production" && process.env.CORRIDOR_AUTH_MODE !== "cognito")) redirect("/")
 	const { error } = await searchParams
 	return (
 		<main className="flex min-h-screen items-center justify-center bg-[#080d12] px-5 text-[#e3edef]">

@@ -34,6 +34,7 @@ export interface WorkspaceRecord {
 	varianceThresholdMinor: number
 	inboundEmailAddress: string
 	webhookSigningSecretMasked: string
+	webhookSigningSecretAvailable: boolean
 	requireWebhookSignature: boolean
 	createdAt: string
 	updatedAt: string
