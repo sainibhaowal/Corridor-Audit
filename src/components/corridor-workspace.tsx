@@ -1235,12 +1235,48 @@ export function CorridorWorkspace() {
 											<div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-sky-400/30 via-fuchsia-400/40 to-emerald-400/30" />
 										</div>
 										<div className="relative z-10 mx-auto flex min-h-[270px] max-w-2xl flex-col justify-center py-7">
-											<div className="mb-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#75e4c7]"><span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />Operations workspace · ready</div>
+											<div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+												<div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#75e4c7]">
+													<span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+													{provider?.mode === "live" ? "Operations workspace · LLM Live" : "Operations workspace · ready"}
+												</div>
+												{provider?.mode === "live" ? (
+													<div className="inline-flex items-center gap-2 rounded-lg border border-[#225b51] bg-[#081312]/90 px-3 py-1 font-mono text-[11px] text-[#62e1c3]">
+														<span className="h-2 w-2 animate-ping rounded-full bg-[#62e1c3] opacity-75" />
+														<span>&gt; Waiting for Data</span>
+														<span className="inline-flex gap-0.5">
+															<span className="animate-bounce [animation-delay:0ms]">.</span>
+															<span className="animate-bounce [animation-delay:150ms]">.</span>
+															<span className="animate-bounce [animation-delay:300ms]">.</span>
+														</span>
+													</div>
+												) : (
+													<div className="inline-flex items-center gap-1.5 rounded-lg border border-amber-800/60 bg-amber-950/30 px-2.5 py-1 font-mono text-[11px] text-amber-300">
+														<span>&gt; Waiting for LLM Key...</span>
+													</div>
+												)}
+											</div>
 											<h2 className="max-w-xl text-2xl font-semibold tracking-tight text-[#e3edef] sm:text-[28px]">Review a settlement with the agent team.</h2>
-											<p className="mt-2 max-w-xl text-sm leading-6 text-[#a4b4b8]">Follow each specialist as it checks invoice terms, FX, wire fees, and exceptions. Tool results and the final cent reconciliation appear here as the run progresses.</p>
-											<div className="mt-5 flex flex-wrap gap-2">
-												<Button className="h-9 px-3.5" onClick={() => setView("inbound")}><FileUp className="h-3.5 w-3.5" />Upload source</Button>
-												<Button variant="outline" className="h-9 px-3.5" onClick={() => setView("settings")}>Configure LLM Key</Button>
+											<p className="mt-2 max-w-xl text-sm leading-6 text-[#a4b4b8]">
+												{provider?.mode === "live"
+													? `Listening for uploads, drag-and-drop files, webhooks, emails, and hot-folder drops on ${provider.modelDisplayName || provider.modelName}.`
+													: "Follow each specialist as it checks invoice terms, FX, wire fees, and exceptions. Tool results and the final cent reconciliation appear here as the run progresses."}
+											</p>
+											<div className="mt-5 flex flex-wrap items-center gap-2">
+												<Button className="h-9 px-3.5" onClick={() => quickFileInputRef.current?.click()}>
+													<FileUp className="h-3.5 w-3.5" />
+													Upload source
+												</Button>
+												{provider?.mode !== "live" && (
+													<Button variant="outline" className="h-9 px-3.5" onClick={() => setView("settings")}>
+														Configure LLM Key
+													</Button>
+												)}
+												{provider?.mode === "live" && (
+													<span className="rounded-lg border border-[#1c2a33] bg-[#080d12]/80 px-3 py-1.5 font-mono text-[11px] text-[#81949a]">
+														Active: <strong className="text-[#e3edef]">{provider.modelDisplayName || provider.modelName}</strong>
+													</span>
+												)}
 											</div>
 											<div className="mt-7 grid grid-cols-1 gap-2 border-t border-[#1c2a33] pt-4 text-[11px] text-[#81949a] sm:grid-cols-3">
 												<div><span className="block font-semibold text-[#c7d3d6]">01 · Investigate</span>Terms, FX, and wire specialists</div>
@@ -1259,12 +1295,42 @@ export function CorridorWorkspace() {
 										</p>
 									</div>
 								) : (
-									<div className="relative space-y-4 pl-6 before:absolute before:top-2 before:bottom-2 before:left-[8.5px] before:w-[1.5px] before:bg-[#62e1c3]">
+									<div className="space-y-4">
+										{/* Agentic IDE Live Run-Activity Header */}
+										<div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#1c2a33] bg-[#080d12] px-3 py-2 font-mono text-[11px]">
+											<div className="flex items-center gap-2">
+												<span
+													className={cn(
+														"h-2 w-2 rounded-full",
+														hasRunningAgent ? "animate-pulse bg-[#62e1c3]" : activeEntry.pending ? "bg-amber-500" : "bg-emerald-500",
+													)}
+												/>
+												<span className="font-bold text-[#e3edef]">{activeEntry.phase || "RUN ACTIVE"}</span>
+											</div>
+											<div className="flex items-center gap-3 text-[#81949a]">
+												<span>
+													Agents: <strong className="text-[#e3edef]">{visibleAgents.filter((ag) => ag.status === "done").length}/{visibleAgents.length}</strong>
+												</span>
+												<span>
+													Tools: <strong className="text-[#62e1c3]">{visibleAgents.reduce((sum, ag) => sum + Object.keys(ag.tools).length, 0)}</strong>
+												</span>
+												<span>
+													Elapsed:{" "}
+													<strong className="text-[#e3edef]">
+														{(((activeEntry.verdict ? Date.parse(activeEntry.verdict.completedAt) : timelineNow) - activeEntry.startedAt) / 1000).toFixed(1)}s
+													</strong>
+												</span>
+											</div>
+										</div>
+
+										<div className="relative space-y-4 pl-6 before:absolute before:top-2 before:bottom-2 before:left-[8.5px] before:w-[1.5px] before:bg-[#62e1c3]">
 										{visibleAgents.map((a) => {
 											const toolsArr = Object.values(a.tools)
 											const rKey = `${activeEntry.caseId}:${a.name}`
 											const rOpen = Boolean(openReasoning[rKey])
 											const finalMsg = a.finalText || a.streamText
+											const isLead = a.name === "AuditorAgent"
+											const liveSec = a.status === "running" ? `${((timelineNow - a.startedAt) / 1000).toFixed(1)}s` : a.elapsed
 											return (
 												<div key={a.name} className="relative">
 													<span
@@ -1274,14 +1340,23 @@ export function CorridorWorkspace() {
 																? "bg-amber-600"
 																: a.status === "done"
 																	? "bg-emerald-600"
-																	: "animate-pulse bg-[#121c24]",
+																	: "animate-pulse bg-[#62e1c3]",
 														)}
 													/>
 													<div className="flex flex-wrap items-center gap-2">
+														<span
+															className={cn(
+																"rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold uppercase tracking-wider",
+																isLead ? "bg-violet-950/60 text-violet-300 border border-violet-700/50" : "bg-sky-950/50 text-sky-300 border border-sky-800/50",
+															)}
+														>
+															{isLead ? "Lead Agent" : "Subagent"}
+														</span>
 														<span className="text-[13px] font-bold text-[#e3edef]">{AGENT_LANES.find((lane) => lane.name === a.name)?.label ?? a.name}</span>
-														{a.thinking && (
-															<span className="rounded bg-[#101820] px-2 py-0.5 text-[11px] text-[#81949a]">
-																◌ Thinking...
+														{(a.thinking || a.status === "running") && (
+															<span className="inline-flex items-center gap-1.5 rounded-md border border-[#225b51] bg-[#081312] px-2 py-0.5 font-mono text-[11px] text-[#62e1c3]">
+																<span className="h-1.5 w-1.5 animate-ping rounded-full bg-[#62e1c3]" />
+																Thinking · {liveSec}
 															</span>
 														)}
 														{a.reasoning && (
@@ -1326,12 +1401,12 @@ export function CorridorWorkspace() {
 																				}))
 																			}
 																			className={cn(
-																				"inline-flex items-center gap-1 rounded border px-2 py-1 font-mono text-[11px] transition-colors",
+																				"inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[11px] transition-colors",
 																				t.status === "ok"
 																					? "border-[#225b51] bg-[#0d2725] text-[#75e4c7]"
 																					: t.status === "error"
-																						? "border-red-200 bg-red-50 text-red-700"
-																						: "border-[#1c2a33] bg-[#101820] text-[#c7d3d6]",
+																						? "border-red-800/70 bg-red-950/40 text-red-300"
+																						: "border-[#2c4a43] bg-[#0d191c] text-[#c7d3d6]",
 																			)}
 																		>
 																			{isOpen ? (
@@ -1339,8 +1414,18 @@ export function CorridorWorkspace() {
 																			) : (
 																				<ChevronRight className="h-3 w-3" />
 																			)}
+																			<span
+																				className={cn(
+																					"h-1.5 w-1.5 rounded-full",
+																					t.status === "ok"
+																						? "bg-emerald-400"
+																						: t.status === "error"
+																							? "bg-red-400"
+																							: "animate-ping bg-amber-400",
+																				)}
+																			/>
 																			{t.toolName} ·{" "}
-																			{t.durationMs !== null ? `${t.durationMs}ms` : "..."}
+																			{t.durationMs !== null ? `${t.durationMs}ms` : "running..."}
 																		</button>
 																		{isOpen && (
 																			<pre className="mt-1.5 whitespace-pre-wrap break-words rounded-md border border-[#1c2a33] bg-[#080d12] p-2.5 font-mono text-[11px] text-[#c7d3d6]">
@@ -1361,6 +1446,7 @@ export function CorridorWorkspace() {
 												</div>
 											)
 										})}
+										</div>
 									</div>
 								)}
 							</Card>
