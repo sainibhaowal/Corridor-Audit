@@ -4,7 +4,8 @@ import { Download } from "lucide-react"
 import type { AuditVerdict } from "@/core/types"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { fmtClientMoney, verdictBadgeVariant, verdictStatusLabel } from "./corridor-types"
+import { CorridorAnalyticsPanel } from "./corridor-analytics-panel"
+import { type CaseStreamEntry, fmtClientMoney, type ProviderStatus, type QueueStats, verdictBadgeVariant, verdictStatusLabel } from "./corridor-types"
 
 function formatBreakdown(verdicts: AuditVerdict[], pick: (v: AuditVerdict) => number): string {
 	const totals = new Map<string, number>()
@@ -20,10 +21,19 @@ function formatBreakdown(verdicts: AuditVerdict[], pick: (v: AuditVerdict) => nu
 
 interface CorridorSummaryViewProps {
 	verdicts: AuditVerdict[]
+	casesMap?: Record<string, CaseStreamEntry>
+	provider?: ProviderStatus | null
+	queueStats?: QueueStats
 	onSelectCase: (caseId: string) => void
 }
 
-export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryViewProps) {
+export function CorridorSummaryView({
+	verdicts,
+	casesMap = {},
+	provider = null,
+	queueStats = { waiting: 0, active: 0, done: verdicts.length, failed: 0 },
+	onSelectCase,
+}: CorridorSummaryViewProps) {
 	const evidenceBackedVerdicts = verdicts.filter((v) => v.status !== "EVIDENCE_INCOMPLETE")
 	const recoverLabel = formatBreakdown(evidenceBackedVerdicts, (v) => v.numbers.recoverableFeeMinor)
 	const fxLabel = formatBreakdown(evidenceBackedVerdicts, (v) => v.numbers.fxSpreadLossMinor)
@@ -113,6 +123,14 @@ export function CorridorSummaryView({ verdicts, onSelectCase }: CorridorSummaryV
 					</div>
 				</Card>
 			</div>
+
+			<CorridorAnalyticsPanel
+				verdicts={verdicts}
+				casesMap={casesMap}
+				provider={provider}
+				queueStats={queueStats}
+				onSelectCase={onSelectCase}
+			/>
 
 			<Card className="overflow-hidden">
 				<div className="overflow-x-auto">

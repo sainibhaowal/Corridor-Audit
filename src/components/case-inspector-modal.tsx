@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import type { AccountingPaymentApplication, SettlementCase } from "@/core/types"
 import { type CaseStreamEntry, fmtClientMoney } from "./corridor-types"
+import { TraceWaterfall } from "./trace-waterfall"
 
 type PreviewFormat = "pdf" | "csv" | "txt" | "json"
 
@@ -50,8 +51,8 @@ function parseCsvRows(csvText: string): string[][] {
 
 interface CaseInspectorModalProps {
 	entry: CaseStreamEntry | null
-	activeTab: "ledger" | "technical" | "letter" | "preview"
-	onTabChange: (tab: "ledger" | "technical" | "letter" | "preview") => void
+	activeTab: "ledger" | "technical" | "letter" | "preview" | "trace"
+	onTabChange: (tab: "ledger" | "technical" | "letter" | "preview" | "trace") => void
 	onClose: () => void
 }
 
@@ -161,6 +162,7 @@ export function CaseInspectorModal({
 				<div className="flex flex-wrap gap-1.5 border-b border-[#1c2a33] bg-[#080d12] px-5 pt-2.5">
 					{[
 						{ id: "ledger" as const, label: "Summary & Cent Ledger" },
+						{ id: "trace" as const, label: "Trace Waterfall (Gantt)" },
 						{ id: "preview" as const, label: "In-Built File Preview (.pdf / .csv / .txt / .json)" },
 						{ id: "technical" as const, label: "All Technical Fields (JSON)" },
 						{ id: "letter" as const, label: "Review Request Draft (.txt)" },
@@ -384,6 +386,10 @@ export function CaseInspectorModal({
 								</Card>
 							</div>
 						</div>
+					)}
+
+					{activeTab === "trace" && (
+						<TraceWaterfall entry={entry} />
 					)}
 
 					{activeTab === "preview" && (

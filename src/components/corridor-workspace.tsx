@@ -56,7 +56,7 @@ import { type RuntimeConsoleEvent, WorkbenchTerminal } from "./workbench-termina
 
 type WorkspaceView = "stream" | "inbound" | "vault" | "summary" | "settings"
 type RightTab = "cases" | "artifacts" | "ledger"
-type ModalTab = "ledger" | "technical" | "letter" | "preview"
+type ModalTab = "ledger" | "technical" | "letter" | "preview" | "trace"
 type ColorTheme = "dark" | "light"
 type ViewTransitionDocument = Document & {
 	startViewTransition?: (callback: () => void) => { finished: Promise<void> }
@@ -1448,6 +1448,9 @@ export function CorridorWorkspace() {
 					{view === "summary" && (
 						<CorridorSummaryView
 							verdicts={verdicts}
+							casesMap={casesMap}
+							provider={provider}
+							queueStats={queueStats}
 							onSelectCase={(cid) => {
 								setModalTab("ledger")
 								setModalCaseId(cid)
