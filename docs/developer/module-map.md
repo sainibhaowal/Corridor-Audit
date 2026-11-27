@@ -37,7 +37,7 @@
 ## 3. Frontend Workbench (`src/components/` & `src/app/`)
 | Component | Responsibility |
 | :--- | :--- |
-| `src/components/corridor-workspace.tsx` | 3-panel workbench shell: navigation, live agent stream, breakpoint resolution controls, right-side Cases / Artifacts / Ledger drawer. |
+| `src/components/corridor-workspace.tsx` | 3-panel workbench shell: navigation, sidebar drag-and-drop / click `Upload source` with live stage indicator (`uploading` → `processing` → `ingested`), top toast notification, auto-switch to Live Agent Stream, breakpoint resolution controls, and Cases / Artifacts / Ledger drawer. |
 | `src/components/corridor-summary-view.tsx` | KPI summary cards, per-case verdict table, and batch **Export Sheet (.csv)** / **Export All (.json)**. |
 | `src/components/case-inspector-modal.tsx` | Case Inspector modal with **Summary & Cent Ledger**, **In-Built File Preview** (inline `.pdf` iframe, parsed `.csv` table, `.txt`, `.json`), **Technical JSON**, and **Review Request Draft (.txt)**. |
 | `src/components/inbound-sources-view.tsx` | File drag-and-drop & paste uploader (`.csv`, `.txt`, `.xml`, `.json`, `.pdf`). |
