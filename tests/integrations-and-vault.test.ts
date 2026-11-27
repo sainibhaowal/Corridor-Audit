@@ -1049,6 +1049,39 @@ test("Stripe and Xero incremental sync cursors use a five-minute overlap", async
 	}
 })
 
+test("QuickBooks incremental invoice sync filters on MetaData.LastUpdatedTime with overlap", async () => {
+	const previousFetch = global.fetch
+	const requests: URL[] = []
+	global.fetch = (async (input) => {
+		requests.push(new URL(String(input)))
+		return new Response(JSON.stringify({ QueryResponse: { Invoice: [] } }), { status: 200 })
+	}) as typeof fetch
+	try {
+		const integration = {
+			id: "int_qbo_cursor",
+			workspaceId: DEFAULT_WORKSPACE_ID,
+			provider: "quickbooks",
+			category: "accounting" as const,
+			authMode: "oauth2" as const,
+			status: "connected" as const,
+			config: { realmId: "realm-cursor" },
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		}
+		const fetched = await fetchCasesFromIntegration({
+			integration,
+			credentials: { accessToken: "qbo-test" },
+			lastSuccessfulSyncAt: "2026-11-27T12:00:00.000Z",
+		})
+		assert.equal(fetched.recordsFetched, 0)
+		assert.equal(requests.length, 1)
+		assert.ok(decodeURIComponent(requests[0]!.searchParams.get("query")!).includes("WHERE MetaData.LastUpdatedTime > '2026-11-27T11:55:00.000Z'"))
+		assert.ok(decodeURIComponent(requests[0]!.searchParams.get("query")!).includes("ORDERBY MetaData.LastUpdatedTime DESC"))
+	} finally {
+		global.fetch = previousFetch
+	}
+})
+
 test("changed Xero invoice data creates an immutable source revision case", async () => {
 	const db = getCorridorDb()
 	const previousFetch = global.fetch

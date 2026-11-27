@@ -198,6 +198,7 @@ async function fetchWiseCases(
 async function fetchQuickBooksCases(
 	credentials: IntegrationCredentials,
 	config: Record<string, string>,
+	lastSuccessfulSyncAt?: string,
 ): Promise<ConnectorFetchResult> {
 	const realmId = config.realmId?.trim()
 	if (!realmId) {
@@ -208,13 +209,16 @@ async function fetchQuickBooksCases(
 		DocNumber?: string
 		TotalAmt: number
 		TxnDate?: string
+		MetaData?: { LastUpdatedTime?: string }
 		CurrencyRef?: { value?: string }
 		CustomerRef?: { name?: string }
 	}> = []
 	const rawPages: string[] = []
+	const since = syncSince(lastSuccessfulSyncAt)
 	for (let page = 0; page < MAX_PROVIDER_SYNC_PAGES; page += 1) {
 		const startPosition = page * ACCOUNTING_PAGE_SIZE + 1
-		const query = encodeURIComponent(`SELECT * FROM Invoice ORDERBY MetaData.LastUpdatedTime DESC STARTPOSITION ${startPosition} MAXRESULTS ${ACCOUNTING_PAGE_SIZE}`)
+		const modifiedFilter = since ? ` WHERE MetaData.LastUpdatedTime > '${since.toISOString()}'` : ""
+		const query = encodeURIComponent(`SELECT * FROM Invoice${modifiedFilter} ORDERBY MetaData.LastUpdatedTime DESC STARTPOSITION ${startPosition} MAXRESULTS ${ACCOUNTING_PAGE_SIZE}`)
 		const res = await fetch(`https://quickbooks.api.intuit.com/v3/company/${encodeURIComponent(realmId)}/query?query=${query}`, {
 			headers: { Authorization: authHeader(credentials), Accept: "application/json" },
 		})
@@ -408,7 +412,7 @@ export async function fetchCasesFromIntegration(params: {
 		case "wise":
 			return fetchWiseCases(credentials ?? {}, integration.config)
 		case "quickbooks":
-			return fetchQuickBooksCases(credentials ?? {}, integration.config)
+			return fetchQuickBooksCases(credentials ?? {}, integration.config, params.lastSuccessfulSyncAt)
 		case "xero":
 			return fetchXeroCases(credentials ?? {}, integration.config, params.lastSuccessfulSyncAt)
 		default:
