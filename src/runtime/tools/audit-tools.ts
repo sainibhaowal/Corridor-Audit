@@ -54,14 +54,14 @@ function buildDisputeLetter(params: {
 		``,
 		`To: Correspondent & Operations Fee Investigations Desk (${params.senderName})`,
 		``,
-		`We request reimbursement of ${params.recoverableFormatted} wrongfully deducted from cross-border wire ${params.wireId} (Ref: ${params.transactionRef}, Value Date: ${params.valueDate}).`,
+		`Based on the records supplied, we request a review of ${params.recoverableFormatted} in charges applied to cross-border wire ${params.wireId} (Ref: ${params.transactionRef}, Value Date: ${params.valueDate}).`,
 		``,
 		`EVIDENCE SUMMARY:`,
 		`- Underlying Invoice: ${params.invoiceId}`,
-		`- SWIFT Field :71A: / Contract Charge Clause: ${params.contractBearer} (all correspondent and intermediary charges must be borne by the ordering party, zero beneficiary deduction).`,
-		`- Deducted Amount Cleared in Error: ${params.recoverableFormatted}`,
+		`- SWIFT Field :71A: / Contract Charge Clause recorded by CorridorAudit: ${params.contractBearer}.`,
+		`- Charges identified for review: ${params.recoverableFormatted}`,
 		``,
-		`Please credit ${params.recoverableFormatted} back to the beneficiary account and confirm the adjustment reference.`,
+		`Please review the attached transaction records and advise whether an adjustment is due. If confirmed, please credit ${params.recoverableFormatted} to the beneficiary account and provide the adjustment reference.`,
 		``,
 		`Build: ${params.provenanceLabel} · Audit rules: v${params.auditRulesVersion}`,
 		`---`,
@@ -193,7 +193,7 @@ export const verifySettlementBalanceTool: Tool = {
 export const verifyCitationsIntegrityTool: Tool = {
 	type: "function",
 	name: "verify_citations_integrity",
-	description: "Verify all specialist findings carry non-empty grounded SourceRef citations with zero fabricated numbers.",
+	description: "Check that specialist SourceRef entries contain the required identifying fields and excerpts. This structural check does not authenticate source documents or independently verify figures.",
 	parameters: {
 		type: "object",
 		properties: { caseId: { type: "string" } },
@@ -225,9 +225,9 @@ export const verifyCitationsIntegrityTool: Tool = {
 			citationAuditPassed,
 			totalRefs: validRefs.length,
 			sourceRefs: validRefs,
-			summary: citationAuditPassed
-				? `Citation integrity PASSED: ${validRefs.length}/${validRefs.length} SourceRefs verified against raw evidence.`
-				: "Citation integrity FAILED: insufficient grounded SourceRefs.",
+				summary: citationAuditPassed
+					? `Citation structure PASSED: ${validRefs.length} SourceRef entries contain the required fields. Source documents and figures were not independently authenticated.`
+					: "Citation structure FAILED: insufficient SourceRef entries with the required fields.",
 		}
 	},
 }
