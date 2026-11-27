@@ -360,4 +360,16 @@ CREATE TABLE IF NOT EXISTS case_checkpoints (
 	updated_at TEXT NOT NULL,
 	PRIMARY KEY (case_id, role)
 );
+
+CREATE TABLE IF NOT EXISTS local_users (
+	id TEXT PRIMARY KEY,
+	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+	email TEXT NOT NULL UNIQUE,
+	name TEXT NOT NULL,
+	avatar_color TEXT NOT NULL DEFAULT '#10b981',
+	role TEXT NOT NULL DEFAULT 'owner',
+	password_hash TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
 `

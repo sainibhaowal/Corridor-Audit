@@ -31,5 +31,11 @@ export async function POST(request: Request) {
 		path: "/",
 		maxAge: 0,
 	})
+	response.cookies.set("ca_local_user", "", {
+		httpOnly: true,
+		sameSite: "lax",
+		path: "/",
+		maxAge: 0,
+	})
 	return response
 }

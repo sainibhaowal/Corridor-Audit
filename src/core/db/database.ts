@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto"
+import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto"
 import { mkdirSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { DatabaseSync } from "node:sqlite"
@@ -2011,6 +2011,175 @@ export class CorridorDatabase {
 	/** Clears persisted specialist checkpoints when a case is explicitly reset/reprocessed. */
 	clearCaseCheckpoints(caseId: string): void {
 		this.db.prepare("DELETE FROM case_checkpoints WHERE case_id = ?").run(caseId)
+	}
+
+	private hashLocalPassword(password: string): string {
+		const salt = randomBytes(16).toString("hex")
+		const derived = scryptSync(password, salt, 64).toString("hex")
+		return `${salt}:${derived}`
+	}
+
+	private verifyLocalPassword(password: string, storedHash: string): boolean {
+		const [salt, hexHash] = storedHash.split(":")
+		if (!salt || !hexHash) return false
+		const derived = scryptSync(password, salt, 64)
+		const expected = Buffer.from(hexHash, "hex")
+		if (derived.length !== expected.length) return false
+		return timingSafeEqual(derived, expected)
+	}
+
+	ensureDefaultLocalUser(workspaceId = DEFAULT_WORKSPACE_ID): {
+		id: string
+		email: string
+		name: string
+		avatarColor: string
+		role: TeamRole
+	} {
+		const existing = this.db
+			.prepare("SELECT id, email, name, avatar_color, role FROM local_users WHERE workspace_id = ? ORDER BY created_at ASC LIMIT 1")
+			.get(workspaceId) as { id: string; email: string; name: string; avatar_color: string; role: TeamRole } | undefined
+		if (existing) {
+			return {
+				id: existing.id,
+				email: existing.email,
+				name: existing.name,
+				avatarColor: existing.avatar_color,
+				role: existing.role,
+			}
+		}
+		const now = new Date().toISOString()
+		const id = "usr-testadmin"
+		const email = "testadmin@corridoraudit.local"
+		const name = "Test Admin"
+		const avatarColor = "#10b981"
+		const role: TeamRole = "owner"
+		const passwordHash = this.hashLocalPassword("Admin@1234")
+		this.db
+			.prepare(
+				`INSERT OR IGNORE INTO local_users (id, workspace_id, email, name, avatar_color, role, password_hash, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(id, workspaceId, email, name, avatarColor, role, passwordHash, now, now)
+		return { id, email, name, avatarColor, role }
+	}
+
+	getLocalUserById(userId: string): {
+		id: string
+		workspaceId: string
+		email: string
+		name: string
+		avatarColor: string
+		role: TeamRole
+	} | null {
+		this.ensureDefaultLocalUser()
+		const row = this.db
+			.prepare("SELECT id, workspace_id, email, name, avatar_color, role FROM local_users WHERE id = ?")
+			.get(userId) as
+			| { id: string; workspace_id: string; email: string; name: string; avatar_color: string; role: TeamRole }
+			| undefined
+		if (!row) return null
+		return {
+			id: row.id,
+			workspaceId: row.workspace_id,
+			email: row.email,
+			name: row.name,
+			avatarColor: row.avatar_color,
+			role: row.role,
+		}
+	}
+
+	authenticateOrRegisterLocalUser(params: {
+		email: string
+		password: string
+		name?: string
+		mode?: "login" | "register"
+		workspaceId?: string
+	}): { id: string; workspaceId: string; email: string; name: string; avatarColor: string; role: TeamRole } {
+		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
+		this.ensureDefaultLocalUser(workspaceId)
+		const email = params.email.trim().toLowerCase()
+		if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+			throw new Error("Enter a valid email address (for example, name@example.com).")
+		}
+		if (params.password.length < 8 || !/[A-Za-z]/.test(params.password) || !/[0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(params.password)) {
+			throw new Error("Password must be at least 8 characters and include letters plus a number or symbol.")
+		}
+
+		const existing = this.db
+			.prepare("SELECT id, workspace_id, email, name, avatar_color, role, password_hash FROM local_users WHERE email = ?")
+			.get(email) as
+			| { id: string; workspace_id: string; email: string; name: string; avatar_color: string; role: TeamRole; password_hash: string }
+			| undefined
+
+		if (existing) {
+			if (params.mode === "register") {
+				throw new Error("An account with this email already exists. Please sign in instead.")
+			}
+			if (!this.verifyLocalPassword(params.password, existing.password_hash)) {
+				throw new Error("Invalid email or password.")
+			}
+			return {
+				id: existing.id,
+				workspaceId: existing.workspace_id,
+				email: existing.email,
+				name: existing.name,
+				avatarColor: existing.avatar_color,
+				role: existing.role,
+			}
+		}
+
+		const displayName = (params.name || email.split("@")[0] || "Operator").trim().slice(0, 80)
+		const id = `usr-${randomUUID().slice(0, 8)}`
+		const now = new Date().toISOString()
+		const passwordHash = this.hashLocalPassword(params.password)
+		const avatarColor = "#38bdf8"
+		const role: TeamRole = "owner"
+		this.db
+			.prepare(
+				`INSERT INTO local_users (id, workspace_id, email, name, avatar_color, role, password_hash, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(id, workspaceId, email, displayName, avatarColor, role, passwordHash, now, now)
+		return { id, workspaceId, email, name: displayName, avatarColor, role }
+	}
+
+	updateLocalUserProfile(params: { userId: string; name: string; avatarColor?: string }): {
+		id: string
+		workspaceId: string
+		email: string
+		name: string
+		avatarColor: string
+		role: TeamRole
+	} {
+		const trimmed = params.name.trim()
+		if (!trimmed || trimmed.length > 80) {
+			throw new Error("Display name must be between 1 and 80 characters.")
+		}
+		const color = params.avatarColor && /^#[0-9a-fA-F]{6}$/.test(params.avatarColor) ? params.avatarColor : undefined
+		const now = new Date().toISOString()
+		if (color) {
+			this.db.prepare("UPDATE local_users SET name = ?, avatar_color = ?, updated_at = ? WHERE id = ?").run(trimmed, color, now, params.userId)
+		} else {
+			this.db.prepare("UPDATE local_users SET name = ?, updated_at = ? WHERE id = ?").run(trimmed, now, params.userId)
+		}
+		const updated = this.getLocalUserById(params.userId)
+		if (!updated) throw new Error("User profile not found.")
+		return updated
+	}
+
+	resetLocalUserPassword(params: { userId: string; currentPassword?: string; newPassword: string }): void {
+		const row = this.db
+			.prepare("SELECT password_hash FROM local_users WHERE id = ?")
+			.get(params.userId) as { password_hash: string } | undefined
+		if (!row) throw new Error("User account not found.")
+		if (params.currentPassword !== undefined && !this.verifyLocalPassword(params.currentPassword, row.password_hash)) {
+			throw new Error("Current password is incorrect.")
+		}
+		if (params.newPassword.length < 8 || !/[A-Za-z]/.test(params.newPassword) || !/[0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(params.newPassword)) {
+			throw new Error("New password must be at least 8 characters and include letters plus a number or symbol.")
+		}
+		const nextHash = this.hashLocalPassword(params.newPassword)
+		this.db.prepare("UPDATE local_users SET password_hash = ?, updated_at = ? WHERE id = ?").run(nextHash, new Date().toISOString(), params.userId)
 	}
 
 	close(): void {
