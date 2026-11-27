@@ -2,7 +2,7 @@
 
 CorridorAudit release history. Versions follow the policy in [docs/VERSIONING.md](docs/VERSIONING.md). Each release entry records the application scope and verified behavior at that release; it is not limited to files changed in the release commit.
 
-## [0.3.0] - 2026-11-28
+## [Unreleased]
 
 ### Added
 - **Multi-Format Export & In-Built Preview:** Added zero-dependency PDF 1.4 (`?format=pdf`), RFC-4180 CSV with formula-injection neutralization (`?format=csv`), TXT, and JSON exports on `/api/report/[caseId]` and batch `/api/report`, plus `?preview=1` inline preview in the Case Inspector (live PDF `<iframe>`, parsed CSV table, TXT, JSON).
@@ -17,14 +17,6 @@ CorridorAudit release history. Versions follow the policy in [docs/VERSIONING.md
 - **Judge demo fixtures:** Added five synthetic paired invoice and payout cases, separate CSV, SWIFT MT103, and CAMT.053 source examples, and upload guidance that explains which formats can be matched by the current app.
 - **Local demo onboarding:** Added a short sign-in walkthrough, improved sign-in screen colors and layout, and updated README setup instructions for a local run without an identity provider.
 - **Branding source assets:** Added SVG source files for the banner, favicon, logo, and icon sprite under `docs/assests/branding/`.
-
-Feature release for the expanded local audit workbench, judge demo data, and onboarding improvements. CorridorAudit remains a local preview; connector coverage and deployment safeguards are limited as described in the README and architecture documents.
-
-### Verification
-
-- `npm run typecheck` passed.
-- `npm run build` passed for application version `0.3.0`.
-- `npm start -- --no-open` started the built app; `/` and `/api/health` returned HTTP 200.
 
 ## [0.2.1] - 2026-11-27
 

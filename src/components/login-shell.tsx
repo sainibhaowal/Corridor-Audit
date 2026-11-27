@@ -105,7 +105,7 @@ export function LoginShell({ cognitoMode, error }: LoginShellProps) {
 									: "border-[#24504c] bg-[#0c1c1c] text-[#62e1c3]"
 									}`}
 								>
-									v0.3.0
+									v0.2.0
 								</span>
 							</div>
 							<p className={`text-xs ${isLight ? "text-slate-600" : "text-[#81949a]"}`}>

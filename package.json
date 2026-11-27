@@ -1,6 +1,6 @@
 {
 	"name": "corridor-audit",
-	"version": "0.3.0",
+	"version": "0.2.0",
 	"description": "Cross-border settlement, FX spread & hidden-fee forensics powered by concurrent Mozaik agents",
 	"type": "module",
 	"private": false,
