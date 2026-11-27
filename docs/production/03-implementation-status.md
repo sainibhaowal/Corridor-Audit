@@ -462,3 +462,8 @@ Update this section per milestone with the exact command, result, environment, a
 
 - Updated the current-state flow to show encrypted raw evidence, the durable SQLite case queue, the single local worker's leases and retries, persisted human review, and verdict storage. Clarified that intake parsing runs in the request process and that audit processing returns after durable acceptance rather than after the full audit completes.
 - This is a documentation correction based on the current upload, webhook, database queue, and orchestrator implementations. It does not describe a distributed worker fleet or cloud deployment.
+
+### 2026-11-27 review draft evidence disclaimer
+
+- Replaced the generated review-request draft's synthetic-demo-only disclaimer with wording that describes submitted records and cited ECB reference data, and asks the operator to verify source documents, recipient, and amounts before sending.
+- This changes the generated draft text only. It does not send a bank request or certify a recovery.
