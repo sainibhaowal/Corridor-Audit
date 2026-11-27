@@ -359,18 +359,37 @@ export class CorridorDatabase {
 		const id = `approval_${randomUUID()}`
 		const requestedAt = pending.createdAt || new Date().toISOString()
 		const argsSha256 = createHash("sha256").update(pending.argsJson, "utf8").digest("hex")
-		this.inTransaction(() => {
+		return this.inTransaction(() => {
+			const existing = this.db.prepare(`SELECT id FROM review_approvals WHERE workspace_id = ? AND case_id = ?
+				AND tool_name = ? AND action_type = ? AND args_sha256 = ? AND status = 'pending' ORDER BY requested_at DESC, rowid DESC LIMIT 1`)
+				.get(workspaceId, pending.caseId, pending.toolName, pending.actionType, argsSha256) as { id: string } | undefined
+			if (existing) return existing.id
 			this.db.prepare(`INSERT INTO review_approvals
 				(id, workspace_id, case_id, tool_name, action_type, args_sha256, pending_json, pending_json_encrypted, requested_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`)
 				.run(id, workspaceId, pending.caseId, pending.toolName, pending.actionType, argsSha256, encryptSecret(JSON.stringify(pending)), requestedAt)
 			this.appendWorkspaceAuditEvent({ workspaceId, actorType: "system", action: "review.requested", targetType: "case", targetId: pending.caseId, metadata: { approvalId: id, toolName: pending.toolName, actionType: pending.actionType } })
+			return id
 		})
-		return id
+	}
+
+	listPendingApprovals(workspaceId = DEFAULT_WORKSPACE_ID): PendingBreakpointDecision[] {
+		const rows = this.db.prepare(`SELECT id, pending_json, pending_json_encrypted, requested_at FROM review_approvals
+			WHERE workspace_id = ? AND status = 'pending' ORDER BY requested_at ASC, rowid ASC`).all(workspaceId) as Array<{
+			id: string
+			pending_json: string
+			pending_json_encrypted: number
+			requested_at: string
+		}>
+		return rows.map((row) => {
+			const pending = JSON.parse(row.pending_json_encrypted ? decryptSecret(row.pending_json) : row.pending_json) as PendingBreakpointDecision
+			return { ...pending, approvalId: row.id, createdAt: pending.createdAt || row.requested_at }
+		})
 	}
 
 	resolvePendingApproval(params: {
 		caseId: string
+		approvalId?: string
 		decision: StoredReviewDecision["decision"]
 		reason?: string
 		reviewerSub: string
@@ -381,8 +400,11 @@ export class CorridorDatabase {
 		const workspaceId = params.workspaceId || DEFAULT_WORKSPACE_ID
 		this.db.exec("BEGIN IMMEDIATE")
 		try {
-			const row = this.db.prepare(`SELECT id FROM review_approvals WHERE workspace_id = ? AND case_id = ? AND status = 'pending'
-				ORDER BY requested_at DESC, rowid DESC LIMIT 1`).get(workspaceId, params.caseId) as { id: string } | undefined
+			const row = params.approvalId
+				? this.db.prepare(`SELECT id FROM review_approvals WHERE workspace_id = ? AND case_id = ? AND id = ? AND status = 'pending'`)
+					.get(workspaceId, params.caseId, params.approvalId) as { id: string } | undefined
+				: this.db.prepare(`SELECT id FROM review_approvals WHERE workspace_id = ? AND case_id = ? AND status = 'pending'
+					ORDER BY requested_at DESC, rowid DESC LIMIT 1`).get(workspaceId, params.caseId) as { id: string } | undefined
 			if (!row) {
 				this.db.exec("COMMIT")
 				return null
@@ -1314,16 +1336,22 @@ export class CorridorDatabase {
 		const now = new Date().toISOString()
 		this.db.exec("BEGIN IMMEDIATE")
 		try {
+			const prior = this.db.prepare(`SELECT attempt_count FROM cases WHERE case_id = ? AND workspace_id = ? AND status = 'dead_letter'`)
+				.get(caseId, workspaceId) as { attempt_count: number } | undefined
+			if (!prior) {
+				this.db.exec("COMMIT")
+				return null
+			}
 			const update = this.db.prepare(`UPDATE cases SET status = 'queued', attempt_count = 0, worker_id = NULL, lease_expires_at = NULL,
 			next_attempt_at = NULL, last_error = NULL, updated_at = ?
-			WHERE case_id = ? AND workspace_id = ? AND status = 'dead_letter' RETURNING attempt_count`).get(now, caseId, workspaceId) as { attempt_count: number } | undefined
-			if (!update) {
+			WHERE case_id = ? AND workspace_id = ? AND status = 'dead_letter'`).run(now, caseId, workspaceId)
+			if (Number(update.changes) !== 1) {
 				this.db.exec("COMMIT")
 				return null
 			}
 			const row = this.db.prepare("SELECT payload_json, payload_json_encrypted FROM cases WHERE case_id = ? AND workspace_id = ?")
 				.get(caseId, workspaceId) as { payload_json: string; payload_json_encrypted: number } | undefined
-			this.appendWorkspaceAuditEvent({ workspaceId, actorType: "local", action: "case.queue.replay", targetType: "case", targetId: caseId, metadata: { previousAttempts: update.attempt_count } })
+			this.appendWorkspaceAuditEvent({ workspaceId, actorType: "local", action: "case.queue.replay", targetType: "case", targetId: caseId, metadata: { previousAttempts: prior.attempt_count } })
 			this.db.exec("COMMIT")
 			return row ? JSON.parse(row.payload_json_encrypted ? decryptSecret(row.payload_json) : row.payload_json) as SettlementCase : null
 		} catch (error) {

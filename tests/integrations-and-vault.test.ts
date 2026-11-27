@@ -25,6 +25,7 @@ import { assertProviderEndpointHostAllowed, assertProviderEndpointResolvesPublic
 import { consumeOAuthState, createOAuthAuthorizationUrl, exchangeOAuthCode, refreshOAuthCredentials } from "../src/core/integrations/oauth"
 import { runIntegrationSync } from "../src/runtime/workers/sync-worker"
 import { runWithDurableCaseRetries } from "../src/runtime/workers/durable-case-queue"
+import { CorridorState } from "../src/runtime/corridor-runtime"
 import { backupCorridorDatabase } from "../src/core/db/backup"
 import { decryptJson, decryptSecret, encryptJson, encryptSecret, maskSecret, resetVaultKeyCache } from "../src/core/security/vault"
 import {
@@ -460,7 +461,8 @@ test("durable case retries use bounded backoff and expose exhausted jobs for ope
 	assert.equal(db.listDeadLetterCases()[0]?.attemptCount, 3)
 	assert.match(db.listDeadLetterCases()[0]?.lastError || "", /permanent provider failure/)
 	assert.equal(db.retryDeadLetterCase(deadLetterCase.caseId)?.caseId, deadLetterCase.caseId)
-	assert.ok(db.listWorkspaceAuditEvents(DEFAULT_WORKSPACE_ID, 50).some((event) => event.action === "case.queue.replay" && event.targetId === deadLetterCase.caseId))
+	const replayEvent = db.listWorkspaceAuditEvents(DEFAULT_WORKSPACE_ID, 50).find((event) => event.action === "case.queue.replay" && event.targetId === deadLetterCase.caseId)
+	assert.equal(replayEvent?.metadata.previousAttempts, 3, "replay audit records the attempt count before it resets")
 	assert.equal(db.getCaseAttemptCount(deadLetterCase.caseId), 0)
 	assert.ok(db.listQueuedCases().some((item) => item.caseId === deadLetterCase.caseId))
 	assert.equal(db.verifyWorkspaceAuditChain(DEFAULT_WORKSPACE_ID).valid, true)
@@ -857,7 +859,7 @@ test("normalized cases, verdicts, and approval payloads encrypt at rest and migr
 	db.saveCase(settlementCase)
 	db.saveAuditVerdict(verdict)
 	assert.equal(db.listWorkspaceAuditEvents(DEFAULT_WORKSPACE_ID).find((event) => event.action === "case.audit.complete")?.targetId, settlementCase.caseId)
-	db.createPendingApproval(approval)
+	const approvalId = db.createPendingApproval(approval)
 	db.close()
 
 	const inspection = new DatabaseSync(dbPath)
@@ -887,6 +889,7 @@ test("normalized cases, verdicts, and approval payloads encrypt at rest and migr
 	const reopened = new CorridorDatabase(dbPath)
 	assert.equal(reopened.listPersistedCases()[0]?.invoice?.vendorOrClient, "Private Vendor GmbH")
 	assert.equal(reopened.listPersistedVerdicts()[0]?.plainEnglishSummary, "Private Vendor GmbH record")
+	assert.deepEqual(reopened.listPendingApprovals(), [{ ...approval, approvalId }])
 	reopened.close()
 	const migrated = new DatabaseSync(dbPath)
 	assert.equal((migrated.prepare("SELECT payload_json_encrypted AS encrypted FROM cases WHERE case_id = ?").get(settlementCase.caseId) as { encrypted: number }).encrypted, 1)
@@ -911,9 +914,21 @@ test("review decisions persist against the exact breakpoint call and retain huma
 		riskLabel: "Medium Risk",
 		createdAt: new Date().toISOString(),
 	}
-	db.createPendingApproval(pending)
+	const approvalId = db.createPendingApproval(pending)
+	assert.equal(db.createPendingApproval(pending), approvalId, "replaying the same paused call reuses its pending approval")
+	assert.deepEqual(db.listPendingApprovals(DEFAULT_WORKSPACE_ID), [{ ...pending, approvalId }])
+	assert.equal(db.resolvePendingApproval({
+		caseId: pending.caseId,
+		approvalId: "approval-for-another-request",
+		decision: "approve",
+		reviewerSub: "wrong-reviewer",
+		reviewerEmail: "wrong@example.test",
+		reviewerRole: "controller",
+	}), null, "a decision cannot resolve a different approval for the same case")
+	assert.equal(db.listPendingApprovals(DEFAULT_WORKSPACE_ID).length, 1)
 	const rejected = db.resolvePendingApproval({
 		caseId: pending.caseId,
+		approvalId,
 		decision: "reject",
 		reason: "Keep the relationship, treat this as SHA.",
 		reviewerSub: "user-123",
@@ -921,6 +936,7 @@ test("review decisions persist against the exact breakpoint call and retain huma
 		reviewerRole: "controller",
 	})
 	assert.ok(rejected)
+	assert.deepEqual(db.listPendingApprovals(DEFAULT_WORKSPACE_ID), [])
 	const reviewEvent = db.listWorkspaceAuditEvents(DEFAULT_WORKSPACE_ID).find((event) => event.action === "review.decision")
 	assert.equal(reviewEvent?.actorEmail, "controller@acme.test")
 	assert.equal(reviewEvent?.metadata.decision, "reject")
@@ -934,6 +950,30 @@ test("review decisions persist against the exact breakpoint call and retain huma
 	assert.equal(db.findStoredHumanOverride(pending.caseId, "Keep the relationship, treat this as SHA."), true)
 	assert.equal(db.findStoredHumanOverride(pending.caseId, "model-invented note"), false)
 	db.close()
+})
+
+test("pending human review pauses the case verdict timeout until a decision arrives", async () => {
+	const state = new CorridorState()
+	const caseId = "CASE-REVIEW-WAIT-01"
+	const wait = state.waitForCaseVerdict(caseId, 5, () => state.pendingApprovals.has(caseId))
+	state.pendingApprovals.set(caseId, {
+		caseId,
+		agentName: "AuditorAgent",
+		toolName: "finalize_settlement_action",
+		actionType: "FILE_OUR_FEE_DISPUTE",
+		question: "Review this action?",
+		proofLine: "Test evidence",
+		recoverableMinor: 100,
+		currency: "USD",
+		argsJson: "{}",
+		riskLabel: "Review",
+		createdAt: new Date().toISOString(),
+		resolve: () => undefined,
+	})
+	await new Promise((resolve) => setTimeout(resolve, 30))
+	const verdict = { caseId } as import("../src/core/types").AuditVerdict
+	state.resolveCaseWaiters(caseId, verdict)
+	assert.equal(await wait, verdict)
 })
 
 test("provider sync retains original API payloads and converts Wise currencies to minor units", async () => {

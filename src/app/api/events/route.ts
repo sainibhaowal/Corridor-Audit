@@ -1,4 +1,5 @@
 import type { TrajectoryEvent } from "@/core/types"
+import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
 import { authorizeCorridorRequest, isCurrentCorridorViewerSession } from "@/core/security/authorization"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 
@@ -30,9 +31,7 @@ export async function GET(request: Request) {
 					queueStats: orchestrator.state.queueStats,
 					provider: orchestrator.router.getPublicStatus(),
 					breakpointMode: orchestrator.state.breakpointMode,
-					pendingApprovals: [...orchestrator.state.pendingApprovals.values()].map(
-						({ resolve: _r, ...rest }) => rest,
-					),
+					pendingApprovals: getCorridorDb().listPendingApprovals(DEFAULT_WORKSPACE_ID),
 				},
 			})
 

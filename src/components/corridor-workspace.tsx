@@ -193,6 +193,7 @@ export function CorridorWorkspace() {
 				verdicts: AuditVerdict[]
 				ledgerEvents: LedgerLogItem[]
 				queueStats: QueueStats
+				pendingApprovals?: PendingBreakpointDecision[]
 				cases: Array<{
 					caseId: string
 					title: string
@@ -251,6 +252,14 @@ export function CorridorWorkspace() {
 						technical: item,
 						agents,
 					}
+				}
+				const pendingByCase = new Map((data.pendingApprovals || []).map((approval) => [approval.caseId, approval]))
+				for (const [caseId, current] of Object.entries(next)) {
+					if (current.pending && !pendingByCase.has(caseId)) next[caseId] = { ...current, pending: null }
+				}
+				for (const approval of pendingByCase.values()) {
+					const current = next[approval.caseId] || createEmptyCase(approval.caseId)
+					next[approval.caseId] = { ...current, pending: approval }
 				}
 				return next
 			})
@@ -526,12 +535,18 @@ export function CorridorWorkspace() {
 	}, [refreshHistory])
 
 	const resolveBreakpoint = useCallback(
-		async (caseId: string, decision: "approve" | "reject" | "stop", reason?: string) => {
-			await fetch(`/api/breakpoints/${encodeURIComponent(caseId)}/resolve`, {
+		async (caseId: string, decision: "approve" | "reject" | "stop", reason?: string, approvalId?: string) => {
+			const response = await fetch(`/api/breakpoints/${encodeURIComponent(caseId)}/resolve`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ decision, reason }),
+				body: JSON.stringify({ approvalId, decision, reason }),
 			})
+			if (response.ok) {
+				setCasesMap((prev) => {
+					const current = prev[caseId]
+					return current ? { ...prev, [caseId]: { ...current, pending: null } } : prev
+				})
+			}
 		},
 		[],
 	)
@@ -553,7 +568,7 @@ export function CorridorWorkspace() {
 				else if (providerModalOpen) setProviderModalOpen(false)
 				else if (activeEntry?.pending) setShowSteerBox(true)
 			} else if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && activeEntry?.pending) {
-				void resolveBreakpoint(activeEntry.pending.caseId, "approve")
+				void resolveBreakpoint(activeEntry.pending.caseId, "approve", undefined, activeEntry.pending.approvalId)
 			}
 		}
 		window.addEventListener("keydown", onKeyDown)
@@ -1157,7 +1172,7 @@ export function CorridorWorkspace() {
 									<div className="flex flex-wrap items-center gap-2">
 										<Button
 											variant="emerald"
-											onClick={() => void resolveBreakpoint(activeEntry.pending!.caseId, "approve")}
+							onClick={() => void resolveBreakpoint(activeEntry.pending!.caseId, "approve", undefined, activeEntry.pending!.approvalId)}
 										>
 											<Check className="h-3.5 w-3.5" />
 											Approve Claim [Ctrl+↵]
@@ -1168,7 +1183,7 @@ export function CorridorWorkspace() {
 										</Button>
 										<Button
 											variant="destructive"
-											onClick={() => void resolveBreakpoint(activeEntry.pending!.caseId, "stop")}
+							onClick={() => void resolveBreakpoint(activeEntry.pending!.caseId, "stop", undefined, activeEntry.pending!.approvalId)}
 										>
 											<Square className="h-3 w-3" />
 											Stop Case
@@ -1191,6 +1206,7 @@ export function CorridorWorkspace() {
 														activeEntry.pending!.caseId,
 														"reject",
 														steerReason.trim() || "Treat as approved SHA fee.",
+									activeEntry.pending!.approvalId,
 													)
 												}
 											>

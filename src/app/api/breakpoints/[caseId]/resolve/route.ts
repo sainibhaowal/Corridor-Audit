@@ -17,6 +17,7 @@ export async function POST(
 		const { caseId: rawId } = await context.params
 		const caseId = decodeURIComponent(rawId)
 		const body = (await request.json()) as {
+			approvalId?: string
 			decision: "approve" | "reject" | "stop"
 			reason?: string
 		}
@@ -27,9 +28,16 @@ export async function POST(
 		const actor = session
 			? { sub: session.sub, email: session.email, role: session.role }
 			: { sub: "local-operator", email: "local-operator", role: "owner" }
-		const approvalId = getCorridorDb().resolvePendingApproval({
+		const db = getCorridorDb()
+		const orchestrator = initCorridorOrchestrator()
+		const pending = orchestrator.state.pendingApprovals.get(caseId)
+		if (pending && body.approvalId && pending.approvalId !== body.approvalId) {
+			return NextResponse.json({ error: "The requested approval is no longer the active review for this case." }, { status: 409 })
+		}
+		const approvalId = db.resolvePendingApproval({
 			workspaceId: DEFAULT_WORKSPACE_ID,
 			caseId,
+			approvalId: body.approvalId,
 			decision: body.decision,
 			reason: body.reason,
 			reviewerSub: actor.sub,
@@ -39,10 +47,14 @@ export async function POST(
 		if (!approvalId) {
 			return NextResponse.json({ error: `No pending durable breakpoint for ${caseId}` }, { status: 404 })
 		}
-		const orchestrator = initCorridorOrchestrator()
-		const pending = orchestrator.state.pendingApprovals.get(caseId)
 		if (pending) pending.resolve({ decision: body.decision, reason: body.reason })
-		return NextResponse.json({ ok: true, caseId, approvalId, decision: body.decision, resumedInProcess: Boolean(pending) }, {
+		const replay = !pending ? db.retryDeadLetterCase(caseId, DEFAULT_WORKSPACE_ID) : null
+		if (replay) {
+			void orchestrator.runCase(replay).catch((error) => {
+				console.error(`[CaseQueue] Review decision replay failed for ${caseId}:`, error)
+			})
+		}
+		return NextResponse.json({ ok: true, caseId, approvalId, decision: body.decision, resumedInProcess: Boolean(pending), replayedDeadLetter: Boolean(replay) }, {
 			status: pending ? 200 : 202,
 		})
 	} catch (err) {

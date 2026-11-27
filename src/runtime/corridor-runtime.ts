@@ -137,21 +137,42 @@ export class CorridorState extends RuntimeState {
 		for (const w of waiters) w(verdict)
 	}
 
-	waitForCaseVerdict(caseId: string, timeoutMs = 120_000): Promise<AuditVerdict> {
+	waitForCaseVerdict(caseId: string, timeoutMs = 120_000, pauseTimeoutWhile: () => boolean = () => false): Promise<AuditVerdict> {
 		const existing = this.auditByCaseId.get(caseId)
 		if (existing) return Promise.resolve(existing)
 
 		return new Promise<AuditVerdict>((resolve, reject) => {
-			const timer = setTimeout(() => {
-				reject(new Error(`Timed out waiting for ${caseId} audit verdict after ${timeoutMs}ms`))
-			}, timeoutMs)
-
-			const list = this.caseWaiters.get(caseId) ?? []
-			list.push((verdict) => {
-				clearTimeout(timer)
+			let activeWaitMs = 0
+			let previousTick = Date.now()
+			let settled = false
+			let timer: ReturnType<typeof setInterval> | undefined
+			const waiters = this.caseWaiters.get(caseId) ?? []
+			const waiter = (verdict: AuditVerdict) => {
+				if (settled) return
+				settled = true
+				if (timer) clearInterval(timer)
 				resolve(verdict)
-			})
-			this.caseWaiters.set(caseId, list)
+			}
+			waiters.push(waiter)
+			this.caseWaiters.set(caseId, waiters)
+			const timerId = setInterval(() => {
+				const now = Date.now()
+				if (!pauseTimeoutWhile()) activeWaitMs += now - previousTick
+				previousTick = now
+				if (!settled && activeWaitMs >= timeoutMs) {
+					settled = true
+					clearInterval(timerId)
+					const currentWaiters = this.caseWaiters.get(caseId)
+					if (currentWaiters) {
+						const index = currentWaiters.indexOf(waiter)
+						if (index >= 0) currentWaiters.splice(index, 1)
+						if (currentWaiters.length === 0) this.caseWaiters.delete(caseId)
+					}
+					reject(new Error(`Timed out waiting for ${caseId} audit verdict after ${timeoutMs}ms`))
+				}
+			}, Math.min(1000, Math.max(100, timeoutMs)))
+			timer = timerId
+			timerId.unref?.()
 		})
 	}
 }

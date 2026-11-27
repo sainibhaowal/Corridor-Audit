@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { initCorridorOrchestrator } from "@/runtime/orchestrator"
 import { authorizeCorridorRequest } from "@/core/security/authorization"
+import { DEFAULT_WORKSPACE_ID, getCorridorDb } from "@/core/db/database"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -29,8 +30,6 @@ export async function GET(request: Request) {
 		cases,
 		ledgerEvents: orchestrator.state.ledgerEvents,
 		queueStats: orchestrator.state.queueStats,
-		pendingApprovals: [...orchestrator.state.pendingApprovals.values()].map(
-			({ resolve: _r, ...rest }) => rest,
-		),
+		pendingApprovals: getCorridorDb().listPendingApprovals(DEFAULT_WORKSPACE_ID),
 	})
 }

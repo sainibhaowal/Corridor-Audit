@@ -178,7 +178,11 @@ export function initCorridorOrchestrator(options?: { autoApprove?: boolean }): C
 		})
 
 		try {
-			const verdict = await state.waitForCaseVerdict(settlementCase.caseId, 180_000)
+			const verdict = await state.waitForCaseVerdict(
+				settlementCase.caseId,
+				180_000,
+				() => state.pendingApprovals.has(settlementCase.caseId),
+			)
 			getCorridorDb().saveAuditVerdict(verdict, undefined, claimedBy)
 			state.queueStats.done += 1
 			return verdict
