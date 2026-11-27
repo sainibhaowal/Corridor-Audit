@@ -288,5 +288,28 @@ CREATE TABLE IF NOT EXISTS api_rate_limit_buckets (
 	request_count INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS workspace_audit_log (
+	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+	sequence INTEGER NOT NULL,
+	event_id TEXT NOT NULL UNIQUE,
+	occurred_at TEXT NOT NULL,
+	actor_type TEXT NOT NULL,
+	actor_id TEXT,
+	actor_email TEXT,
+	actor_role TEXT,
+	action TEXT NOT NULL,
+	target_type TEXT NOT NULL,
+	target_id TEXT,
+	outcome TEXT NOT NULL,
+	request_id TEXT,
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	previous_hash TEXT NOT NULL,
+	event_hash TEXT NOT NULL,
+	PRIMARY KEY (workspace_id, sequence)
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_audit_recent
+	ON workspace_audit_log(workspace_id, sequence DESC);
+
 CREATE INDEX IF NOT EXISTS idx_api_rate_limit_window ON api_rate_limit_buckets(window_start_ms);
 `

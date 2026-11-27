@@ -48,6 +48,31 @@ export interface DeadLetterCaseRecord {
 	settlementCase: SettlementCase
 }
 
+export interface WorkspaceAuditEventInput {
+	workspaceId?: string
+	actorType: "user" | "system" | "local"
+	actorId?: string
+	actorEmail?: string
+	actorRole?: string
+	action: string
+	targetType: string
+	targetId?: string
+	outcome?: "success" | "failure"
+	requestId?: string
+	metadata?: Record<string, string | number | boolean | null>
+}
+
+export interface WorkspaceAuditEvent extends Omit<WorkspaceAuditEventInput, "metadata" | "outcome" | "workspaceId"> {
+	workspaceId: string
+	sequence: number
+	eventId: string
+	occurredAt: string
+	outcome: "success" | "failure"
+	metadata: Record<string, string | number | boolean | null>
+	previousHash: string
+	eventHash: string
+}
+
 export const MAX_CASE_ATTEMPTS = 3
 
 export class CorridorDatabase {
@@ -70,6 +95,106 @@ export class CorridorDatabase {
 		this.ensureDefaultWorkspace()
 		this.ensureWorkspaceTaxPolicies()
 		this.ensureWorkspaceReviewPolicies()
+	}
+
+	appendWorkspaceAuditEvent(input: WorkspaceAuditEventInput): WorkspaceAuditEvent {
+		const workspaceId = input.workspaceId || DEFAULT_WORKSPACE_ID
+		const metadata = input.metadata || {}
+		const metadataJson = JSON.stringify(metadata)
+		if (metadataJson.length > 4_096) throw new Error("Audit metadata exceeds the 4 KB limit.")
+		for (const [label, value] of Object.entries({ action: input.action, targetType: input.targetType })) {
+			if (!/^[a-z][a-z0-9_.-]{0,79}$/.test(value)) throw new Error(`Invalid audit ${label}.`)
+		}
+		const occurredAt = new Date().toISOString()
+		const eventId = `evt_${randomUUID()}`
+		const clean = (value: string | undefined, max: number) => value?.trim().slice(0, max) || null
+		this.db.exec("BEGIN IMMEDIATE")
+		try {
+			const previous = this.db.prepare(`SELECT sequence, event_hash FROM workspace_audit_log
+				WHERE workspace_id = ? ORDER BY sequence DESC LIMIT 1`).get(workspaceId) as { sequence: number; event_hash: string } | undefined
+			const sequence = (previous?.sequence || 0) + 1
+			const event = {
+				workspaceId,
+				sequence,
+				eventId,
+				occurredAt,
+				actorType: input.actorType,
+				actorId: clean(input.actorId, 200),
+				actorEmail: clean(input.actorEmail, 320)?.toLowerCase() || null,
+				actorRole: clean(input.actorRole, 40),
+				action: input.action,
+				targetType: input.targetType,
+				targetId: clean(input.targetId, 200),
+				outcome: input.outcome || "success",
+				requestId: clean(input.requestId, 200),
+				metadataJson,
+				previousHash: previous?.event_hash || "GENESIS",
+			}
+			const eventHash = createHash("sha256").update(JSON.stringify(event)).digest("hex")
+			this.db.prepare(`INSERT INTO workspace_audit_log (
+				workspace_id, sequence, event_id, occurred_at, actor_type, actor_id, actor_email, actor_role,
+				action, target_type, target_id, outcome, request_id, metadata_json, previous_hash, event_hash
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+				event.workspaceId, event.sequence, event.eventId, event.occurredAt, event.actorType, event.actorId,
+				event.actorEmail, event.actorRole, event.action, event.targetType, event.targetId, event.outcome,
+				event.requestId, event.metadataJson, event.previousHash, eventHash,
+			)
+			this.db.exec("COMMIT")
+			return {
+				workspaceId, sequence, eventId, occurredAt, actorType: input.actorType,
+				actorId: event.actorId || undefined, actorEmail: event.actorEmail || undefined,
+				actorRole: event.actorRole || undefined, action: input.action, targetType: input.targetType,
+				targetId: event.targetId || undefined, outcome: event.outcome,
+				requestId: event.requestId || undefined, metadata, previousHash: event.previousHash, eventHash,
+			}
+		} catch (error) {
+			this.db.exec("ROLLBACK")
+			throw error
+		}
+	}
+
+	listWorkspaceAuditEvents(workspaceId = DEFAULT_WORKSPACE_ID, limit = 100): WorkspaceAuditEvent[] {
+		const boundedLimit = Math.max(1, Math.min(500, Math.floor(limit)))
+		const rows = this.db.prepare(`SELECT * FROM workspace_audit_log WHERE workspace_id = ?
+			ORDER BY sequence DESC LIMIT ?`).all(workspaceId, boundedLimit) as Array<Record<string, unknown>>
+		return rows.map((row) => ({
+			workspaceId: String(row.workspace_id), sequence: Number(row.sequence), eventId: String(row.event_id),
+			occurredAt: String(row.occurred_at), actorType: String(row.actor_type) as WorkspaceAuditEvent["actorType"],
+			actorId: row.actor_id ? String(row.actor_id) : undefined,
+			actorEmail: row.actor_email ? String(row.actor_email) : undefined,
+			actorRole: row.actor_role ? String(row.actor_role) : undefined,
+			action: String(row.action), targetType: String(row.target_type), targetId: row.target_id ? String(row.target_id) : undefined,
+			outcome: String(row.outcome) as WorkspaceAuditEvent["outcome"], requestId: row.request_id ? String(row.request_id) : undefined,
+			metadata: JSON.parse(String(row.metadata_json)) as WorkspaceAuditEvent["metadata"],
+			previousHash: String(row.previous_hash), eventHash: String(row.event_hash),
+		}))
+	}
+
+	verifyWorkspaceAuditChain(workspaceId = DEFAULT_WORKSPACE_ID): { valid: boolean; eventCount: number } {
+		const rows = this.db.prepare(`SELECT * FROM workspace_audit_log WHERE workspace_id = ? ORDER BY sequence ASC`)
+			.all(workspaceId) as Array<Record<string, unknown>>
+		let previousHash = "GENESIS"
+		for (let index = 0; index < rows.length; index += 1) {
+			const row = rows[index]!
+			const sequence = Number(row.sequence)
+			const event = {
+				workspaceId: String(row.workspace_id), sequence, eventId: String(row.event_id),
+				occurredAt: String(row.occurred_at), actorType: String(row.actor_type),
+				actorId: row.actor_id ? String(row.actor_id) : null,
+				actorEmail: row.actor_email ? String(row.actor_email) : null,
+				actorRole: row.actor_role ? String(row.actor_role) : null,
+				action: String(row.action), targetType: String(row.target_type),
+				targetId: row.target_id ? String(row.target_id) : null, outcome: String(row.outcome),
+				requestId: row.request_id ? String(row.request_id) : null,
+				metadataJson: String(row.metadata_json), previousHash: String(row.previous_hash),
+			}
+			const hash = createHash("sha256").update(JSON.stringify(event)).digest("hex")
+			if (sequence !== index + 1 || event.previousHash !== previousHash || hash !== String(row.event_hash)) {
+				return { valid: false, eventCount: rows.length }
+			}
+			previousHash = hash
+		}
+		return { valid: true, eventCount: rows.length }
 	}
 
 	private ensureCaseQueueColumns(): void {

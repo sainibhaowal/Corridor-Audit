@@ -5,6 +5,7 @@ import { getCatalogItem } from "@/core/integrations/catalog"
 import { createOAuthAuthorizationUrl } from "@/core/integrations/oauth"
 import { authorizeCorridorRequest } from "@/core/security/authorization"
 import { getCorridorPublicOrigin } from "@/core/security/public-origin"
+import { authEnabled, requestCorridorSession } from "@/core/security/auth"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -81,6 +82,8 @@ export async function POST(
 					: undefined,
 			config: body.config ?? {},
 		})
+		const session = authEnabled() ? await requestCorridorSession(request) : null
+		db.appendWorkspaceAuditEvent({ workspaceId: DEFAULT_WORKSPACE_ID, actorType: session ? "user" : "local", actorId: session?.sub, actorEmail: session?.email, actorRole: session?.role, action: "integration.connect", targetType: "integration", targetId: provider, requestId: request.headers.get("x-request-id") || undefined, metadata: { authMode: resolvedMode } })
 
 		return NextResponse.json({ ok: true, integration: record })
 	} catch (err) {

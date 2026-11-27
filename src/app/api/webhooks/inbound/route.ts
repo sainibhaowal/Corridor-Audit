@@ -89,6 +89,7 @@ export async function POST(request: Request) {
 
 		const execution = orchestrator.enqueueBatch(cases)
 		db.markWebhookReceiptStatus({ ...identity, status: "queued" })
+		db.appendWorkspaceAuditEvent({ workspaceId: DEFAULT_WORKSPACE_ID, actorType: "system", action: "webhook.accepted", targetType: "webhook_event", targetId: eventIdentity.eventId, requestId: request.headers.get("x-request-id") || undefined, metadata: { provider, verified: sigCheck.scheme !== "none", queuedCount: cases.length } })
 		void execution.catch((err) => {
 			db.markWebhookReceiptStatus({ ...identity, status: "failed" })
 			console.error(`Webhook ingestion ${rec.id} failed during audit processing:`, err)

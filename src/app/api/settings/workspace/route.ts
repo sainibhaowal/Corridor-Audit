@@ -46,6 +46,7 @@ export async function POST(request: Request) {
 				return NextResponse.json({ ok: false, error: "Only workspace owners can rotate webhook secrets." }, { status: 403 })
 			}
 			const rotatedSecret = db.rotateWebhookSecret(DEFAULT_WORKSPACE_ID)
+			db.appendWorkspaceAuditEvent({ workspaceId: DEFAULT_WORKSPACE_ID, actorType: session ? "user" : "local", actorId: session?.sub, actorEmail: session?.email, actorRole: session?.role, action: "webhook_secret.rotate", targetType: "workspace", targetId: DEFAULT_WORKSPACE_ID, requestId: request.headers.get("x-request-id") || undefined })
 			return NextResponse.json({
 				ok: true,
 				rotatedSecret,
@@ -61,12 +62,13 @@ export async function POST(request: Request) {
 			if (!body.memberEmail?.trim() || !body.memberName?.trim()) {
 				return NextResponse.json({ ok: false, error: "Member name and email are required." }, { status: 400 })
 			}
-			db.addTeamMember({
+			const member = db.addTeamMember({
 				workspaceId: DEFAULT_WORKSPACE_ID,
 				email: body.memberEmail,
 				name: body.memberName,
 				role: body.memberRole || "analyst",
 			})
+			db.appendWorkspaceAuditEvent({ workspaceId: DEFAULT_WORKSPACE_ID, actorType: session ? "user" : "local", actorId: session?.sub, actorEmail: session?.email, actorRole: session?.role, action: "team_member.invite_recorded", targetType: "team_member", targetId: member.id, requestId: request.headers.get("x-request-id") || undefined, metadata: { assignedRole: member.role } })
 			return NextResponse.json({
 				ok: true,
 				workspace: db.getWorkspace(DEFAULT_WORKSPACE_ID),
@@ -79,6 +81,7 @@ export async function POST(request: Request) {
 				return NextResponse.json({ ok: false, error: "Only workspace owners can manage team membership." }, { status: 403 })
 			}
 			db.removeTeamMember(DEFAULT_WORKSPACE_ID, body.memberId)
+			db.appendWorkspaceAuditEvent({ workspaceId: DEFAULT_WORKSPACE_ID, actorType: session ? "user" : "local", actorId: session?.sub, actorEmail: session?.email, actorRole: session?.role, action: "team_member.remove", targetType: "team_member", targetId: body.memberId, requestId: request.headers.get("x-request-id") || undefined })
 			return NextResponse.json({
 				ok: true,
 				workspace: db.getWorkspace(DEFAULT_WORKSPACE_ID),
@@ -105,6 +108,7 @@ export async function POST(request: Request) {
 			varianceThresholdMinor: body.varianceThresholdMinor,
 			requireWebhookSignature: body.requireWebhookSignature,
 		})
+		db.appendWorkspaceAuditEvent({ workspaceId: DEFAULT_WORKSPACE_ID, actorType: session ? "user" : "local", actorId: session?.sub, actorEmail: session?.email, actorRole: session?.role, action: "workspace.settings.update", targetType: "workspace", targetId: DEFAULT_WORKSPACE_ID, requestId: request.headers.get("x-request-id") || undefined, metadata: { changedFields: Object.keys(body).filter((key) => key !== "action" && body[key as keyof typeof body] !== undefined).sort().join(",") } })
 
 		return NextResponse.json({
 			ok: true,
