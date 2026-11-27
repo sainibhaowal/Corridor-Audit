@@ -330,7 +330,7 @@ export function CorridorWorkspace() {
 		let cancelled = false
 		void (async () => {
 			try {
-				const health = (await (await fetch("/api/health", { cache: "no-store" })).json()) as {
+				const health = (await (await fetch("/api/runtime/status", { cache: "no-store" })).json()) as {
 					provider: ProviderStatus
 					breakpointMode: "risk_only" | "step_tool"
 					queueStats: QueueStats

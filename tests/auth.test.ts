@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { resolve } from "node:path"
 import test from "node:test"
 import { NextRequest } from "next/server"
+import { GET as runtimeStatusRoute } from "../src/app/api/runtime/status/route"
 import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/core/db/database"
 import { issueCorridorSession, verifyCorridorSession } from "../src/core/security/auth"
 import { authorizeCorridorRequest } from "../src/core/security/authorization"
@@ -110,6 +111,18 @@ test("API authorization checks current team membership on every request", async 
 		rmSync(dbPath, { force: true })
 		rmSync(`${dbPath}-wal`, { force: true })
 		rmSync(`${dbPath}-shm`, { force: true })
+	}
+})
+
+test("runtime status requires an authenticated viewer when auth is enabled", async () => {
+	const previousMode = process.env.CORRIDOR_AUTH_MODE
+	process.env.CORRIDOR_AUTH_MODE = "cognito"
+	try {
+		const response = await runtimeStatusRoute(new Request("http://localhost/api/runtime/status"))
+		assert.equal(response.status, 401)
+	} finally {
+		if (previousMode === undefined) delete process.env.CORRIDOR_AUTH_MODE
+		else process.env.CORRIDOR_AUTH_MODE = previousMode
 	}
 })
 

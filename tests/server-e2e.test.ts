@@ -10,19 +10,22 @@ process.env.CORRIDOR_DB_PATH = TEST_DB_PATH
 import { POST as uploadRoute } from "../src/app/api/audit/upload/route"
 import { GET as healthRoute } from "../src/app/api/health/route"
 import { GET as historyRoute } from "../src/app/api/history/route"
+import { GET as runtimeStatusRoute } from "../src/app/api/runtime/status/route"
 import { POST as terminalRoute } from "../src/app/api/terminal/route"
 import { POST as inboundWebhookRoute } from "../src/app/api/webhooks/inbound/route"
 import { getCorridorDb } from "../src/core/db/database"
 
 test("Next.js App Router API routes serve health, terminal, upload ingestion, webhook ingestion, and history", async () => {
-	const health = (await (await healthRoute()).json()) as {
-		ok: boolean
-		framework: string
-		provider: { mode: string }
-	}
+	const health = (await (await healthRoute()).json()) as Record<string, unknown> & { ok: boolean }
 	assert.equal(health.ok, true)
-	assert.ok(["live", "unconfigured"].includes(health.provider.mode))
-	assert.ok(health.framework.includes("Next.js"))
+	assert.equal("provider" in health, false, "public liveness must not disclose internal runtime status")
+	assert.equal("hotFolder" in health, false, "public liveness must not disclose local filesystem paths")
+
+	const runtimeStatus = await runtimeStatusRoute(new Request("http://127.0.0.1/api/runtime/status"))
+	const runtimePayload = (await runtimeStatus.json()) as { ok: boolean; framework: string; provider: { mode: string } }
+	assert.equal(runtimeStatus.status, 200)
+	assert.ok(["live", "unconfigured"].includes(runtimePayload.provider.mode))
+	assert.ok(runtimePayload.framework.includes("Next.js"))
 
 	const terminalHelp = await terminalRoute(
 		new Request("http://127.0.0.1/api/terminal", {
