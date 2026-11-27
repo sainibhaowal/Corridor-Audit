@@ -20,6 +20,7 @@ import { POST as emailWebhookRoute } from "../src/app/api/webhooks/email/route"
 import { POST as inboundWebhookRoute } from "../src/app/api/webhooks/inbound/route"
 import { CorridorDatabase, DEFAULT_WORKSPACE_ID, getCorridorDb } from "../src/core/db/database"
 import { parseInboundEmailToCases } from "../src/core/integrations/email-parser"
+import { fetchCasesFromIntegration } from "../src/core/integrations/connectors"
 import { decryptJson, decryptSecret, encryptJson, encryptSecret, maskSecret } from "../src/core/security/vault"
 import {
 	verifyCorridorSignature,
@@ -236,6 +237,64 @@ test("review decisions persist against the exact breakpoint call and retain huma
 	assert.equal(db.findStoredHumanOverride(pending.caseId, "Keep the relationship, treat this as SHA."), true)
 	assert.equal(db.findStoredHumanOverride(pending.caseId, "model-invented note"), false)
 	db.close()
+})
+
+test("provider sync retains original API payloads and converts Wise currencies to minor units", async () => {
+	const previousFetch = global.fetch
+	const stripeRaw = JSON.stringify({ data: [{ id: "po_test_1", amount: 1099, currency: "usd", arrival_date: 1795737600 }] })
+	global.fetch = (async () => new Response(stripeRaw, { status: 200 })) as typeof fetch
+	try {
+	const stripe = await fetchCasesFromIntegration({
+		integration: {
+			id: "int_stripe_test",
+			workspaceId: DEFAULT_WORKSPACE_ID,
+			provider: "stripe",
+			category: "payouts",
+			authMode: "api_token",
+			status: "connected",
+			config: {},
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		},
+		credentials: { apiKey: "sk_test" },
+	})
+	assert.equal(stripe.rawPayload, stripeRaw)
+	assert.equal(stripe.cases[0]?.wire.settledAmount.amountMinor, 1099)
+
+	const wiseResponses = [
+		JSON.stringify([{ id: 123 }]),
+		JSON.stringify([{
+			id: 456,
+			sourceCurrency: "JPY",
+			sourceValue: 1200,
+			targetCurrency: "KWD",
+			targetValue: 4.321,
+			rate: 0.0036,
+			created: "2026-11-27T10:00:00Z",
+		}]),
+	]
+	let responseIndex = 0
+	global.fetch = (async () => new Response(wiseResponses[responseIndex++], { status: 200 })) as typeof fetch
+		const wise = await fetchCasesFromIntegration({
+			integration: {
+				id: "int_wise_test",
+				workspaceId: DEFAULT_WORKSPACE_ID,
+				provider: "wise",
+				category: "payouts",
+				authMode: "api_token",
+				status: "connected",
+				config: {},
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			},
+			credentials: { apiKey: "wise_test" },
+		})
+		assert.equal(wise.rawPayload, wiseResponses[1])
+		assert.equal(wise.cases[0]?.wire.instructedAmount?.amountMinor, 1200)
+		assert.equal(wise.cases[0]?.wire.settledAmount.amountMinor, 4321)
+	} finally {
+		global.fetch = previousFetch
+	}
 })
 
 test("parseInboundEmailToCases extracts MT103 attachments from inbound email payloads", () => {

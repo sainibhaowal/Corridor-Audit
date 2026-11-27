@@ -3,10 +3,12 @@ import { extname, resolve } from "node:path"
 import type { IntegrationCredentials, IntegrationRecord } from "../db/schema"
 import { normalizeInboundPayloadToCases } from "../ingest/normalize-upload"
 import type { SettlementCase } from "../types"
+import { parseDecimalStringToMinor } from "../money"
 
 export interface ConnectorFetchResult {
 	recordsFetched: number
 	cases: SettlementCase[]
+	rawPayload?: string
 }
 
 function authHeader(credentials: IntegrationCredentials): string {
@@ -24,7 +26,8 @@ async function fetchStripeCases(credentials: IntegrationCredentials): Promise<Co
 	if (!res.ok) {
 		throw new Error(`Stripe API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
 	}
-	const payload = (await res.json()) as {
+	const rawPayload = await res.text()
+	const payload = JSON.parse(rawPayload) as {
 		data?: Array<{
 			id: string
 			amount: number
@@ -68,7 +71,7 @@ async function fetchStripeCases(credentials: IntegrationCredentials): Promise<Co
 			},
 		}
 	})
-	return { recordsFetched: payouts.length, cases }
+	return { recordsFetched: payouts.length, cases, rawPayload }
 }
 
 async function fetchWiseCases(
@@ -97,7 +100,8 @@ async function fetchWiseCases(
 	if (!tRes.ok) {
 		throw new Error(`Wise Transfers API error (${tRes.status}): ${(await tRes.text()).slice(0, 200)}`)
 	}
-	const transfers = (await tRes.json()) as Array<{
+	const rawPayload = await tRes.text()
+	const transfers = JSON.parse(rawPayload) as Array<{
 		id: number
 		sourceCurrency: string
 		sourceValue: number
@@ -121,8 +125,8 @@ async function fetchWiseCases(
 			format: "platform_payout",
 			platformName: "wise",
 			valueDate: t.created.slice(0, 10),
-			instructedAmount: { amountMinor: Math.round(t.sourceValue * 100), currency: t.sourceCurrency.toUpperCase() },
-			settledAmount: { amountMinor: Math.round(t.targetValue * 100), currency: t.targetCurrency.toUpperCase() },
+			instructedAmount: { amountMinor: parseDecimalStringToMinor(String(t.sourceValue), t.sourceCurrency), currency: t.sourceCurrency.toUpperCase() },
+			settledAmount: { amountMinor: parseDecimalStringToMinor(String(t.targetValue), t.targetCurrency), currency: t.targetCurrency.toUpperCase() },
 			bankAppliedRate: t.rate,
 			chargeBearer: "SHA",
 			senderCharges: [],
@@ -139,7 +143,7 @@ async function fetchWiseCases(
 		},
 	}))
 
-	return { recordsFetched: transfers.length, cases }
+	return { recordsFetched: transfers.length, cases, rawPayload }
 }
 
 async function fetchQuickBooksCases(
@@ -157,7 +161,8 @@ async function fetchQuickBooksCases(
 	if (!res.ok) {
 		throw new Error(`QuickBooks API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
 	}
-	const json = (await res.json()) as {
+	const rawPayload = await res.text()
+	const json = JSON.parse(rawPayload) as {
 		QueryResponse?: {
 			Invoice?: Array<{
 				Id: string
@@ -172,7 +177,7 @@ async function fetchQuickBooksCases(
 	const invoices = json.QueryResponse?.Invoice ?? []
 	const cases: SettlementCase[] = invoices.map((inv) => {
 		const ccy = (inv.CurrencyRef?.value || "USD").toUpperCase()
-		const minor = Math.round(inv.TotalAmt * 100)
+		const minor = parseDecimalStringToMinor(String(inv.TotalAmt), ccy)
 		return {
 			caseId: `QBO-${inv.DocNumber || inv.Id}`,
 			title: `QuickBooks Invoice ${inv.DocNumber || inv.Id}`,
@@ -213,7 +218,7 @@ async function fetchQuickBooksCases(
 			},
 		}
 	})
-	return { recordsFetched: invoices.length, cases }
+	return { recordsFetched: invoices.length, cases, rawPayload }
 }
 
 async function fetchXeroCases(
@@ -234,7 +239,8 @@ async function fetchXeroCases(
 	if (!res.ok) {
 		throw new Error(`Xero API error (${res.status}): ${(await res.text()).slice(0, 200)}`)
 	}
-	const json = (await res.json()) as {
+	const rawPayload = await res.text()
+	const json = JSON.parse(rawPayload) as {
 		Invoices?: Array<{
 			InvoiceID: string
 			InvoiceNumber?: string
@@ -247,7 +253,7 @@ async function fetchXeroCases(
 	const invoices = json.Invoices ?? []
 	const cases: SettlementCase[] = invoices.map((inv) => {
 		const ccy = (inv.CurrencyCode || "USD").toUpperCase()
-		const minor = Math.round((inv.Total ?? 0) * 100)
+		const minor = parseDecimalStringToMinor(String(inv.Total ?? 0), ccy)
 		return {
 			caseId: `XERO-${inv.InvoiceNumber || inv.InvoiceID.slice(0, 8)}`,
 			title: `Xero Invoice ${inv.InvoiceNumber || inv.InvoiceID}`,
@@ -288,7 +294,7 @@ async function fetchXeroCases(
 			},
 		}
 	})
-	return { recordsFetched: invoices.length, cases }
+	return { recordsFetched: invoices.length, cases, rawPayload }
 }
 
 function fetchHotFolderCases(config: Record<string, string>): ConnectorFetchResult {

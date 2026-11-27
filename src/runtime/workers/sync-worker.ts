@@ -40,7 +40,25 @@ export async function runIntegrationSync(params: {
 		const fetched = await fetchCasesFromIntegration({ integration, credentials })
 
 		const freshCases = fetched.cases.filter((c) => !params.orchestrator.state.casesById.has(c.caseId))
-		if (freshCases.length > 0) {
+		if (fetched.rawPayload !== undefined) {
+			db.saveRawIngestion({
+				workspaceId,
+				sourceChannel: "platform_sync",
+				sourceProvider: integration.provider,
+				filename: `${integration.provider}-sync-${run.id}.json`,
+				format: "json",
+				rawContent: fetched.rawPayload,
+				metadata: {
+					syncRunId: run.id,
+					trigger: run.trigger,
+					provider: integration.provider,
+					recordsFetched: String(fetched.recordsFetched),
+					mappingCaseCount: String(fetched.cases.length),
+				},
+				parseStatus: "parsed",
+				caseIds: fetched.cases.map((c) => c.caseId),
+			})
+		} else if (freshCases.length > 0) {
 			db.saveRawIngestion({
 				workspaceId,
 				sourceChannel: "platform_sync",
@@ -48,14 +66,12 @@ export async function runIntegrationSync(params: {
 				filename: `${integration.provider}-sync-${run.id}.json`,
 				format: "json",
 				rawContent: JSON.stringify(freshCases, null, 2),
-				metadata: {
-					syncRunId: run.id,
-					trigger: run.trigger,
-					provider: integration.provider,
-				},
+				metadata: { syncRunId: run.id, trigger: run.trigger, provider: integration.provider },
 				parseStatus: "parsed",
 				caseIds: freshCases.map((c) => c.caseId),
 			})
+		}
+		if (freshCases.length > 0) {
 			void params.orchestrator.enqueueBatch(freshCases).catch((err) => {
 				console.error(`[SyncWorker] Batch error for ${integration.provider}:`, err)
 			})

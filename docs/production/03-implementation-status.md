@@ -12,7 +12,7 @@ This is the live delivery record for production-readiness engineering. A row is 
 | 3 | Executable versioned tax and threshold policies, durable approvals, and accurate summaries | Versioned tax and review policies plus durable approval records implemented locally; approval UI and production workflow controls remain |
 | 4 | Durable database, queue, outbox, idempotency, retries, dead-letter handling, and independent workers | Local SQLite queue recovery and webhook deduplication slices complete; production queue not started |
 | 5 | Raw evidence object storage, encryption/key lifecycle, retention, backup, restore, and deletion | Local SQLite raw-payload encryption complete; managed storage and lifecycle not started |
-| 6 | Provider adapters with pagination, cursors, token refresh/revocation, event security, and reconciliation | Not started |
+| 6 | Provider adapters with pagination, cursors, token refresh/revocation, event security, and reconciliation | Local raw-response retention and currency-unit fixes for Stripe, Wise, QuickBooks, and Xero; connector completeness remains in progress |
 | 7 | Monitoring, audit logs, deployment configuration, threat review, and operational runbooks | Not started |
 | 8 | Provider and security validation evidence, controlled pilot release gates | Not started |
 
@@ -121,6 +121,14 @@ Update this section per milestone with the exact command, result, environment, a
 - Authenticated decisions use the verified session subject, email, and role. Local terminal decisions are labeled as local operator actions.
 - This does not make agent execution durable by itself. There is no worker lease, approval expiry, full approval-history UI, maker/checker policy, or multi-instance consistency. Those remain release gates.
 - `npm run typecheck`: passed. `npm test`: passed, 34 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
+
+### 2026-11-27 provider raw-response and currency-unit follow-up
+
+- Stripe, Wise, QuickBooks, and Xero fetch results now retain the original response body. The sync worker stores that response in the encrypted raw vault, separately from normalized audit cases, including syncs that return no new cases.
+- Wise, QuickBooks, and Xero major-unit amounts now convert through currency-specific minor-unit rules. This avoids multiplying every currency by 100, which is wrong for currencies such as JPY and KWD. Stripe amounts remain in the provider's minor units.
+- Automated connector tests mock provider HTTP responses, check original response preservation, and verify Wise JPY and KWD amount conversion. No live provider calls or OAuth refresh were performed.
+- Pagination, incremental sync cursors, provider token refresh/revocation, exact payment-to-invoice matching, reconciliation fixtures, and a real provider acceptance test remain open.
+- `npm run typecheck`: passed. `npm test`: passed, 35 tests, 0 failures. `npm run build`: passed. `git diff --check`: passed. Verification ran locally on Windows.
 
 ### 2026-11-27 local raw-payload encryption slice
 
