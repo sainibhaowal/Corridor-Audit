@@ -35,7 +35,7 @@ Read the complete technical & product Case Study in **[`docs/Case Study/`](./doc
 | **[06 · Outputs, Disputes & ROI](./docs/Case%20Study/06-outputs-disputes-and-roi.md)** | Worked `€5,000` EUR→USD example, dispute letters & B2C/B2B ROI |
 | **[07 · Security, Hashing & Data Protection](./docs/Case%20Study/07-security-hashing-and-data-protection.md)** | Security boundaries, configurable webhook HMAC checks, SHA-256 fingerprints & data-protection controls |
 | **[Implementation Architecture](./docs/ARCHITECTURE.md)** | Module-by-module codebase & runtime implementation notes |
-| **[Developer Engineering Docs](./docs/developer/README.md)** | Full API reference (29 routes), 17-table SQLite schema, codebase module map & `.env`/security config |
+| **[Developer Engineering Docs](./docs/developer/README.md)** | Full API reference (29 routes), 19-table SQLite schema, codebase module map, checkpoints & `.env`/security config |
 | **[2-Minute Demo Guide](./docs/DEMO-GUIDE.md)** | Step-by-step walkthrough: sidebar drag-and-drop upload, live Mozaik stream, breakpoint & `.pdf`/`.csv`/`.txt`/`.json` preview |
 
 ![CorridorAudit Implementation Architecture Blueprint](./docs/Case%20Study/assets/architecture-blueprint.svg)

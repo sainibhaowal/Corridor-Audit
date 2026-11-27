@@ -23,7 +23,7 @@ erDiagram
 
 ---
 
-## All 17 SQLite Tables
+## All 19 SQLite Tables
 
 ### 1. Workspace, Team & Policy Tables
 | Table | Primary Key | Encrypted Fields / Notes |
@@ -42,6 +42,8 @@ erDiagram
 | `cases` | `case_id` | Durable job queue + normalized case store. Stores `status` (`queued`, etc.), `attempt_count`, `next_attempt_at`, `worker_id`, `lease_expires_at`, `submitted_by_sub`, and AES-256-GCM encrypted `payload_json` (`payload_json_encrypted`). |
 | `audit_verdicts` | `case_id` | Final verdict per case (`status`, `completed_at`) with AES-256-GCM encrypted `verdict_json` (`verdict_json_encrypted`). |
 | `review_approvals` | `id` | Breakpoint decisions bound to `args_sha256`, `case_evidence_sha256`, `review_policy_id`, `expires_at`, `reviewer_sub`/`email`/`role`, and encrypted `pending_json` (`pending_json_encrypted`). |
+| `case_sequences` | `workspace_id` | Persistent monotonic counter (`last_number`) ensuring sequential, never-repeating case IDs (`MT103-0001`, `CSV-0002`, ...) across restarts. |
+| `case_checkpoints` | `(case_id, role)` | AES-256-GCM encrypted per-specialist checkpoints (`terms`, `fx`, `wire`, `anomaly`) so retries and restarts resume from the last completed stage without repeating finished agents. |
 
 ### 3. Integrations, OAuth & Concurrency Leases
 | Table | Primary Key | Purpose |
